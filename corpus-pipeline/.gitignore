@@ -1,0 +1,50 @@
+# Python cache and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local environment files
+.venv/
+venv/
+.env
+.env.*
+
+# Logs and temporary runtime files
+*.log
+*.tmp
+*.bak
+tmp/
+temp/
+
+# Local database/vector runtime state
+.qdrant/
+.clickhouse/
+ollama-cache/
+*.vector-cache.lock
+.kaggle/
+corpus-pipeline-kaggle-*/
+
+# Local data outputs
+data/cache/
+data/runs/
+data/**/__pycache__/
+data/**/*.pyc
+
+# New generated scratch outputs. Existing tracked data artifacts stay tracked.
+data/**/.tmp/
+data/**/*.tmp
+data/**/*.bak
+data/**/scratch/
+
+# Transactional corpus work and unpacked source material
+data/.work/
+data/interim/
+data/raw/ankhang/html/
+
+# Optional debug previews
+data/**/preview/
+data/**/*_preview.md

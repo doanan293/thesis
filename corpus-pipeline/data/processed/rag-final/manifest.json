@@ -1,0 +1,31 @@
+{
+  "build_id": "ae7831a84a7cb475",
+  "chunk_count": 24955,
+  "config_digest": "c76df674f82ca20f57c946b91a6221902e40e35fcef9b3debd076bab2d66cf3d",
+  "curated_input_digests": {
+    "curated_tables": "818c7828f24180445571d72fe0a5f51d2e374a25c4998827f8a4e16dd0fbde41",
+    "glossary": "efb491df91f68fd8fd9f4a0c836b06211758de703ba0f7cddbfc39c415b6f2ff",
+    "mappings": "967ae7e6a3b572f07b6bb625acecabe2c7e4091cef638857cb6fa8e405b98ab9",
+    "table_overrides": "6c3b043b9f3dd1d17107bea9b33c62d58c454c50a779632963f8d6daf6089474"
+  },
+  "files": {
+    "chunks.jsonl": {
+      "bytes": 137008895,
+      "sha256": "cdbe06ce357275711bfa2ac39117afee8cec2f54798cb5c678607269ae8c49d1"
+    },
+    "sections.jsonl": {
+      "bytes": 62761789,
+      "sha256": "bfa213d14cbfa69b006d31a5ddfc1c29be897238ed3e5e6bc91b3076b48a3bea"
+    },
+    "validation_report.json": {
+      "bytes": 46293,
+      "sha256": "09b2d0be3713a8374c2a4520c99e9c45c9ae8e20d5a5d9919ce5c4a7eadf28a9"
+    }
+  },
+  "schema_version": "rag-final-v2",
+  "section_count": 12326,
+  "snapshot_id": "ankhang-2026-07-24-97f5b5c43eee",
+  "snapshot_sha256": "15a657357f3ae84c661ae16f71a6d24d32d165d27d281c50f0ce6c85c0902061",
+  "source_pdf_sha256": "2aa81c846a5e760f82658c46816ab63174204a7d95b3e2755b6565288e53d0d1",
+  "validation_ok": true
+}

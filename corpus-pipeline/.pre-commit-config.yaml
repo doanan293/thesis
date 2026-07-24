@@ -1,0 +1,41 @@
+exclude: '.*(data/|\.venv/)'
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: debug-statements
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pyrefly-check
+        name: pyrefly check
+        entry: uv run --directory corpus-pipeline pyrefly check --min-severity warn
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.6.5
+    hooks:
+      - id: uv-lock

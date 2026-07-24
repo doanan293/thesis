@@ -1,0 +1,228 @@
+{
+  "curated-table-0043-001": {
+    "target_section_id": "general:su-dung-thuoc-o-nguoi-suy-giam-chuc-nang-gan-than:suy-giam-chuc-nang-gan:danh-gia-muc-do-suy-giam-chuc-nang-gan",
+    "note": "Remove duplicate raw/flattened text for Child-Pugh Bảng 1 and Bảng 2."
+  },
+  "curated-table-0043-002": {
+    "target_section_id": "general:su-dung-thuoc-o-nguoi-suy-giam-chuc-nang-gan-than:suy-giam-chuc-nang-gan:danh-gia-muc-do-suy-giam-chuc-nang-gan",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened text for Bảng 2 is removed by curated-table-0043-001 override."
+  },
+  "curated-table-0178-001": {
+    "target_section_id": "drug:amikacin:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table in AMIKACIN dosage section; headers are split into fragments."
+  },
+  "curated-table-0184-001": {
+    "target_section_id": "drug:amiodaron:lieu-luong-va-cach-dung",
+    "note": "Flattened IV-to-oral conversion table in AMIODARON dosage section."
+  },
+  "curated-table-0209-001": {
+    "target_section_id": "drug:arsenic-trioxyd:tac-dung-khong-mong-muon-adr",
+    "note": "Large flattened ADR table; keep prose intro and post-table footnote."
+  },
+  "curated-table-0269-001": {
+    "target_section_id": "drug:bleomycin:lieu-luong-va-cach-dung",
+    "note": "Flattened renal dose-reduction table in BLEOMYCIN dosage section."
+  },
+  "curated-table-0315-001": {
+    "target_section_id": "drug:captopril:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table; keep preceding renal subsection label."
+  },
+  "curated-table-0363-001": {
+    "target_section_id": "drug:cefpirom:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table in CEFPIROM dosage section."
+  },
+  "curated-table-0382-001": {
+    "target_section_id": "drug:cetirizin-hydroclorid:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table in CETIRIZIN dosage section."
+  },
+  "curated-table-0464-001": {
+    "target_section_id": "drug:colistin:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table in COLISTIN dosage section."
+  },
+  "curated-table-0563-001": {
+    "target_section_id": "drug:dopamin:lieu-luong-va-cach-dung",
+    "note": "Flattened dopamine dilution table; original curated mapping was page-range based."
+  },
+  "curated-table-0591-001": {
+    "target_section_id": "drug:entecavir:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table in ENTECAVIR dosage section."
+  },
+  "curated-table-0668-001": {
+    "target_section_id": "drug:fluconazol:lieu-luong-va-cach-dung",
+    "note": "Flattened renal-dose table under 'Liều cho người suy thận'."
+  },
+  "curated-table-0823-001": {
+    "target_section_id": "drug:interferon-beta:lieu-luong-va-cach-dung",
+    "note": "Remove flattened interferon beta-1a and beta-1b dose-escalation tables together."
+  },
+  "curated-table-0841-001": {
+    "target_section_id": "drug:isofluran:lieu-luong-va-cach-dung",
+    "note": "Flattened MAC-by-age table in ISOFLURAN dosage section."
+  },
+  "curated-table-0892-001": {
+    "target_section_id": "drug:levofloxacin:lieu-luong-va-cach-dung",
+    "note": "Remove flattened levofloxacin renal-dose table; Docling split it into two curated tables."
+  },
+  "curated-table-0892-002": {
+    "target_section_id": "drug:levofloxacin:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened text for this split table is removed by curated-table-0892-001 override."
+  },
+  "curated-table-0990-001": {
+    "target_section_id": "drug:milrinon:lieu-luong-va-cach-dung",
+    "note": "Flattened renal infusion-rate table in MILRINON dosage section."
+  },
+  "curated-table-1016-001": {
+    "target_section_id": "drug:nadolol:lieu-luong-va-cach-dung",
+    "note": "Flattened renal dosing-interval table in NADOLOL dosage section."
+  },
+  "curated-table-1037-001": {
+    "target_section_id": "drug:nelfinavir-mesilat:lieu-luong-va-cach-dung",
+    "note": "Remove flattened nelfinavir pediatric tablet and powder dose tables together."
+  },
+  "curated-table-1266-001": {
+    "target_section_id": "drug:salbutamol-dung-trong-san-khoa:lieu-luong-va-cach-dung",
+    "note": "Flattened salbutamol obstetric dilution table in the corrected Salbutamol obstetric dosage section."
+  },
+  "curated-table-1373-001": {
+    "target_section_id": "drug:thuoc-tuong-tu-hormon-giai-phong-gonadotropin:chi-dinh",
+    "note": "Flattened GnRH analogue indications table; keep prose intro before table."
+  },
+  "curated-table-1450-001": {
+    "target_section_id": "drug:vac-xin-viem-gan-b-tai-to-hop:lieu-luong-va-cach-dung",
+    "note": "Flattened hepatitis B vaccine schedule table and post-exposure prophylaxis table."
+  },
+  "curated-table-0148-001": {
+    "target_section_id": "drug:adenosin:lieu-luong-va-cach-dung",
+    "note": "Flattened adenosine infusion-rate example table."
+  },
+  "curated-table-0149-001": {
+    "target_section_id": "drug:adenosin:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened continuation rows are removed by curated-table-0148-001 override."
+  },
+  "curated-table-0203-003": {
+    "target_section_id": "drug:ampicilin-va-sulbactam:do-on-dinh-va-bao-quan",
+    "note": "Remove flattened ampicillin+sulbactam dilution stability table."
+  },
+  "curated-table-0296-001": {
+    "target_section_id": "drug:calci-lactat:duoc-ly-va-co-che-tac-dung",
+    "note": "Remove flattened calcium RNI/RDA table."
+  },
+  "curated-table-0113-001": {
+    "target_section_id": "drug:acetylcystein:lieu-luong-va-cach-dung",
+    "note": "Remove flattened Acetylcystein infusion tables 1-3; Docling table blocks carry the structured rows."
+  },
+  "curated-table-0113-002": {
+    "target_section_id": "drug:acetylcystein:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened table 2 text is removed by curated-table-0113-001 override."
+  },
+  "curated-table-0113-003": {
+    "target_section_id": "drug:acetylcystein:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened table 3 text is removed by curated-table-0113-001 override."
+  },
+  "curated-table-0133-001": {
+    "target_section_id": "drug:acid-ioxaglic:chi-dinh",
+    "note": "Remove flattened Acid ioxaglic indication/dose table spanning pages 133-134; keep prose after the table."
+  },
+  "curated-table-0210-001": {
+    "target_section_id": "drug:arsenic-trioxyd:tac-dung-khong-mong-muon-adr",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened ADR table body is removed by curated-table-0209-001 override; remaining overlap is prose/shared ADR wording."
+  },
+  "curated-table-0210-002": {
+    "target_section_id": "drug:arsenic-trioxyd:tac-dung-khong-mong-muon-adr",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened ADR table body is removed by curated-table-0209-001 override; remaining overlap is prose/shared ADR wording."
+  },
+  "curated-table-0258-001": {
+    "target_section_id": "drug:bexaroten:lieu-luong-va-cach-dung",
+    "note": "Flattened bexarotene body-surface-area starting dose table."
+  },
+  "curated-table-0322-001": {
+    "target_section_id": "drug:carbidopa-levodopa:lieu-luong-va-cach-dung",
+    "note": "Flattened conversion table from immediate-release to controlled-release carbidopa/levodopa."
+  },
+  "curated-table-0342-001": {
+    "target_section_id": "drug:cefapirin-natri:lieu-luong-va-cach-dung",
+    "note": "Flattened cefapirin renal-dose table in continuation section."
+  },
+  "curated-table-0367-001": {
+    "target_section_id": "drug:cefradin:lieu-luong-va-cach-dung",
+    "note": "Flattened cefradin renal-dose table in continuation section."
+  },
+  "curated-table-0699-001": {
+    "target_section_id": "drug:foscarnet-natri:lieu-luong-va-cach-dung",
+    "note": "Flattened foscarnet renal dosing tables for initiation and maintenance; keep renal clearance formula after the tables."
+  },
+  "curated-table-0700-001": {
+    "target_section_id": "drug:foscarnet-natri:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened maintenance table is removed by curated-table-0699-001 override."
+  },
+  "curated-table-0702-001": {
+    "target_section_id": "drug:fosfomycin:lieu-luong-va-cach-dung",
+    "note": "Flattened fosfomycin renal dosing interval table."
+  },
+  "curated-table-0713-001": {
+    "target_section_id": "drug:ganciclovir:lieu-luong-va-cach-dung",
+    "note": "Flattened ganciclovir renal dose-adjustment table."
+  },
+  "curated-table-0729-001": {
+    "target_section_id": "drug:glibenclamid:lieu-luong-va-cach-dung",
+    "note": "Flattened insulin-to-glibenclamide conversion table."
+  },
+  "curated-table-0769-001": {
+    "target_section_id": "drug:heparin:lieu-luong-va-cach-dung",
+    "note": "Flattened heparin APTT dose-adjustment table."
+  },
+  "curated-table-0879-001": {
+    "target_section_id": "drug:lamivudin:lieu-luong-va-cach-dung",
+    "note": "Flattened lamivudine renal dose-adjustment tables for HIV and hepatitis B."
+  },
+  "curated-table-0879-002": {
+    "target_section_id": "drug:lamivudin:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened text for this second lamivudine renal table is removed by curated-table-0879-001 override."
+  },
+  "curated-table-1224-001": {
+    "target_section_id": "drug:quinapril:lieu-luong-va-cach-dung",
+    "note": "Flattened quinapril renal starting-dose table."
+  },
+  "curated-table-1310-001": {
+    "target_section_id": "drug:streptomycin:lieu-luong-va-cach-dung",
+    "note": "Flattened streptomycin renal dosing interval table."
+  },
+  "curated-table-1378-001": {
+    "target_section_id": "drug:ticarcilin:lieu-luong-va-cach-dung",
+    "note": "Flattened ticarcillin renal/hepatic dose-adjustment table."
+  },
+  "curated-table-1451-001": {
+    "target_section_id": "drug:vac-xin-viem-gan-b-tai-to-hop:lieu-luong-va-cach-dung",
+    "duplicate_action": "resolved_kept",
+    "note": "Flattened post-exposure prophylaxis table is removed by curated-table-1450-001 override."
+  },
+  "curated-table-1458-001": {
+    "target_section_id": "drug:vancomycin:lieu-luong-va-cach-dung",
+    "note": "Flattened vancomycin renal-dose table heading; Docling table carries the full rows."
+  },
+  "curated-table-1479-001": {
+    "target_section_id": "drug:vitamin-d-va-cac-thuoc-tuong-tu:lieu-luong-va-cach-dung",
+    "note": "Paricalcitol dose-adjustment table belongs to dosage section, not interactions."
+  },
+  "curated-table-0465-001": {
+    "target_section_id": "drug:cotrimoxazol:duoc-ly-va-co-che-tac-dung",
+    "note": "Remove flattened cotrimoxazole resistance table."
+  },
+  "curated-table-1456-001": {
+    "target_section_id": "drug:vancomycin:duoc-ly-va-co-che-tac-dung",
+    "note": "Remove flattened vancomycin MIC/susceptibility table; Docling merged structured table carries rows."
+  },
+  "curated-table-0073-001": {
+    "target_section_id": "general:su-dung-hop-ly-thuoc-khang-sinh-cephalosporin:phan-loai:pho-tac-dung",
+    "note": "Remove flattened cephalosporin generation 2-4 rows already carried by Docling table; keep the trailing resistance/note lines that Docling did not capture completely."
+  }
+}

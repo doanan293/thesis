@@ -1,0 +1,28 @@
+{
+  "page-0194-table-001": {
+    "action": "separate",
+    "note": "Verified against source PDF page 194: adult renal-dose table and pediatric renal-dose table are separate tables."
+  },
+  "page-0826-table-001": {
+    "action": "separate",
+    "note": "Verified against source PDF page 826: 350 mg iod/ml table and 300 mg iod/ml table are separate concentration-specific tables."
+  },
+  "page-0852-table-001": {
+    "action": "separate",
+    "note": "Verified against source PDF page 852: ivermectin 0.15 mg/kg and 0.2 mg/kg dosage tables are separate recommendation tables."
+  },
+  "page-0879-table-001": {
+    "action": "separate",
+    "note": "Verified against source PDF page 879: lamivudine renal-dose table for HIV and renal-dose table for hepatitis B are separate tables."
+  },
+  "page-0892-table-001": {
+    "action": "merge_with_next",
+    "next_table_id": "page-0892-table-002",
+    "note": "Verified against source PDF page 892: levofloxacin renal-dose table is split across the two-column page layout."
+  },
+  "page-1456-table-001": {
+    "action": "merge_with_next",
+    "next_table_id": "page-1456-table-002",
+    "note": "Verified against source PDF page 1456: vancomycin MIC/susceptibility table is split across the two-column page layout."
+  }
+}

@@ -1,0 +1,57 @@
+services:
+  llama-embedding:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: llama_embedding_cpu
+    entrypoint: ["/bin/sh", "/opt/llama/start-server.sh"]
+    ports:
+      - "${LLAMA_EMBEDDING_PORT:-11434}:8080"
+    volumes:
+      - "${GGUF_DIR:-./ai-models/gguf}:/models:ro"
+      - "./docker/llama-cpp-cpu/start-server.sh:/opt/llama/start-server.sh:ro"
+    environment:
+      LLAMA_MODEL: "/models/${LLAMA_EMBEDDING_MODEL:-qwen3-embedding-0.6b-fp16.gguf}"
+      LLAMA_ROLE_PROTOCOL: "embedding"
+      LLAMA_PARALLEL: "${LLAMA_EMBEDDING_PARALLEL:-1}"
+    restart: unless-stopped
+
+  llama-reranker:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: llama_reranker_cpu
+    entrypoint: ["/bin/sh", "/opt/llama/start-server.sh"]
+    ports:
+      - "${LLAMA_RERANKER_PORT:-11435}:8080"
+    volumes:
+      - "${GGUF_DIR:-./ai-models/gguf}:/models:ro"
+      - "./docker/llama-cpp-cpu/start-server.sh:/opt/llama/start-server.sh:ro"
+    environment:
+      LLAMA_MODEL: "/models/${LLAMA_RERANKER_MODEL:-qwen3-reranker-0.6b-f16.gguf}"
+      LLAMA_ROLE_PROTOCOL: "${LLAMA_RERANKER_PROTOCOL:-completion_logprobs}"
+      LLAMA_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-1}"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17.0-alpine
+    container_name: postgres_local
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-thesis}
+      - POSTGRES_USER=${POSTGRES_USER:-thesis}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-thesis}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_local
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:

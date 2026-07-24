@@ -1,0 +1,246 @@
+{
+  "panadol-extra-gsk-150-vien-11440": {
+    "aliases": ["Panadol đỏ", "Panadol extra đỏ", "Panadol vỉ đỏ", "Panadol hộp đỏ"],
+    "visual_sign": "Hộp màu đỏ, vỉ thuốc màu đỏ"
+  },
+  "panadol-gsk-150-vien-11439": {
+    "aliases": ["Panadol xanh", "Panadol xanh dương", "Panadol thường", "Panadol xanh thường"],
+    "visual_sign": "Hộp màu xanh dương, vỉ màu xanh dương"
+  },
+  "decolgen-forte-hop-100-vien": {
+    "aliases": ["Decolgen đỏ", "Decolgen hồng sẫm", "Decolgen forte", "Decolgen vỉ đỏ", "Decolgen buồn ngủ"],
+    "visual_sign": "Viên nén 3 lớp vàng - hồng sẫm - vàng, đóng gói vỉ xé"
+  },
+  "decolgen-nd-hop-100-vien": {
+    "aliases": ["Decolgen xanh", "Decolgen xanh lá", "Decolgen ND", "Decolgen không buồn ngủ"],
+    "visual_sign": "Viên nén 3 lớp vàng - xanh lá - vàng, chữ ND"
+  },
+  "tiffy-dey-hop-100-vien": {
+    "aliases": ["Tiffy xanh", "Tiffy vỉ xanh"],
+    "visual_sign": "Vỉ thuốc màu xanh lá cây"
+  },
+  "efferalgan-80mg-upsa-hop-80-vien": {
+    "aliases": ["Efferalgan đút đít", "Efferalgan đặt hậu môn"],
+    "visual_sign": "Thuốc đạn đặt trực tràng cho trẻ em"
+  },
+  "eugica-phat-linh-hop-100-vien": {
+    "aliases": ["Eugica xanh", "Eugica thường"],
+    "visual_sign": "Hộp màu xanh lá cây"
+  },
+  "eugica-fort-phat-linh-hop-100-vien": {
+    "aliases": ["Eugica đỏ", "Eugica fort đỏ", "thuốc ho Eugica đỏ", "Eugica viên đỏ"],
+    "visual_sign": "Hộp màu đỏ"
+  },
+  "efferalgan-500mg": {
+    "aliases": ["Efferalgan sủi", "Efferalgan viên sủi", "Efferalgan sủi 500"],
+    "visual_sign": "Viên sủi 500mg, hộp 4 vỉ x 4 viên"
+  },
+  "vien-sui-panadol-500mg-6-vi-4-vien": {
+    "aliases": ["Panadol sủi", "Panadol viên sủi", "Panadol sủi 500"],
+    "visual_sign": "Viên sủi Panadol 500mg, hộp 6 vỉ x 4 viên"
+  },
+  "hapacol-blue-500mg-h-100v": {
+    "aliases": ["Hapacol xanh", "Hapacol blue", "Hapacol xanh dương"],
+    "visual_sign": "Tên sản phẩm Hapacol Blue, hộp 10 vỉ x 10 viên"
+  },
+  "vien-sui-giam-dau-ha-sot-hapacol-500mg-16-vien": {
+    "aliases": ["Hapacol sủi", "Hapacol viên sủi", "Hapacol sủi 500"],
+    "visual_sign": "Viên nén sủi bọt Hapacol 500mg, hộp 4 vỉ x 4 viên"
+  },
+  "thuoc-bot-sui-bot-hapacol-80mg": {
+    "aliases": ["gói hạ sốt Hapacol 80", "Hapacol gói cam 80"],
+    "visual_sign": "Bột sủi Hapacol 80mg hương cam cho trẻ, hộp 24 gói x 1.5g"
+  },
+  "thuoc-bot-sui-bot-hapacol-150mg": {
+    "aliases": ["gói hạ sốt Hapacol 150", "Hapacol gói cam 150"],
+    "visual_sign": "Bột sủi Hapacol 150mg hương cam cho trẻ, hộp 24 gói x 1.5g"
+  },
+  "thuoc-bot-sui-bot-hapacol-250mg": {
+    "aliases": ["gói hạ sốt Hapacol 250", "Hapacol gói cam 250"],
+    "visual_sign": "Bột sủi Hapacol 250mg hương cam cho trẻ, hộp 24 gói x 1.5g"
+  },
+  "efferalgan-150mg-dat": {
+    "aliases": ["Efferalgan viên đạn", "thuốc đạn Efferalgan"],
+    "visual_sign": "Viên đặt trực tràng Efferalgan 150mg, dạng thuốc đạn, hộp 2 vỉ x 5 viên"
+  },
+  "siro-giam-dau-ha-sot-cho-tre-nurofen-100mg-5ml-60ml": {
+    "aliases": ["Nurofen trẻ em", "Nurofen cho bé", "siro Nurofen trẻ em", "Nurofen For Children"],
+    "visual_sign": "Hỗn dịch uống Nurofen For Children 100mg/5ml, chai 60ml"
+  },
+  "thuoc-xit-mui-co-phan-lieu-otrivin-005": {
+    "aliases": ["Otrivin trẻ em", "Otrivin xịt trẻ em", "Otrivin 0.05"],
+    "visual_sign": "Chai xịt mũi Otrivin 0.05%, 10ml"
+  },
+  "thuoc-xit-mui-co-phan-lieu-otrivin-01": {
+    "aliases": ["Otrivin người lớn", "Otrivin xịt người lớn", "Otrivin 0.1"],
+    "visual_sign": "Chai xịt mũi Otrivin 0.1%, 10ml"
+  },
+  "fugacar-500mg-vi-trai-cay": {
+    "aliases": ["Fugacar xổ giun", "thuốc xổ giun Fugacar", "Fugacar vị trái cây", "kẹo giun Fugacar trái cây"],
+    "visual_sign": "Viên nhai Fugacar 500mg vị trái cây, 1 vỉ x 1 viên"
+  },
+  "vien-nhai-fugacar-500mg-vi-truyen-thong": {
+    "aliases": ["Fugacar truyền thống", "kẹo giun Fugacar truyền thống"],
+    "visual_sign": "Viên nhai Fugacar 500mg vị truyền thống, 1 vỉ x 1 viên"
+  },
+  "telfast-kids-30mg-hop-10vien": {
+    "aliases": ["Telfast trẻ em", "Telfast cho bé", "Telfast Kids"],
+    "visual_sign": "Viên Telfast Kids 30mg, 1 vỉ x 10 viên"
+  },
+  "keo-strepsils-xanh": {
+    "aliases": ["Strepsils xanh", "Strepsils Cool", "kẹo Strepsils xanh", "kẹo ngậm Strepsils xanh"],
+    "visual_sign": "Viên ngậm Strepsils Cool, vị bạc hà/cool"
+  },
+  "strepsil-cool": {
+    "aliases": ["Strepsils xanh", "Strepsils Cool", "kẹo Strepsils xanh", "kẹo ngậm Strepsils xanh"],
+    "visual_sign": "Viên ngậm Strepsils Cool, vị bạc hà/cool"
+  },
+  "keo-strepsils-cam": {
+    "aliases": ["Strepsils cam", "Strepsils cam vitamin C", "kẹo Strepsils cam", "kẹo ngậm Strepsils cam"],
+    "visual_sign": "Viên ngậm Strepsils Orange With Vitamin C"
+  },
+  "strepsils-orange-with-vitamin-c": {
+    "aliases": ["Strepsils cam", "Strepsils cam vitamin C", "kẹo Strepsils cam", "kẹo ngậm Strepsils cam"],
+    "visual_sign": "Viên ngậm Strepsils Orange With Vitamin C"
+  },
+  "keo-strepsils-mat-ong": {
+    "aliases": ["Strepsils mật ong", "Strepsils mật ong chanh", "Strepsils Honey Lemon", "kẹo Strepsils mật ong"],
+    "visual_sign": "Viên ngậm Strepsils Soothing Honey & Lemon"
+  },
+  "strepsils-soothing-honey-lemon": {
+    "aliases": ["Strepsils mật ong", "Strepsils mật ong chanh", "Strepsils Honey Lemon", "kẹo Strepsils mật ong"],
+    "visual_sign": "Viên ngậm Strepsils Soothing Honey & Lemon"
+  },
+  "vien-ngam-bao-thanh": {
+    "aliases": ["kẹo ngậm ho Bảo Thanh", "viên ngậm ho Bảo Thanh"],
+    "visual_sign": "Viên ngậm Bảo Thanh trị ho, bổ phế, 20 vỉ x 5 viên"
+  },
+  "thuoc-ho-bao-thanh-125ml": {
+    "aliases": ["siro ho Bảo Thanh", "Bảo Thanh chai"],
+    "visual_sign": "Siro Bảo Thanh trị ho, bổ phế, chai 125ml"
+  },
+  "siro-aerius-05mg-ml": {
+    "aliases": ["Aerius siro", "siro Aerius", "siro dị ứng Aerius"],
+    "visual_sign": "Siro Aerius 0.5mg/ml, chai 60ml"
+  },
+  "smecta-strawberry-hop-12-goi": {
+    "aliases": ["Smecta dâu", "Smecta hương dâu", "Smecta gói dâu", "Smecta strawberry"],
+    "visual_sign": "Gói bột Smecta hương dâu 3g"
+  },
+  "smecta": {
+    "aliases": ["Smecta gói", "thuốc gói Smecta", "Smecta bột", "Smecta 3g", "gói đất sét Smecta", "Smecta đất sét"],
+    "visual_sign": "Gói bột pha hỗn dịch uống Smecta 3g"
+  },
+  "bot-pha-hon-dich-uong-smecta-3g-tri-cac-trieu-chung-tieu-chay-cap": {
+    "aliases": ["Smecta gói", "thuốc gói Smecta", "Smecta bột", "Smecta 3g"],
+    "visual_sign": "Gói bột pha hỗn dịch uống Smecta 3g"
+  },
+  "smecta-go-hop-12-goi": {
+    "aliases": ["SmectaGo", "Smecta Go", "Smecta gói uống liền"],
+    "visual_sign": "Gói hỗn dịch uống SmectaGo"
+  },
+  "oresol-new-bidiphar-hop-20g": {
+    "aliases": ["Oresol gói", "Oresol New", "gói bù điện giải Oresol", "Oresol cam", "nước biển khô Oresol New"],
+    "visual_sign": "Gói Oresol New Bidiphar hương cam"
+  },
+  "oresol-245-dmc-goi-h-20g": {
+    "aliases": ["Oresol gói", "Oresol 245", "gói bù điện giải Oresol", "nước biển khô Oresol 245"],
+    "visual_sign": "Gói bột Oresol 245 DMC"
+  },
+  "oresol-bidiphar-goi": {
+    "aliases": ["Oresol gói", "Oresol Bidiphar", "gói bù điện giải Oresol", "nước biển khô Oresol Bidiphar"],
+    "visual_sign": "Gói bột Oresol Bidiphar"
+  },
+  "hydrite": {
+    "aliases": ["Hydrite gói", "gói điện giải Hydrite", "Hydrite bù nước"],
+    "visual_sign": "Gói bột pha dung dịch uống Hydrite"
+  },
+  "thuoc-nho-mui-natriclorid-09-10ml": {
+    "aliases": ["nước muối sinh lý", "nước muối nhỏ mũi", "nước muối 0.9", "Natri Clorid nhỏ mũi"],
+    "visual_sign": "Chai nhỏ mũi Natri Clorid 0.9%, 10ml"
+  },
+  "berberine-100mg": {
+    "aliases": ["Berberin đau bụng", "thuốc đau bụng Berberin", "Berberin tiêu chảy", "Berberin vàng", "thuốc đắng Berberin", "thuốc vàng Berberin"],
+    "visual_sign": "Viên Berberine 100mg trị tiêu chảy"
+  },
+  "berberal-10mg": {
+    "aliases": ["Berberal đau bụng", "thuốc đau bụng Berberal", "Berberal tiêu chảy", "Berberin vàng"],
+    "visual_sign": "Viên Berberal 10mg trị tiêu chảy"
+  },
+  "yumangel": {
+    "aliases": ["thuốc bao tử chữ Y", "gói dạ dày chữ Y"],
+    "visual_sign": "Gói hỗn dịch uống Yumangel 1g, thường được gọi thuốc bao tử chữ Y"
+  },
+  "thuoc-dieu-tri-loet-da-day-ta-trang-yumangel-f-20-goi": {
+    "aliases": ["Yumangel F chữ Y"],
+    "visual_sign": "Gói hỗn dịch uống Yumangel F 1.5g, 20 gói x 15ml"
+  },
+  "phosphalugel": {
+    "aliases": ["thuốc bao tử chữ P", "gói dạ dày chữ P"],
+    "visual_sign": "Gói hỗn dịch uống Phosphalugel 20%, thường được gọi thuốc bao tử chữ P"
+  },
+  "loperamide-2mg-stella-h-50v": {
+    "aliases": ["viên xanh xám cầm tiêu chảy", "Loperamide xanh xám"],
+    "visual_sign": "Viên nang cứng Loperamide Stella: đầu nang xanh lục, thân nang xám"
+  },
+  "imodium-2mg": {
+    "aliases": ["Imodium cầm tiêu chảy", "thuốc cầm tiêu chảy Imodium"],
+    "visual_sign": "Viên nang Imodium 2mg trị triệu chứng tiêu chảy cấp"
+  },
+  "natri-bicarbonat-500mg-ho-tro-dieu-tri-nhiem-toan-chuyen-hoa": {
+    "aliases": ["thuốc muối Natri Bicarbonat", "muối dạ dày Natri Bicarbonat"],
+    "visual_sign": "Natri Bicarbonat 500mg, lọ 160 viên"
+  },
+  "nuoc-oxy-gia-3-hd-50ml": {
+    "aliases": ["Oxy già", "nước oxy già"],
+    "visual_sign": "Nước Oxy Già 3% HDpharma sát khuẩn, rửa vết thương, chai 50ml"
+  },
+  "oxy-gia-opc-60ml": {
+    "aliases": ["Oxy già OPC", "nước oxy già OPC"],
+    "visual_sign": "Dung dịch Oxy Già OPC 3% làm sạch, sát trùng, chai 60ml"
+  },
+  "povidine-20ml": {
+    "aliases": ["cồn i-ốt Povidine", "Povidine nâu vàng"],
+    "visual_sign": "Dung dịch sát khuẩn Povidine 10% povidon iod, chai 20ml"
+  },
+  "betadine-dung-dich-sat-khuan-10-30ml": {
+    "aliases": ["Betadine đỏ", "cồn i-ốt Betadine"],
+    "visual_sign": "Dung dịch sát khuẩn Betadine 10% povidon-iod, chai 30ml"
+  },
+  "povidon-iod-hd-10-20ml": {
+    "aliases": ["cồn i-ốt Povidon-Iod", "Povidon-Iod HD"],
+    "visual_sign": "Dung dịch sát khuẩn Povidon-Iod HD 10%, chai 20ml"
+  },
+  "xanh-methylen-1-hd-pharma-20ml": {
+    "aliases": ["thuốc xanh", "xanh methylen"],
+    "visual_sign": "Dung dịch Xanh Methylen 1% HDpharma, chai 20ml"
+  },
+  "dep-10g": {
+    "aliases": ["thuốc ghẻ DEP", "thuốc mỡ DEP"],
+    "visual_sign": "Thuốc mỡ D.E.P trị ghẻ ngứa, lọ 10g"
+  },
+  "nautamine-90mg": {
+    "aliases": ["thuốc say xe con tàu", "Nautamine say xe"],
+    "visual_sign": "Nautamine 90mg chống say tàu xe, hộp 20 vỉ x 4 viên"
+  },
+  "postinor-15mg": {
+    "aliases": ["thuốc 72 giờ Postinor", "viên thuốc ngày hôm sau Postinor"],
+    "visual_sign": "Postinor 1 tránh thai khẩn cấp trong vòng 72 giờ, 1 vỉ x 1 viên"
+  },
+  "mifestad-10mg-hop-1vien": {
+    "aliases": ["Mifestad 120 giờ", "thuốc tránh thai khẩn cấp 120 giờ Mifestad"],
+    "visual_sign": "Mifestad 10 tránh thai khẩn cấp trong vòng 120 giờ, viên nén vàng, 1 vỉ x 1 viên"
+  },
+  "ammg-3b-truong-tho-ho-50-vien": {
+    "aliases": ["Vitamin 3B", "thuốc 3B"],
+    "visual_sign": "AMMG-3B chứa vitamin B1, B6, B12, viên nén bao đường"
+  },
+  "ferrovit": {
+    "aliases": ["thuốc bổ máu Ferrovit", "viên sắt Ferrovit"],
+    "visual_sign": "Ferrovit viên nang mềm bổ sung sắt, acid folic và vitamin B12"
+  },
+  "enpovid-fe-folic-h-100v": {
+    "aliases": ["thuốc bổ máu Enpovid Fe-Folic", "viên sắt Enpovid Fe-Folic"],
+    "visual_sign": "Enpovid Fe-Folic viên nang cứng chứa sắt và acid folic"
+  }
+}
