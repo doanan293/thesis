@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from artifact_lifecycle.contract import (
+from corpus_pipeline.artifacts.contract import (
     ContractError,
     build_manifest,
     require_materialized_pdf,
@@ -52,7 +52,7 @@ def test_workspace_preflight_rejects_insufficient_space(
 ) -> None:
     usage = type("Usage", (), {"total": 1000, "used": 950, "free": 50})()
     monkeypatch.setattr(
-        "artifact_lifecycle.contract.shutil.disk_usage", lambda _: usage
+        "corpus_pipeline.artifacts.contract.shutil.disk_usage", lambda _: usage
     )
     with pytest.raises(ContractError, match="free disk space"):
         require_workspace_capacity(tmp_path, required_bytes=100)

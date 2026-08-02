@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from artifact_lifecycle.paths import ArtifactPaths, retain_failed_workspace
+from corpus_pipeline.artifacts.paths import ArtifactPaths, retain_failed_workspace
 
 
 def test_artifact_paths_are_isolated_under_one_workspace(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from crawler.integrate_ankhang import integrate_ankhang_corpus
-from crawler.parse_html import parse_html_tree
+from corpus_pipeline.corpus.crawling.integrate_ankhang import integrate_ankhang_corpus
+from corpus_pipeline.corpus.crawling.parse_html import parse_html_tree
 
 
 def test_parse_html_tree_writes_only_requested_output(tmp_path: Path) -> None:

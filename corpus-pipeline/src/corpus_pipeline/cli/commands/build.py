@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from corpus_pipeline.cli.runtime import (
+    CommandResult,
+    CommandStatus,
+    run_handler,
+    state_from_context,
+)
+from corpus_pipeline.orchestration.build_corpus import default_config, run_build
+
+
+def build_command(
+    *,
+    pdf: Path | None = None,
+    snapshot_archive: Path | None = None,
+    snapshot_manifest: Path | None = None,
+    curated_tables: Path | None = None,
+    table_overrides: Path | None = None,
+    mappings: Path | None = None,
+    glossary: Path | None = None,
+    work_root: Path | None = None,
+    final_dir: Path | None = None,
+    max_chars: int | None = None,
+) -> CommandResult:
+    config = default_config()
+    overrides = {
+        "pdf_path": pdf,
+        "snapshot_archive": snapshot_archive,
+        "snapshot_manifest": snapshot_manifest,
+        "curated_tables_path": curated_tables,
+        "table_overrides_path": table_overrides,
+        "mappings_path": mappings,
+        "glossary_path": glossary,
+        "work_root": work_root,
+        "final_dir": final_dir,
+        "max_chars": max_chars,
+    }
+    config = replace(
+        config, **{key: value for key, value in overrides.items() if value is not None}
+    )
+    result = run_build(config)
+    return CommandResult(
+        command="build",
+        status=CommandStatus.COMPLETE,
+        artifact=result.final_dir,
+        details={"build_id": result.build_id},
+    )
+
+
+def build(
+    ctx: typer.Context,
+    pdf: Annotated[Path | None, typer.Option("--pdf")] = None,
+    snapshot_archive: Annotated[Path | None, typer.Option("--snapshot-archive")] = None,
+    snapshot_manifest: Annotated[
+        Path | None, typer.Option("--snapshot-manifest")
+    ] = None,
+    curated_tables: Annotated[Path | None, typer.Option("--curated-tables")] = None,
+    table_overrides: Annotated[Path | None, typer.Option("--table-overrides")] = None,
+    mappings: Annotated[Path | None, typer.Option("--mappings")] = None,
+    glossary: Annotated[Path | None, typer.Option("--glossary")] = None,
+    work_root: Annotated[Path | None, typer.Option("--work-root")] = None,
+    final_dir: Annotated[Path | None, typer.Option("--final-dir")] = None,
+    max_chars: Annotated[int | None, typer.Option("--max-chars")] = None,
+) -> None:
+    run_handler(
+        state_from_context(ctx),
+        lambda: build_command(
+            pdf=pdf,
+            snapshot_archive=snapshot_archive,
+            snapshot_manifest=snapshot_manifest,
+            curated_tables=curated_tables,
+            table_overrides=table_overrides,
+            mappings=mappings,
+            glossary=glossary,
+            work_root=work_root,
+            final_dir=final_dir,
+            max_chars=max_chars,
+        ),
+    )

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from artifact_lifecycle.publisher import publish_contract, recover_publish
+from corpus_pipeline.artifacts.publisher import publish_contract, recover_publish
 
 
 def _contract(path: Path, marker: str) -> Path:

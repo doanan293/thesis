@@ -3,9 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from artifact_lifecycle.contract import build_manifest
-from artifact_lifecycle.paths import ArtifactPaths
-from pipeline.build_corpus import BuildConfig, BuildHooks, run_build
+from corpus_pipeline.artifacts.contract import build_manifest
+from corpus_pipeline.artifacts.paths import ArtifactPaths
+from corpus_pipeline.orchestration.build_corpus import (
+    BuildConfig,
+    BuildHooks,
+    run_build,
+)
 
 
 def _config(tmp_path: Path) -> BuildConfig:

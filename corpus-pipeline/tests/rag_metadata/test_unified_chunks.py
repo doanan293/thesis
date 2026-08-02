@@ -1,4 +1,4 @@
-from rag_metadata.build_rag_metadata import build_unified_chunk
+from corpus_pipeline.corpus.metadata.build_rag_metadata import build_unified_chunk
 
 
 def test_unified_chunk_keeps_source_and_runtime_fields() -> None:

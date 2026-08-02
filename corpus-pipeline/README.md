@@ -1,59 +1,73 @@
 # Pipeline Xử Lý Dữ Liệu Hybrid PyMuPDF + Docling
 
-Pipeline này chuẩn bị và tối ưu hóa dữ liệu từ **Dược thư Quốc gia Việt Nam** phục vụ cho hệ thống Retrieval-Augmented Generation (RAG) và AI Agent y dược.
+Pipeline chuẩn bị và tối ưu dữ liệu từ **Dược thư Quốc gia Việt Nam** cùng
+snapshot **An Khang** cho hệ thống Retrieval-Augmented Generation (RAG) và AI
+Agent y dược.
 
----
+## Bắt đầu
 
-## 1. Tổng Quan
-
-Pipeline này chuẩn bị và tối ưu hóa dữ liệu từ **Dược thư Quốc gia Việt Nam** phục vụ cho hệ thống Retrieval-Augmented Generation (RAG) và AI Agent y dược.
-
----
-
-## 2. Quick Start
-
-Làm việc từ root của project:
+Mọi lệnh được chạy từ project root:
 
 ```bash
 cd /home/andv/personal/thesis/corpus-pipeline
-```
-
-Dự án sử dụng `uv` để quản lý môi trường và phụ thuộc:
-
-```bash
 uv sync
 ```
 
-Chạy unit test suite để xác minh hệ thống:
+Chọn đúng một workflow:
+
+| Trường hợp | Workflow |
+| --- | --- |
+| Máy local build corpus, vận hành Qdrant và tính metrics; Kaggle GPU chạy embedding/reranking | [Local + Kaggle GPU](docs/guides/workflow-local-kaggle.md) |
+| Không sử dụng Kaggle; toàn bộ model chạy local CPU | [Local CPU-only](docs/guides/workflow-local-only.md) |
+
+Hai workflow đều bắt đầu từ raw inputs đã có trong `data/raw/`, chạy smoke test
+50 queries, sau đó mới mở rộng lên benchmark đầy đủ 10.000 queries. Workflow
+Local + Kaggle GPU là đường chạy chính khi cần embedding/reranking nhanh hơn.
+
+## Prerequisites chung
+
+- Python environment được quản lý bằng `uv`.
+- Docker và Docker Compose hoạt động.
+- Raw PDF, An Khang snapshot, curated tables, mappings, glossary và danh sách âm
+  tiết đã có dưới `data/raw/`.
+- GGUF baseline đã có dưới `../ai-models/gguf/`.
+- Workflow Kaggle cần credentials/owner hợp lệ trong `../.env`.
+
+Các guide có preflight command cụ thể để kiểm tra từng input trước khi chạy.
+
+## Đầu ra cuối
+
+- `data/processed/rag-final/`: final sections, chunks, manifest và validation
+  report.
+- `data/processed/evaluation/`: evaluation dataset 10.000 queries.
+- `data/cache/`: embedding caches có thể resume/reuse.
+- `data/runs/retrieval_eval/`: per-query checkpoint và Markdown metrics report.
+- Qdrant collection theo embedding model, ví dụ
+  `thesis_chunks_qwen3_embedding_0_6b_fp16`.
+
+Sau khi pipeline hoàn tất, áp dụng
+[Downstream và Data Artifact Policy](docs/guides/downstream.md) khi tích hợp
+RAG/Agent.
+
+## Cấu trúc project
+
+- `src/corpus_pipeline/orchestration/`: Build và atomic publish final corpus.
+- `src/corpus_pipeline/corpus/`: Extraction, crawling, canonical blocks, tables và metadata.
+- `src/corpus_pipeline/vector_store/`: Embedding cache và Qdrant ingest.
+- `src/corpus_pipeline/integrations/kaggle/`: Kaggle reconciliation, checkpoint và workers.
+- `src/corpus_pipeline/evaluation/`: Dataset generation, retrieval, reranking và metrics.
+- `src/corpus_pipeline/corpus/validation/`: Final corpus quality gates.
+- `src/corpus_pipeline/cli/`: Public typed command-line entrypoint.
+- `tests/`: Unit và integration contract tests.
+
+## CLI
+
+Public command surface duy nhất là typed entrypoint `uv run corpus`. Xem
+[CLI reference](docs/guides/cli-reference.md) để biết các stage và shared flags;
+dùng `uv run corpus COMMAND --help` để xem default thực tế.
+
+## Kiểm tra hệ thống
 
 ```bash
-uv run python -m unittest discover -s tests -t .
+uv run pytest -q
 ```
-
----
-
-## 3. Cấu Trúc Project
-
-- `src/corpus/`: Trích xuất text từ PDF (PyMuPDF), làm sạch markdown, phân tách section và chunking.
-- `src/tables/`: Trích xuất và chuẩn hóa bảng biểu bằng Docling.
-- `src/canonical/`: Xây dựng canonical blocks và tạo RAG outputs hoàn chỉnh.
-- `src/rag_metadata/`: Sinh artifact metadata tinh gọn phục vụ nạp Qdrant vector database.
-- `src/vector_store/`: Quản lý kết nối Qdrant và quy trình ingest vector (Local & Kaggle).
-- `src/postgres_store/`: Quản lý schema trạng thái ứng dụng (Postgres app state).
-- `src/evaluation/`: Sinh dataset ground truth và thực hiện đánh giá retrieval benchmark.
-- `src/validation/`: Kiểm tra chất lượng và validate final RAG corpus.
-- `src/cli/`: Các lệnh CLI điều khiển toàn bộ pipeline.
-- `src/config/paths.py`: Khai báo các đường dẫn mặc định trong dự án.
-
----
-
-## 4. Tài Liệu Hướng Dẫn Chi Tiết (Navigation Index)
-
-Toàn bộ tài liệu chi tiết được phân tách theo từng chuyên đề trong thư mục [`docs/guides/`](docs/guides/):
-
-| Tài liệu | Nội dung chính | Đường dẫn |
-| :--- | :--- | :--- |
-| **Pipeline Rebuild & Dữ Liệu** | Quy chuẩn dữ liệu vào/ra, các bước rebuild từ PDF raw tới Final RAG và kịch bản rebuild nhanh. | [`docs/guides/pipeline.md`](docs/guides/pipeline.md) |
-| **Ingestion Vector & Cache** | Quản lý Qdrant collection, schema Postgres, local `llama.cpp` Docker và quy trình chạy cache vector trên Kaggle 2×T4. | [`docs/guides/vector_ingest.md`](docs/guides/vector_ingest.md) |
-| **Đánh Giá Retrieval** | Quy trình sinh ground truth CSV (10,000 query) và các lệnh chạy thử nghiệm retrieval (Dense, BM25, Hybrid, Reranker). | [`docs/guides/evaluation.md`](docs/guides/evaluation.md) |
-| **Vận Hành Downstream & Data Policy** | 10 quy tắc vận hành downstream agent, chiến lược context hydration và chính sách phân vùng dữ liệu. | [`docs/guides/downstream.md`](docs/guides/downstream.md) |

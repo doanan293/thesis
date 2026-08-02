@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import zstandard
 
-from artifact_lifecycle.snapshot import (
+from corpus_pipeline.artifacts.snapshot import (
     SnapshotError,
     extract_snapshot,
     pack_snapshot,

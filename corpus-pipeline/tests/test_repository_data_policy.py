@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from config.paths import (
+from corpus_pipeline.config.paths import (
     RAG_FINAL_CHUNKS_PATH,
     RAG_FINAL_SECTIONS_PATH,
     RAW_ANKHANG_SNAPSHOTS_DIR,

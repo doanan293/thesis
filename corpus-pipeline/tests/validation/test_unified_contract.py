@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from validation.validate_final_rag import (
+from corpus_pipeline.corpus.validation.validate_final_rag import (
     combine_validation_reports,
     validate_unified_chunks,
 )

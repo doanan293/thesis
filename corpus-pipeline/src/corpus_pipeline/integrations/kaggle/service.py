@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from corpus_pipeline.config.paths import PROJECT_ROOT
+from corpus_pipeline.integrations.kaggle.api import (
+    KaggleCommandRunner,
+    config_view_command,
+)
+from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointService
+from corpus_pipeline.integrations.kaggle.config import (
+    OwnerConfiguration,
+    parse_env_file,
+    resolve_owner_configuration,
+)
+from corpus_pipeline.integrations.kaggle.dataset_service import DatasetService
+from corpus_pipeline.integrations.kaggle.dependencies import (
+    DependencyService,
+    default_desired_datasets,
+)
+from corpus_pipeline.integrations.kaggle.kernel_service import KernelService
+from corpus_pipeline.integrations.kaggle.kernels import PipelineKernelService
+from corpus_pipeline.integrations.kaggle.models import (
+    PipelineResult,
+    StageName,
+    StageRequest,
+)
+from corpus_pipeline.integrations.kaggle.orchestrator import KagglePipelineOrchestrator
+from corpus_pipeline.integrations.kaggle.parsers import parse_kaggle_username
+from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
+from corpus_pipeline.integrations.kaggle.workspace import unwind_on_sigterm
+
+DEFAULT_ENV_PATH = PROJECT_ROOT.parent / ".env"
+DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
+
+
+def load_kaggle_env(path: Path = DEFAULT_ENV_PATH) -> None:
+    for key, value in parse_env_file(path).items():
+        os.environ.setdefault(key, value)
+
+
+def owner_configuration(
+    runner: KaggleCommandRunner,
+    *,
+    owner: str | None = None,
+    runtime_owner: str | None = None,
+    corpus_owner: str | None = None,
+    checkpoint_owner: str | None = None,
+) -> OwnerConfiguration:
+    authenticated = None
+    if not os.environ.get("KAGGLE_USERNAME") and not owner:
+        try:
+            authenticated = parse_kaggle_username(
+                runner.run(config_view_command(), capture_output=True)
+            )
+        except Exception:
+            authenticated = None
+    values = type(
+        "OwnerOptions",
+        (),
+        {
+            "owner": owner,
+            "runtime_owner": runtime_owner,
+            "corpus_owner": corpus_owner,
+            "checkpoint_owner": checkpoint_owner,
+        },
+    )()
+    return resolve_owner_configuration(values, os.environ, authenticated)
+
+
+def make_orchestrator(
+    owners: OwnerConfiguration, runner: KaggleCommandRunner
+) -> KagglePipelineOrchestrator:
+    datasets = DatasetService(runner, owners.checkpoint)
+    kernels = PipelineKernelService(
+        KernelService(runner, owners.execution),
+        owner=owners.execution,
+        source_root=PROJECT_ROOT / "src",
+    )
+    checkpoints = CheckpointService(datasets, owners.checkpoint)
+    dependencies = DependencyService(
+        DatasetService(runner, owners.execution), default_desired_datasets
+    )
+    return KagglePipelineOrchestrator(
+        get_stage_adapter, dependencies, checkpoints, kernels
+    )
+
+
+def run_kaggle_stage(
+    *,
+    stage: StageName,
+    model: str,
+    input_path: Path,
+    output_dir: Path,
+    gguf_root: Path = DEFAULT_GGUF_ROOT,
+    force: bool = False,
+    check_only: bool = False,
+    max_runs: int = 10,
+    budget_seconds: int = 21_600,
+    env_file: Path = DEFAULT_ENV_PATH,
+) -> PipelineResult:
+    load_kaggle_env(env_file)
+    runner = KaggleCommandRunner()
+    owners = owner_configuration(runner)
+    request = StageRequest(
+        stage,
+        model,
+        Path(input_path),
+        Path(output_dir),
+        Path(gguf_root),
+        owners,
+        force,
+        check_only,
+        max_runs,
+        budget_seconds,
+    )
+    with unwind_on_sigterm():
+        return make_orchestrator(owners, runner).run(request)

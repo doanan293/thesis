@@ -2,9 +2,12 @@
 
 Tài liệu này chi tiết các quy tắc vận hành tích hợp cho downstream RAG/Agent và chính sách quản lý artifact dữ liệu của dự án.
 
+Cả hai workflow Local + Kaggle GPU và Local CPU-only đều bàn giao vào policy
+chung này sau khi corpus, Qdrant collection và evaluation report đã hoàn tất.
+
 ---
 
-## 7. Vận Hành Downstream Agent
+## 1. Vận Hành Downstream Agent
 
 1. `full.md` là provenance text từ PDF qua PyMuPDF.
 2. Docling table extraction toàn PDF mất nhiều thời gian; nếu `tables.curated.jsonl` còn tốt thì không cần chạy lại bước extract bảng.
@@ -17,12 +20,12 @@ Tài liệu này chi tiết các quy tắc vận hành tích hợp cho downstrea
 6. Table chunk được embed/search như chunk thường; khi hit vào bảng, downstream vẫn hydrate theo `section_id` và có thể dùng `table_id` để ưu tiên hiển thị hoặc trích riêng bảng liên quan.
 7. Với `chunk_window`, policy downstream nên lấy chunk hit cộng 1-2 chunk trước/sau trong cùng `section_id` từ Qdrant nếu cần mở rộng context, tùy ngân sách token.
 8. Với `search_only`, không hydrate nguyên section. Trường hợp cần tra cứu biệt dược thì dùng chunk hit trong Qdrant làm evidence hoặc lookup theo dòng/index riêng.
-9. Luôn chạy `uv run python -m cli.validate_final_rag` trước khi ingest corpus mới vào vector database.
+9. Luôn chạy `uv run corpus validate` trước khi ingest corpus mới vào vector database.
 10. Postgres app chỉ dùng cho trạng thái ứng dụng như user/session/message/retrieval audit/feedback qua `src/postgres_store/schema/rag_app_schema.sql`; corpus text không được import vào Postgres production.
 
 ---
 
-## 9. Data Artifact Policy
+## 2. Data Artifact Policy
 
 Quy định quản lý dữ liệu trong dự án:
 
