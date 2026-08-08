@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ from corpus_pipeline.evaluation.query_embedding_cache import (
     QueryEmbeddingCache,
     QueryEmbeddingCacheError,
     query_hash,
+    validate_embedding,
 )
 
 
@@ -39,6 +41,49 @@ class QueryCacheArtifact:
     @property
     def root(self) -> Path:
         return self.data_path.parent
+
+
+def migrate_query_bundle(
+    source: Path,
+    destination: QueryEmbeddingCache,
+    *,
+    model: str,
+    vector_dim: int,
+    model_sha256: str,
+) -> int:
+    """Merge a legacy query JSONL file or bundle into a flat cache."""
+    source = Path(source)
+    if source.is_dir():
+        manifest_path = source / "manifest.json"
+        if not manifest_path.is_file():
+            raise QueryEmbeddingCacheError(
+                f"Legacy query bundle manifest is missing: {manifest_path}"
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        source = source / str(manifest["data_filename"])
+    if not source.is_file():
+        raise QueryEmbeddingCacheError(f"Legacy query cache is missing: {source}")
+    migrated = 0
+    for line_number, record in enumerate(iter_jsonl_objects(source), start=1):
+        try:
+            destination.set(
+                model,
+                str(record["query_id"]),
+                str(record["query"]),
+                validate_embedding(record["embedding"], source, line_number),
+            )
+        except (KeyError, QueryEmbeddingCacheError) as exc:
+            raise QueryEmbeddingCacheError(
+                f"Invalid legacy query record at {source}:{line_number}"
+            ) from exc
+        migrated += 1
+    if destination.vector_dim != vector_dim:
+        raise QueryEmbeddingCacheError(
+            f"Migrated query dimension mismatch: {destination.vector_dim} != {vector_dim}"
+        )
+    if destination.model_sha256 not in ("", model_sha256):
+        raise QueryEmbeddingCacheError("Migrated query model digest mismatch")
+    return migrated
 
 
 def _query_key(model: str, row: dict[str, Any]) -> tuple[str, str, str]:

@@ -26,6 +26,7 @@ from corpus_pipeline.integrations.kaggle.errors import (
 from corpus_pipeline.integrations.kaggle.parsers import (
     parse_dataset_references,
     parse_dataset_status,
+    parse_dataset_status_payload,
     parse_kaggle_username,
 )
 
@@ -49,6 +50,7 @@ class DatasetRemoteState:
 class PreparedDataset:
     reference: str
     changed: bool
+    expected_version: int | None = None
 
 
 def _command_detail(error: BaseException) -> str:
@@ -93,8 +95,14 @@ class DatasetService:
                 detail="Kaggle dataset status returned an empty response",
             )
         try:
+            payload = parse_dataset_status_payload(output)
+            current_version = payload.get("current_version_number")
             return DatasetRemoteState(
-                DatasetPresence.EXISTS, status=parse_dataset_status(output)
+                DatasetPresence.EXISTS,
+                status=parse_dataset_status(output),
+                current_version=(
+                    int(current_version) if current_version is not None else None
+                ),
             )
         except (RuntimeError, ValueError) as exc:
             return DatasetRemoteState(DatasetPresence.UNKNOWN, detail=str(exc))
@@ -215,16 +223,31 @@ class DatasetService:
         )
         if state.presence is DatasetPresence.ABSENT:
             self.runner.run(dataset_create_command(Path(path), public=public))
-            return PreparedDataset(reference, True)
+            return PreparedDataset(reference, True, 1)
         self.runner.run(dataset_version_command(Path(path), message=title))
-        return PreparedDataset(reference, True)
+        expected_version = (
+            state.current_version + 1 if state.current_version is not None else None
+        )
+        return PreparedDataset(reference, True, expected_version)
 
     def wait_for_dataset_ready(
-        self, reference: str, *, max_attempts: int = 300
+        self,
+        reference: str,
+        *,
+        minimum_version: int | None = None,
+        max_attempts: int = 300,
     ) -> None:
         for _ in range(max_attempts):
             try:
-                if self.status(reference) == "READY":
+                state = self.inspect_state(reference, active_owner=self.owner)
+                version_ready = (
+                    minimum_version is None
+                    or (
+                        state.current_version is not None
+                        and state.current_version >= minimum_version
+                    )
+                )
+                if state.status == "READY" and version_ready:
                     return
             except Exception:
                 pass

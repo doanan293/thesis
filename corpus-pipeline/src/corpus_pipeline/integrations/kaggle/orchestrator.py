@@ -17,6 +17,12 @@ from corpus_pipeline.integrations.kaggle.models import (
 )
 from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
 
+RUNTIME_DATASET_SLUG = "vector-cache-llama-cpp-cuda-t4"
+
+
+def runtime_dataset_reference(owners) -> str:
+    return f"{owners.runtime}/{RUNTIME_DATASET_SLUG}"
+
 
 class KagglePipelineOrchestrator:
     def __init__(
@@ -45,6 +51,7 @@ class KagglePipelineOrchestrator:
         if request.max_runs < 1:
             raise ValueError("max_runs must be at least 1")
         job = self._adapter(request.stage).build_job(request)
+        self.dependencies.require_ready(runtime_dataset_reference(request.owners))
         local = self._inspect_local(job)
         if local is not None and local.completion.is_complete:
             return PipelineResult(job, local.completion, (), local.data_path, 0)
@@ -64,7 +71,11 @@ class KagglePipelineOrchestrator:
             checkpoint = self.checkpoints.inspect(job)
             if request.check_only:
                 return PipelineResult(job, checkpoint.completion, actions, None, 0)
-            if checkpoint.completion.is_complete and checkpoint.artifact is not None:
+            if (
+                checkpoint.completion.is_complete
+                and checkpoint.artifact is not None
+                and checkpoint.artifact.strict_identity_match
+            ):
                 destination = promote_complete_artifact(
                     checkpoint.artifact, job.local_cache_path
                 )
@@ -94,9 +105,12 @@ class KagglePipelineOrchestrator:
         for attempt in range(1, request.max_runs + 1):
             checkpoint_reference = state.reference
             dataset_references = [
-                action.reference
-                for action in actions
-                if action.resource_kind != "artifact"
+                runtime_dataset_reference(request.owners),
+                *(
+                    action.reference
+                    for action in actions
+                    if action.resource_kind != "artifact"
+                ),
             ]
             bundle = self.kernels.prepare_bundle(
                 job,

@@ -22,6 +22,7 @@ class RunIdentity:
     candidate_k: int
     rrf_k: int
     limit: int | None
+    prefetch_k: int | None = None
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class RunRecord:
     candidates_dir: str | None = None
     rerank_scores_dir: str | None = None
     reports_dir: str | None = None
+    reranker: str | None = None
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -47,13 +49,21 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def load_run_record(path: Path) -> RunRecord:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw_identity = dict(payload["identity"])
+    if "prefetch_k" not in raw_identity:
+        raw_identity["prefetch_k"] = (
+            int(raw_identity["candidate_k"])
+            if raw_identity.get("retriever") == "hybrid"
+            else None
+        )
     return RunRecord(
         int(payload["schema_version"]),
-        RunIdentity(**payload["identity"]),
+        RunIdentity(**raw_identity),
         str(payload["status"]),
         payload.get("candidates_dir"),
         payload.get("rerank_scores_dir"),
         payload.get("reports_dir"),
+        payload.get("reranker"),
     )
 
 
@@ -109,7 +119,9 @@ class RunWorkspace:
             )
         )
 
-    def record_rerank_scores(self, bundle: Any) -> None:
+    def record_rerank_scores(
+        self, cache_path: Path, reranker: str | None = None
+    ) -> None:
         current = load_run_record(self.root / "run.json")
         self.write_record(
             RunRecord(
@@ -117,8 +129,9 @@ class RunWorkspace:
                 current.identity,
                 "reranked",
                 current.candidates_dir,
-                str(Path(bundle.root)),
+                str(Path(cache_path)),
                 current.reports_dir,
+                reranker or current.reranker,
             )
         )
 
@@ -132,5 +145,6 @@ class RunWorkspace:
                 current.candidates_dir,
                 current.rerank_scores_dir,
                 str(Path(output_dir)),
+                current.reranker,
             )
         )

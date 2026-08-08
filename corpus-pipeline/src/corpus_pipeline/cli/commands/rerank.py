@@ -69,6 +69,6 @@ def _result(result) -> CommandResult:
     return CommandResult(
         "rerank",
         CommandStatus.INCOMPLETE if result.incomplete else CommandStatus.COMPLETE,
-        result.bundle.root if result.bundle else None,
-        {"actions": result.actions},
+        result.cache_path,
+        {"actions": result.actions, "subset_sha256": result.subset_sha256},
     )

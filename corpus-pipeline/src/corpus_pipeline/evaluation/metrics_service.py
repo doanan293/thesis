@@ -14,6 +14,7 @@ from corpus_pipeline.evaluation.artifact_contracts import (
 from corpus_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
     RerankScoreCacheError,
+    prompt_contract_hash,
 )
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
@@ -25,8 +26,19 @@ from corpus_pipeline.evaluation.retrieval_metrics import (
 )
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from corpus_pipeline.evaluation.run_workspace import RunWorkspace, load_run_record
+from corpus_pipeline.runtime.catalog import require_model
 
 DISPLAY_HIT_KS = (3, 5, 10, 30)
+
+
+def validate_metrics_cutoff(top_k: int, candidate_k: int) -> None:
+    if top_k < 1:
+        raise ValueError("--top-k must be >= 1")
+    if top_k > candidate_k:
+        raise ValueError(
+            f"--top-k={top_k} exceeds run candidate-k={candidate_k}; "
+            "rerun retrieval with a deeper candidate artifact"
+        )
 
 
 def markdown_metric_table(metrics: dict) -> str:
@@ -42,6 +54,31 @@ def markdown_metric_table(metrics: dict) -> str:
         if key in metrics:
             lines.append(f"| Hit@{k} | {metrics[key] / metrics['count'] * 100:.2f}% |")
     lines.append(f"| MRR | {metrics['mrr'] / metrics['count']:.4f} |")
+    multi_count = int(metrics.get("multi_count", 0))
+    if multi_count:
+        lines.extend(
+            [
+                "",
+                "## Multi-required queries",
+                "",
+                "| Metric | Value |",
+                "| --- | ---: |",
+                f"| Total Multi-required Queries | {multi_count} |",
+            ]
+        )
+        for k in DISPLAY_HIT_KS:
+            recall_key = f"multi_section_recall@{k}"
+            all_hit_key = f"multi_all_hit@{k}"
+            if recall_key in metrics:
+                lines.append(
+                    f"| Multi-section Recall@{k} | "
+                    f"{metrics[recall_key] / multi_count * 100:.2f}% |"
+                )
+            if all_hit_key in metrics:
+                lines.append(
+                    f"| Multi-all-hit@{k} | "
+                    f"{metrics[all_hit_key] / multi_count * 100:.2f}% |"
+                )
     return "\n".join(lines)
 
 
@@ -74,6 +111,7 @@ class MetricInputs:
 
 def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
     record = load_run_record(request.run_root / "run.json")
+    validate_metrics_cutoff(request.top_k, record.identity.candidate_k)
     candidates_dir = request.candidates_dir or Path(
         record.candidates_dir or request.run_root / "candidates"
     )
@@ -94,18 +132,31 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
         Path(record.rerank_scores_dir) if record.rerank_scores_dir else None
     )
     if score_dir:
-        score_bundle = load_bundle(
-            score_dir, expected_type="rerank_score_cache", require_complete=True
-        )
-        if (
-            score_bundle.manifest.identity.get("candidate_data_sha256")
-            != candidate_bundle.manifest.data_sha256
-        ):
-            raise RerankScoreCacheError(
-                "Rerank score bundle does not match candidate artifact"
+        score_path = Path(score_dir)
+        if score_path.is_dir():
+            score_bundle = load_bundle(
+                score_path, expected_type="rerank_score_cache", require_complete=True
             )
-        score_cache = RerankScoreCache(score_bundle.data_path)
-        reranker = str(score_bundle.manifest.identity.get("reranker") or "")
+            score_path = score_bundle.data_path
+            reranker = str(score_bundle.manifest.identity.get("reranker") or "")
+        else:
+            reranker = str(record.reranker or "")
+        if not reranker:
+            raise RerankScoreCacheError(
+                "Rerank score cache requires the reranker model in run.json"
+            )
+        spec = require_model(reranker)
+        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        score_cache = RerankScoreCache(
+            score_path,
+            model_sha256=spec.sha256,
+            request_contract_sha256=contract,
+        )
+        subset = score_cache.validate_subset(candidate_bundle.data_path, reranker)
+        if not subset.is_complete:
+            raise RerankScoreCacheError(
+                f"Rerank score cache is missing {subset.missing} records"
+            )
     return MetricInputs(
         rows,
         CandidateArtifactReader.from_data_path(candidate_bundle.data_path),

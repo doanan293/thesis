@@ -3,7 +3,6 @@ from __future__ import annotations
 import builtins
 import hashlib
 import json
-import os
 import time
 import uuid
 from collections.abc import Callable
@@ -12,6 +11,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from corpus_pipeline.cache.jsonl_records import (
+    CacheRecordError,
+    append_record,
+    load_records,
+    rewrite_records,
+    seal_record,
+)
+from corpus_pipeline.cache.jsonl_records import (
+    subset_sha256 as record_subset_sha256,
+)
 from corpus_pipeline.config.paths import (
     PROJECT_ROOT,
     RAG_FINAL_CHUNKS_PATH,
@@ -214,11 +223,16 @@ def validate_cached_embedding(
 
 class ChunkEmbeddingCache:
     def __init__(
-        self, path: Path, vector_dim: int, allow_truncated_final_record: bool = False
+        self,
+        path: Path,
+        vector_dim: int,
+        allow_truncated_final_record: bool = False,
+        model_sha256: str = "",
     ):
         self.path = Path(path)
         self.vector_dim = vector_dim
         self.allow_truncated_final_record = allow_truncated_final_record
+        self.model_sha256 = str(model_sha256)
         self.records: dict[tuple[str, int, str, str, int], list[float]] = {}
         self.content_records: dict[tuple[str, str, str, int], list[float]] = {}
         self.record_data: dict[tuple[str, int, str, str, int], dict] = {}
@@ -230,58 +244,50 @@ class ChunkEmbeddingCache:
     def _load(self) -> None:
         if not self.path.exists():
             return
-        last_nonempty_line = 0
-        with self.path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if line.strip():
-                    last_nonempty_line = line_number
-        with self.path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    if (
-                        self.allow_truncated_final_record
-                        and line_number == last_nonempty_line
-                    ):
-                        handle.seek(0)
-                        for _ in range(line_number - 1):
-                            handle.readline()
-                        self._truncate_after_line(handle.tell())
-                        break
-                    raise EmbeddingCacheError(
-                        f"Invalid JSON in {self.path}:{line_number}: {exc}"
-                    ) from exc
-                if "payload_hash" not in record:
-                    self.skipped_legacy_records += 1
-                    continue
-                key = self._record_key(record, line_number)
-                vector = validate_cached_embedding(
-                    record["embedding"],
-                    self.vector_dim,
-                    self.path,
-                    line_number,
+        try:
+            raw_records, has_legacy = load_records(self.path, allow_legacy=True)
+        except CacheRecordError as exc:
+            raise EmbeddingCacheError(str(exc)) from exc
+        migrated_records: list[dict] = []
+        migrated = False
+        for line_number, record in enumerate(raw_records, start=1):
+            if "payload_hash" not in record:
+                self.skipped_legacy_records += 1
+                continue
+            if self.model_sha256 and record.get("model_sha256") not in (
+                None,
+                "",
+                self.model_sha256,
+            ):
+                raise EmbeddingCacheError(
+                    f"Model digest mismatch in {self.path}:{line_number}"
                 )
-                self.records[key] = vector
-                self.content_records[(key[0], key[2], key[3], key[4])] = vector
-                self.record_data[key] = {
-                    **record,
-                    "model": key[0],
-                    "chunk_key": key[1],
-                    "text_hash": key[2],
-                    "payload_hash": key[3],
-                    "vector_dim": key[4],
-                    "embedding": vector,
-                }
-
-    def _truncate_after_line(self, byte_offset: int) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.path.with_suffix(self.path.suffix + ".tmp")
-        with self.path.open("rb") as source, temp_path.open("wb") as target:
-            target.write(source.read(byte_offset))
-        os.replace(temp_path, self.path)
+            key = self._record_key(record, line_number)
+            vector = validate_cached_embedding(
+                record["embedding"],
+                self.vector_dim,
+                self.path,
+                line_number,
+            )
+            normalized = {
+                **record,
+                "model": key[0],
+                "model_sha256": self.model_sha256,
+                "chunk_key": key[1],
+                "text_hash": key[2],
+                "payload_hash": key[3],
+                "vector_dim": key[4],
+                "embedding": vector,
+            }
+            if "record_sha256" not in record or "cache_schema" not in record:
+                normalized = seal_record(normalized, "corpus-embedding-v2")
+                migrated = True
+            migrated_records.append(normalized)
+            self.records[key] = vector
+            self.content_records[(key[0], key[2], key[3], key[4])] = vector
+            self.record_data[key] = normalized
+        if has_legacy or migrated:
+            rewrite_records(self.path, migrated_records)
 
     def _record_key(
         self, record: dict, line_number: int
@@ -344,6 +350,7 @@ class ChunkEmbeddingCache:
         )
         record = {
             "model": key[0],
+            "model_sha256": self.model_sha256,
             "chunk_key": key[1],
             "text_hash": key[2],
             "payload_hash": key[3],
@@ -351,9 +358,7 @@ class ChunkEmbeddingCache:
             "embedding": vector,
             "created_at": datetime.now(UTC).isoformat(),
         }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        record = append_record(self.path, record, schema="corpus-embedding-v2")
         self.records[key] = vector
         self.content_records[(key[0], key[2], key[3], key[4])] = vector
         self.record_data[key] = record
@@ -362,30 +367,39 @@ class ChunkEmbeddingCache:
     def prune(
         self, valid_keys: builtins.set[tuple[str, int, str, str, int]]
     ) -> tuple[int, int]:
-        kept_records = {
-            key: record for key, record in self.record_data.items() if key in valid_keys
-        }
-        kept = len(kept_records)
-        removed = len(self.record_data) - kept + self.skipped_legacy_records
-        if removed == 0 and self.skipped_legacy_records == 0:
-            return kept, removed
+        return len(self.record_data), 0
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.path.with_suffix(self.path.suffix + ".tmp")
-        with temp_path.open("w", encoding="utf-8") as handle:
-            for record in kept_records.values():
-                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-        os.replace(temp_path, self.path)
-        self.record_data = kept_records
-        self.records = {
-            key: list(record["embedding"]) for key, record in kept_records.items()
-        }
-        self.content_records = {
-            (key[0], key[2], key[3], key[4]): list(record["embedding"])
-            for key, record in kept_records.items()
-        }
+    def replace_keys(self, keys: builtins.set[tuple[str, int, str, str, int]]) -> None:
+        kept = [record for key, record in self.record_data.items() if key not in keys]
+        rewrite_records(
+            self.path, sorted(kept, key=lambda item: self._record_key(item, 0))
+        )
+        self.records.clear()
+        self.content_records.clear()
+        self.record_data.clear()
         self.skipped_legacy_records = 0
-        return kept, removed
+        self._load()
+
+    def expected_records(self, points: list[dict], model: str) -> list[dict]:
+        records = []
+        for point in points:
+            key = (
+                str(model),
+                int(point["cache_key"]),
+                text_hash(point["embedding_text"]),
+                str(point["payload_hash"]),
+                self.vector_dim,
+            )
+            record = self.record_data.get(key)
+            if record is not None:
+                records.append(record)
+        return records
+
+    def subset_sha256(self, points: list[dict], model: str) -> str:
+        records = self.expected_records(points, model)
+        if len(records) != len(points):
+            raise EmbeddingCacheError("Embedding cache is incomplete")
+        return record_subset_sha256(records)
 
 
 def get_embedding(

@@ -6,8 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Protocol
 
-from corpus_pipeline.artifacts.bundle import ArtifactBundle, publish_bundle
-from corpus_pipeline.evaluation.artifact_contracts import canonical_sha256, sha256_file
+from corpus_pipeline.cache.jsonl_records import merge_records
+from corpus_pipeline.config.paths import WORK_DIR
+from corpus_pipeline.evaluation.artifact_contracts import sha256_file
 from corpus_pipeline.runtime.catalog import ModelKind, require_model
 from corpus_pipeline.runtime.client import LlamaCppClient
 from corpus_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
@@ -16,7 +17,10 @@ from corpus_pipeline.vector_store.ingest_vectors import (
     DEFAULT_GGUF_ROOT,
     ChunkEmbeddingCache,
     collect_or_create_embeddings,
+    expected_cache_keys,
+    prune_embedding_cache,
     read_normalized_input_points,
+    summarize_embedding_cache_completion,
 )
 
 
@@ -24,7 +28,7 @@ from corpus_pipeline.vector_store.ingest_vectors import (
 class ChunkEmbeddingRequest:
     chunks_path: Path
     model: str
-    output_dir: Path
+    cache_path: Path
     force: bool
     dry_run: bool
     budget_seconds: int
@@ -33,7 +37,7 @@ class ChunkEmbeddingRequest:
 
 @dataclass(frozen=True)
 class EmbeddingStageResult:
-    bundle: ArtifactBundle | None
+    cache_path: Path | None
     actions: tuple[str, ...]
     incomplete: bool = False
 
@@ -51,11 +55,6 @@ def chunk_embedding_identity(request: ChunkEmbeddingRequest) -> dict:
         "model_sha256": spec.sha256,
         "vector_dimension": spec.vector_dimension,
     }
-
-
-def chunk_checkpoint_path(request: ChunkEmbeddingRequest) -> Path:
-    identity = chunk_embedding_identity(request)
-    return request.output_dir / ".checkpoints" / f"{canonical_sha256(identity)}.jsonl"
 
 
 class LocalChunkEmbeddingBackend:
@@ -79,18 +78,32 @@ class LocalChunkEmbeddingBackend:
         if request.dry_run:
             return EmbeddingStageResult(None, ("dry-run",))
         points = read_normalized_input_points(request.chunks_path)
-        partial_cache = chunk_checkpoint_path(request)
         if request.force:
-            partial_cache.unlink(missing_ok=True)
-        cache = ChunkEmbeddingCache(partial_cache, spec.vector_dimension or 0)
-        manager = LlamaCppComposeManager(self.compose_file)
-        endpoints = resolve_server(
-            self.server_mode,
-            self.llama_server_urls,
-            spec,
-            manager,
-            self.gguf_root,
+            request.cache_path.unlink(missing_ok=True)
+        cache = ChunkEmbeddingCache(
+            request.cache_path,
+            spec.vector_dimension or 0,
+            model_sha256=spec.sha256,
         )
+        if request.force:
+            cache.replace_keys(
+                expected_cache_keys(points, request.model, spec.vector_dimension or 0)
+            )
+        prune_embedding_cache(cache, points, request.model, spec.vector_dimension or 0)
+        complete_before_run = summarize_embedding_cache_completion(
+            points, request.model, cache
+        ).is_complete
+        if complete_before_run:
+            endpoints = []
+        else:
+            manager = LlamaCppComposeManager(self.compose_file)
+            endpoints = resolve_server(
+                self.server_mode,
+                self.llama_server_urls,
+                spec,
+                manager,
+                self.gguf_root,
+            )
         args = SimpleNamespace(
             model=request.model,
             input_batch_size=spec.local_request_batch_size,
@@ -108,16 +121,11 @@ class LocalChunkEmbeddingBackend:
             cache,
             retain_embeddings=False,
         )
-        complete = collection.cache_hits + collection.embedded_count
-        bundle = publish_bundle(
-            request.output_dir,
-            artifact_type="chunk_embeddings",
-            source_path=partial_cache,
-            identity=chunk_embedding_identity(request),
-            total=len(points),
-            complete=complete,
+        return EmbeddingStageResult(
+            request.cache_path,
+            ("local",),
+            collection.stopped_early,
         )
-        return EmbeddingStageResult(bundle, ("local",), collection.stopped_early)
 
 
 class KaggleChunkEmbeddingBackend:
@@ -137,11 +145,14 @@ class KaggleChunkEmbeddingBackend:
         from corpus_pipeline.integrations.kaggle.models import StageName
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
 
+        spec = require_model(request.model)
         result = run_kaggle_stage(
             stage=StageName.CORPUS_EMBED,
             model=request.model,
             input_path=request.chunks_path,
-            output_dir=request.output_dir,
+            output_dir=WORK_DIR
+            / "kaggle-chunk-embeddings"
+            / require_model(request.model).slug,
             gguf_root=DEFAULT_GGUF_ROOT,
             force=request.force,
             check_only=request.dry_run,
@@ -153,16 +164,25 @@ class KaggleChunkEmbeddingBackend:
                 tuple(action.reason for action in result.actions),
                 incomplete=not result.completion.is_complete,
             )
-        bundle = publish_bundle(
-            request.output_dir,
-            artifact_type="chunk_embeddings",
-            source_path=result.artifact_path,
-            identity=chunk_embedding_identity(request),
-            total=result.completion.total,
-            complete=result.completion.complete,
+        remote = ChunkEmbeddingCache(
+            result.artifact_path,
+            spec.vector_dimension or 0,
+            model_sha256=spec.sha256,
+        )
+        merge_records(
+            request.cache_path,
+            remote.record_data.values(),
+            key=lambda record: (
+                str(record["model"]),
+                int(record["chunk_key"]),
+                str(record["text_hash"]),
+                str(record["payload_hash"]),
+                int(record["vector_dim"]),
+            ),
+            equivalent=lambda left, right: left["embedding"] == right["embedding"],
         )
         return EmbeddingStageResult(
-            bundle,
+            request.cache_path,
             tuple(action.reason for action in result.actions),
             incomplete=not result.completion.is_complete,
         )

@@ -12,11 +12,8 @@ from corpus_pipeline.cli.runtime import (
     state_from_context,
 )
 from corpus_pipeline.config.defaults import DEFAULT_EMBEDDING_MODEL, DEFAULT_QDRANT_URL
-from corpus_pipeline.config.paths import (
-    RAG_FINAL_CHUNKS_PATH,
-    VECTOR_EMBEDDING_CACHE_DIR,
-)
-from corpus_pipeline.runtime.catalog import require_model
+from corpus_pipeline.config.paths import RAG_FINAL_CHUNKS_PATH
+from corpus_pipeline.vector_store.ingest_vectors import default_embedding_cache_path
 from corpus_pipeline.vector_store.upload_service import (
     UploadVectorsRequest,
     upload_vectors,
@@ -34,15 +31,13 @@ def upload(
     qdrant_url: Annotated[str, typer.Option("--qdrant-url")] = DEFAULT_QDRANT_URL,
     qdrant_batch_size: Annotated[int, typer.Option("--qdrant-batch-size")] = 1000,
 ) -> None:
-    resolved_embeddings = (
-        embeddings or VECTOR_EMBEDDING_CACHE_DIR / require_model(model).slug / "current"
-    )
+    resolved_embeddings = embeddings or default_embedding_cache_path(model)
 
     def run() -> CommandResult:
         result = upload_vectors(
             UploadVectorsRequest(
                 chunks_path=chunks,
-                embeddings_dir=resolved_embeddings,
+                embeddings_path=resolved_embeddings,
                 model=model,
                 qdrant_url=qdrant_url,
                 qdrant_batch_size=qdrant_batch_size,

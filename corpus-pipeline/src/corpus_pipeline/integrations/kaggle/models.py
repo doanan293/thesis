@@ -64,6 +64,18 @@ class JobIdentity:
         }
         return cls(payload, canonical_sha256(payload))
 
+    @property
+    def reuse_payload(self) -> dict[str, JSONValue]:
+        return {
+            key: value
+            for key, value in self.payload.items()
+            if key != "input_sha256"
+        }
+
+    @property
+    def reuse_sha256(self) -> str:
+        return canonical_sha256(self.reuse_payload)
+
 
 @dataclass(frozen=True)
 class ReconcileAction:
@@ -108,6 +120,9 @@ class CloudArtifact:
     manifest_path: Path
     identity: JobIdentity
     completion: Completion
+    checkpoint_path: Path | None = None
+    strict_identity_match: bool = True
+    producing_job_sha256: str | None = None
 
 
 @dataclass(frozen=True)

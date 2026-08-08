@@ -35,6 +35,59 @@ def find_unique(root: Path, filename: str, required: bool = True) -> Path | None
     return matches[0]
 
 
+def resolve_input_file(
+    config: dict, key: str, *, input_root: Path = Path("/kaggle/input")
+) -> Path:
+    configured = Path(str(config[key]))
+    if configured.is_file():
+        return configured
+    identity = config.get("identity")
+    expected_sha256 = (
+        str(identity.get("input_sha256") or "")
+        if isinstance(identity, dict)
+        else ""
+    )
+    candidates = [
+        path
+        for path in Path(input_root).rglob(configured.name)
+        if path.is_file()
+        and (not expected_sha256 or sha256_file(path) == expected_sha256)
+    ]
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Expected one mounted input matching {configured.name} "
+            f"and job SHA-256, found {len(candidates)} under {input_root}"
+        )
+    return candidates[0]
+
+
+def resolve_optional_input_file(
+    config: dict,
+    key: str,
+    *,
+    input_root: Path = Path("/kaggle/input"),
+) -> Path | None:
+    configured_value = config.get(key)
+    if configured_value is None:
+        return None
+    configured = Path(str(configured_value))
+    if configured.is_file():
+        return configured
+    candidates = [
+        path
+        for path in Path(input_root).rglob(configured.name)
+        if path.is_file()
+    ]
+    if not candidates:
+        return None
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Expected at most one mounted input matching {configured.name}, "
+            f"found {len(candidates)} under {input_root}"
+        )
+    return candidates[0]
+
+
 def identity_from_config(config: dict) -> JobIdentity:
     identity = config.get("identity")
     if not isinstance(identity, dict):
@@ -48,7 +101,9 @@ def write_artifact_manifest(
     artifact_type: str,
     identity: JobIdentity,
     completion: Completion,
+    checkpoint_path: Path | None = None,
 ) -> Path:
+    checkpoint_path = Path(checkpoint_path) if checkpoint_path is not None else None
     manifest_path = Path(data_path).with_name("manifest.json")
     payload = {
         "schema_version": 1,
@@ -58,10 +113,14 @@ def write_artifact_manifest(
         "data_sha256": sha256_file(data_path),
         "record_count": completion.complete,
         "identity": identity.payload | {"job_sha256": identity.sha256},
+        "reuse_sha256": identity.reuse_sha256,
         "total": completion.total,
         "complete": completion.complete,
         "missing": completion.missing,
     }
+    if checkpoint_path is not None:
+        payload["checkpoint_filename"] = checkpoint_path.name
+        payload["checkpoint_sha256"] = sha256_file(checkpoint_path)
     manifest_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -76,13 +135,24 @@ def artifact_from_output(
     identity: JobIdentity,
     total: int,
     complete: int,
+    checkpoint_path: Path | None = None,
 ) -> CloudArtifact:
     missing = max(0, total - complete)
     completion = Completion(total, complete, missing)
     manifest_path = write_artifact_manifest(
-        data_path, artifact_type=artifact_type, identity=identity, completion=completion
+        data_path,
+        artifact_type=artifact_type,
+        identity=identity,
+        completion=completion,
+        checkpoint_path=checkpoint_path,
     )
-    return CloudArtifact(Path(data_path), manifest_path, identity, completion)
+    return CloudArtifact(
+        Path(data_path),
+        manifest_path,
+        identity,
+        completion,
+        checkpoint_path=checkpoint_path,
+    )
 
 
 @dataclass(frozen=True)
@@ -175,10 +245,15 @@ def managed_model_servers(config: dict) -> Generator[list[WorkerServer], None, N
     spec = require_model(str(config["model"]))
     input_root = Path(config.get("kaggle_input_root", "/kaggle/input"))
     model_path = find_unique(input_root, "*.gguf")
-    binary = find_unique(input_root, "llama-server")
-    if model_path is None or binary is None:
-        raise RuntimeError("Kaggle input is missing GGUF model or llama-server")
-    binary.chmod(0o755)
+    runtime_manifest = find_unique(input_root, "runtime_manifest.json")
+    if model_path is None or runtime_manifest is None:
+        raise RuntimeError("Kaggle input is missing GGUF model or runtime manifest")
+    runtime_root = materialize_runtime(
+        runtime_manifest.parent,
+        Path(config.get("runtime_work_dir", "/tmp/llama-cpp-runtime")),
+    )
+    binary = runtime_root / "bin/llama-server"
+    library = runtime_root / "lib"
     processes = []
     servers: list[WorkerServer] = []
     base_port = int(config.get("server_port", 11434))
@@ -192,7 +267,10 @@ def managed_model_servers(config: dict) -> Generator[list[WorkerServer], None, N
             spec=spec,
         )
         process = subprocess.Popen(
-            command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+            env=build_server_environment(os.environ, library, layout.visible_devices),
         )
         processes.append(process)
         servers.append(WorkerServer(f"http://127.0.0.1:{port}", layout.visible_devices))

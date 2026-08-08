@@ -27,8 +27,12 @@ DesiredBuilder = Callable[
     [StageJob, OwnerConfiguration, Path], Sequence[DesiredDataset]
 ]
 
+CORPUS_INPUT_DATASET_SLUG = "corpus-pipeline-rag-final"
+
 
 def input_dataset_slug(job: StageJob) -> str:
+    if getattr(job.stage, "value", job.stage) == "corpus-embed":
+        return CORPUS_INPUT_DATASET_SLUG
     return f"pipeline-input-{job.identity.sha256[:16]}"
 
 
@@ -45,6 +49,12 @@ class DependencyService:
         self, job: StageJob, owners: OwnerConfiguration, workspace: Path
     ) -> Sequence[DesiredDataset]:
         return self.desired_builder(job, owners, workspace)
+
+    def require_ready(self, reference: str) -> None:
+        self.datasets.require_ready(
+            reference,
+            guidance="publish the Kaggle runtime dataset before running a stage",
+        )
 
     def reconcile(
         self,
@@ -80,13 +90,16 @@ class DependencyService:
                         raise ValueError(
                             f"Dependency owner {owner} does not match dataset service owner {self.datasets.owner}"
                         )
-                    self.datasets.ensure_dataset(
+                    prepared = self.datasets.ensure_dataset(
                         slug,
                         item.title,
                         staged,
                         public=item.public,
                         active_owner=owners.execution,
                     )
+                self.datasets.wait_for_dataset_ready(
+                    item.reference, minimum_version=prepared.expected_version
+                )
                 inventory.remember(
                     item.reference,
                     self.datasets.inspect_state(
@@ -113,9 +126,10 @@ def default_desired_datasets(
     input_digest = sha256_file(job.input_path)
     input_slug = input_dataset_slug(job)
     input_ref = f"{owners.execution}/{input_slug}"
+    is_corpus_embed = getattr(job.stage, "value", job.stage) == "corpus-embed"
 
     def materialize_input(root: Path) -> Path:
-        target = Path(root) / input_slug
+        target = Path(root)
         target.mkdir(parents=True, exist_ok=True)
         shutil.copy2(job.input_path, target / job.input_path.name)
         candidate_manifest = job.worker_config.get("candidate_manifest_path")
@@ -134,6 +148,20 @@ def default_desired_datasets(
             + "\n",
             encoding="utf-8",
         )
+        if is_corpus_embed:
+            (target / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "file": job.input_path.name,
+                        "row_count": job.expected_total,
+                        "schema_version": 1,
+                        "sha256": input_digest,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
         return target
 
     return (
@@ -142,7 +170,7 @@ def default_desired_datasets(
             model_ref,
             f"Kaggle Pipeline Model {job.model}"[:50],
             model.sha256,
-            "dependency_manifest.json",
+            "model_manifest.json",
             True,
             materialize_model,
         ),
@@ -151,7 +179,7 @@ def default_desired_datasets(
             input_ref,
             f"Kaggle Pipeline Input {job.stage.value}"[:50],
             input_digest,
-            "dependency_manifest.json",
+            "manifest.json" if is_corpus_embed else "dependency_manifest.json",
             False,
             materialize_input,
         ),

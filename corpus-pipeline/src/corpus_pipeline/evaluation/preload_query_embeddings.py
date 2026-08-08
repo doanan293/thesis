@@ -23,12 +23,18 @@ def preload_embeddings(
     embed_batch_fn: Callable[[list[str]], list[list[float]]] | None = None,
     batch_size: int = 32,
     force: bool = False,
+    vector_dim: int | None = None,
+    model_sha256: str = "",
 ) -> dict:
     eval_path = Path(eval_path)
     if cache_path is None:
         cache_path = default_query_embedding_cache_path(eval_path, model_name)
 
-    cache = QueryEmbeddingCache(cache_path)
+    cache = QueryEmbeddingCache(
+        cache_path,
+        vector_dim=vector_dim,
+        model_sha256=model_sha256,
+    )
 
     rows = []
     with eval_path.open("r", encoding="utf-8") as f:

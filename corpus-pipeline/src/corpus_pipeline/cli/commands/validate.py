@@ -24,18 +24,17 @@ def validate_command(
     output_json: Path | None = None,
     output_markdown: Path | None = None,
 ) -> CommandResult:
-    json_path = output_json or output_dir / "validation_report.json"
     report = run_validation(
         ValidationRequest(
             final_dir=output_dir,
-            output_json=json_path,
+            output_json=output_json,
             output_markdown=output_markdown,
         )
     )
     return CommandResult(
         command="validate",
         status=CommandStatus.COMPLETE if report.ok else CommandStatus.FAILED,
-        artifact=report.output_json,
+        artifact=report.output_json or output_dir,
         details={
             "errors": list(report.errors),
             "metrics": report.metrics,

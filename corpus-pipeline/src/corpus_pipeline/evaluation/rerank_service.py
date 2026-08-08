@@ -4,11 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from corpus_pipeline.artifacts.bundle import ArtifactBundle, load_bundle, publish_bundle
+from corpus_pipeline.artifacts.bundle import load_bundle
+from corpus_pipeline.cache.jsonl_records import merge_records
+from corpus_pipeline.config.paths import WORK_DIR, rerank_score_cache_path
 from corpus_pipeline.evaluation.artifact_contracts import canonical_sha256
 from corpus_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
-    finalize_rerank_cache,
     prompt_contract_hash,
 )
 from corpus_pipeline.evaluation.rerankers import LlamaCppReranker
@@ -40,7 +41,8 @@ class RerankRequest:
 
 @dataclass(frozen=True)
 class RerankStageResult:
-    bundle: ArtifactBundle | None
+    cache_path: Path | None
+    subset_sha256: str | None
     actions: tuple[str, ...]
     incomplete: bool = False
 
@@ -72,14 +74,19 @@ class LocalRerankBackend:
             candidates_dir, expected_type="retrieval_candidates", require_complete=True
         )
         if request.dry_run:
-            return RerankStageResult(None, ("dry-run",))
-        output_dir = request.output_dir or workspace.rerank_scores_dir
-        partial = rerank_checkpoint_path(
-            output_dir, candidate_bundle.manifest.data_sha256, request.model
+            return RerankStageResult(None, None, ("dry-run",))
+        cache_path = request.output_dir or rerank_score_cache_path(request.model)
+        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        cache = RerankScoreCache(
+            cache_path,
+            model_sha256=spec.sha256,
+            request_contract_sha256=contract,
+        )
+        expected = cache.expected_keys_from_candidates(
+            candidate_bundle.data_path, request.model
         )
         if request.force:
-            partial.unlink(missing_ok=True)
-        cache = RerankScoreCache(partial)
+            cache.replace_keys(expected)
         manager = LlamaCppComposeManager(DEFAULT_COMPOSE_FILE)
         endpoint = resolve_server("compose", [], spec, manager, DEFAULT_GGUF_ROOT)[0]
         reranker = LlamaCppReranker(
@@ -106,33 +113,13 @@ class LocalRerankBackend:
                     protocol=spec.reranker_protocol,
                 )
                 processed += 1
-        data_path, _manifest_path, completion = finalize_rerank_cache(
-            candidate_data_path=candidate_bundle.data_path,
-            candidate_manifest_path=candidate_bundle.manifest_path,
-            partial_cache_path=partial,
-            output_dir=output_dir,
-            reranker=request.model,
-            gguf_sha256=spec.sha256,
-            protocol=spec.reranker_protocol or "",
-            request_contract_sha256=prompt_contract_hash(
-                protocol=spec.reranker_protocol or ""
-            ),
-            require_complete=False,
-        )
-        bundle = publish_bundle(
-            output_dir,
-            artifact_type="rerank_score_cache",
-            source_path=data_path,
-            identity={
-                "candidate_data_sha256": candidate_bundle.manifest.data_sha256,
-                "reranker": request.model,
-            },
-            total=completion.total,
-            complete=completion.complete,
-        )
-        workspace.record_rerank_scores(bundle)
+        subset = cache.validate_subset(candidate_bundle.data_path, request.model)
+        workspace.record_rerank_scores(cache_path, request.model)
         return RerankStageResult(
-            bundle, (f"scored={processed}",), incomplete=not completion.is_complete
+            cache_path,
+            subset.sha256,
+            (f"scored={processed}",),
+            incomplete=not subset.is_complete,
         )
 
 
@@ -180,12 +167,13 @@ class KaggleRerankBackend:
             expected_type="retrieval_candidates",
             require_complete=True,
         )
-        output_dir = request.output_dir or workspace.rerank_scores_dir
+        cache_path = request.output_dir or rerank_score_cache_path(request.model)
+        remote_dir = WORK_DIR / "kaggle-rerank-scores" / spec.slug
         result = run_kaggle_stage(
             stage=StageName.RERANK,
             model=request.model,
             input_path=candidate_bundle.data_path,
-            output_dir=output_dir,
+            output_dir=remote_dir,
             gguf_root=DEFAULT_GGUF_ROOT,
             force=request.force,
             check_only=request.dry_run,
@@ -195,36 +183,40 @@ class KaggleRerankBackend:
         if result.artifact_path is None:
             return RerankStageResult(
                 None,
+                None,
                 actions,
                 incomplete=not result.completion.is_complete,
             )
-        data_path, _manifest_path, completion = finalize_rerank_cache(
-            candidate_data_path=candidate_bundle.data_path,
-            candidate_manifest_path=candidate_bundle.manifest_path,
-            partial_cache_path=result.artifact_path,
-            output_dir=output_dir,
-            reranker=request.model,
-            gguf_sha256=spec.sha256,
-            protocol=spec.reranker_protocol or "",
-            request_contract_sha256=prompt_contract_hash(
-                protocol=spec.reranker_protocol or ""
+        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        remote = RerankScoreCache(
+            result.artifact_path,
+            model_sha256=spec.sha256,
+            request_contract_sha256=contract,
+        )
+        merge_records(
+            cache_path,
+            remote.record_metadata.values(),
+            key=lambda record: (
+                str(record["reranker"]),
+                str(record.get("model_sha256") or ""),
+                str(record.get("request_contract_sha256") or ""),
+                str(record["query_id"]),
+                str(record["query_hash"]),
+                str(record["chunk_id"]),
+                str(record["document_hash"]),
             ),
-            require_complete=False,
+            equivalent=lambda left, right: left["score"] == right["score"],
         )
-        bundle = publish_bundle(
-            output_dir,
-            artifact_type="rerank_score_cache",
-            source_path=data_path,
-            identity={
-                "candidate_data_sha256": candidate_bundle.manifest.data_sha256,
-                "reranker": request.model,
-            },
-            total=completion.total,
-            complete=completion.complete,
+        local = RerankScoreCache(
+            cache_path,
+            model_sha256=spec.sha256,
+            request_contract_sha256=contract,
         )
-        workspace.record_rerank_scores(bundle)
+        subset = local.validate_subset(candidate_bundle.data_path, request.model)
+        workspace.record_rerank_scores(cache_path, request.model)
         return RerankStageResult(
-            bundle,
+            cache_path,
+            subset.sha256,
             actions,
-            incomplete=not completion.is_complete,
+            incomplete=not subset.is_complete,
         )

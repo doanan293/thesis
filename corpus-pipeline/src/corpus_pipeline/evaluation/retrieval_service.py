@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from urllib.parse import urlparse
 
 from qdrant_client import QdrantClient
 
-from corpus_pipeline.artifacts.bundle import ArtifactBundle, load_bundle
 from corpus_pipeline.evaluation.artifact_contracts import sha256_file
 from corpus_pipeline.evaluation.dump_retrieval_candidates import load_query_rows
 from corpus_pipeline.evaluation.query_embedding_cache import (
@@ -31,6 +30,19 @@ def model_collection_name(model_name: str) -> str:
     return "thesis_chunks_" + require_model(model_name).slug
 
 
+def resolve_prefetch_k(
+    retriever: str, candidate_k: int, prefetch_k: int | None
+) -> int | None:
+    if retriever != "hybrid":
+        if prefetch_k is not None:
+            raise ValueError("--prefetch-k is only valid with --retriever hybrid")
+        return None
+    effective = candidate_k if prefetch_k is None else prefetch_k
+    if effective < candidate_k:
+        raise ValueError("--prefetch-k must be greater than or equal to --candidate-k")
+    return effective
+
+
 @dataclass(frozen=True)
 class RetrieveRequest:
     evaluation_path: Path
@@ -43,6 +55,7 @@ class RetrieveRequest:
     rrf_k: int
     limit: int | None
     force: bool
+    prefetch_k: int | None = None
 
 
 @dataclass(frozen=True)
@@ -61,7 +74,7 @@ def _qdrant_client(url: str) -> QdrantClient:
 def build_retriever_for_request(
     request: RetrieveRequest,
     rows: list[dict],
-    query_bundle: ArtifactBundle | None,
+    query_cache: QueryEmbeddingCache | None,
 ):
     collection_name = model_collection_name(request.embedding_model)
     client = _qdrant_client(request.qdrant_url)
@@ -73,9 +86,9 @@ def build_retriever_for_request(
         )
     if request.retriever == "bm25":
         return QdrantBm25Retriever(client, collection_name)
-    if query_bundle is None:
+    if query_cache is None:
         raise ValueError("Dense and hybrid retrieval require --query-embeddings")
-    cache = QueryEmbeddingCache(query_bundle.data_path)
+    cache = query_cache
     dimension = require_model(request.embedding_model).vector_dimension
     if dimension is None:
         raise ValueError("Embedding dimension is missing")
@@ -85,7 +98,7 @@ def build_retriever_for_request(
         )
         if vector is None:
             raise QueryEmbeddingCacheError(
-                f"Query embedding bundle is missing {row['query_id']}"
+                f"Query embedding cache is missing {row['query_id']}"
             )
         if len(vector) != dimension:
             raise QueryEmbeddingCacheError(
@@ -102,14 +115,21 @@ def build_retriever_for_request(
         )
         if vector is None:
             raise QueryEmbeddingCacheError(
-                f"Query embedding bundle is missing {row['query_id']}"
+                f"Query embedding cache is missing {row['query_id']}"
             )
         return vector
 
     retriever_type = (
         QdrantHybridRetriever if request.retriever == "hybrid" else DenseQdrantRetriever
     )
-    kwargs = {"rrf_k": request.rrf_k} if request.retriever == "hybrid" else {}
+    kwargs = (
+        {
+            "rrf_k": request.rrf_k,
+            "prefetch_k": request.prefetch_k or request.candidate_k,
+        }
+        if request.retriever == "hybrid"
+        else {}
+    )
     return retriever_type(client, collection_name, embed_query=embed_query, **kwargs)
 
 
@@ -118,29 +138,42 @@ def run_retrieval(request: RetrieveRequest) -> RetrieveResult:
         raise ValueError("candidate_k and rrf_k must be >= 1")
     if request.retriever not in {"dense", "bm25", "hybrid"}:
         raise ValueError("retriever must be dense, bm25, or hybrid")
+    request = replace(
+        request,
+        prefetch_k=resolve_prefetch_k(
+            request.retriever, request.candidate_k, request.prefetch_k
+        ),
+    )
     rows = load_query_rows(request.evaluation_path, request.limit)
-    query_bundle = None
+    query_cache = None
+    query_embeddings_sha256 = None
     if request.retriever in {"dense", "hybrid"}:
         if request.query_embeddings_dir is None:
             raise ValueError("Dense and hybrid retrieval require --query-embeddings")
-        query_bundle = load_bundle(
+        spec = require_model(request.embedding_model)
+        query_cache = QueryEmbeddingCache(
             request.query_embeddings_dir,
-            expected_type="query_embeddings",
-            require_complete=True,
+            vector_dim=spec.vector_dimension,
+            model_sha256=spec.sha256,
         )
+        subset = query_cache.validate_subset(rows, request.embedding_model)
+        if not subset.is_complete:
+            raise QueryEmbeddingCacheError(
+                f"Query embedding cache is missing {subset.missing} records"
+            )
+        query_embeddings_sha256 = subset.sha256
     collection_name = model_collection_name(request.embedding_model)
     identity = RunIdentity(
         evaluation_path=str(request.evaluation_path.resolve()),
         evaluation_sha256=sha256_file(request.evaluation_path),
         collection_name=collection_name,
         embedding_model=request.embedding_model,
-        query_embeddings_sha256=query_bundle.manifest.data_sha256
-        if query_bundle
-        else None,
+        query_embeddings_sha256=query_embeddings_sha256,
         retriever=request.retriever,
         candidate_k=request.candidate_k,
         rrf_k=request.rrf_k,
         limit=request.limit,
+        prefetch_k=request.prefetch_k,
     )
     workspace = RunWorkspace.open_or_create(
         request.run_root, identity, force=request.force
@@ -164,7 +197,7 @@ def run_retrieval(request: RetrieveRequest) -> RetrieveResult:
             )
             workspace.record_candidates(artifact)
             return RetrieveResult(workspace, artifact)
-    retriever = build_retriever_for_request(request, rows, query_bundle)
+    retriever = build_retriever_for_request(request, rows, query_cache)
     artifact = build_candidate_artifact(
         rows=rows,
         retriever=retriever,

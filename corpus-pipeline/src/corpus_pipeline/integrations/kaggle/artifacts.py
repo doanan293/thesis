@@ -44,6 +44,9 @@ class CloudArtifactManifest:
     total: int
     complete: int
     missing: int
+    reuse_sha256: str | None = None
+    checkpoint_filename: str | None = None
+    checkpoint_sha256: str | None = None
 
     @property
     def completion(self) -> Completion:
@@ -114,6 +117,21 @@ def _load_manifest(path: Path) -> CloudArtifactManifest:
         total=int(payload["total"]),
         complete=int(payload["complete"]),
         missing=int(payload["missing"]),
+        reuse_sha256=(
+            str(payload["reuse_sha256"])
+            if payload.get("reuse_sha256") is not None
+            else None
+        ),
+        checkpoint_filename=(
+            str(payload["checkpoint_filename"])
+            if payload.get("checkpoint_filename") is not None
+            else None
+        ),
+        checkpoint_sha256=(
+            str(payload["checkpoint_sha256"])
+            if payload.get("checkpoint_sha256") is not None
+            else None
+        ),
     )
 
 
@@ -123,6 +141,7 @@ def load_cloud_artifact(
     expected_identity: JobIdentity,
     *,
     allow_partial: bool = False,
+    allow_reuse: bool = False,
 ) -> CloudArtifact:
     data_path, manifest_path = Path(data_path), Path(manifest_path)
     manifest = _load_manifest(manifest_path)
@@ -132,14 +151,33 @@ def load_cloud_artifact(
         raise ArtifactContractError("Cloud artifact data checksum mismatch")
     if _read_jsonl_count(data_path) != manifest.record_count:
         raise ArtifactContractError("Cloud artifact record count mismatch")
-    if manifest.identity.get("job_sha256") != expected_identity.sha256:
-        raise ArtifactContractError("Cloud artifact job identity mismatch")
+    strict_identity_match = manifest.identity.get("job_sha256") == expected_identity.sha256
+    if not strict_identity_match:
+        if not allow_reuse or manifest.reuse_sha256 != expected_identity.reuse_sha256:
+            raise ArtifactContractError("Cloud artifact job identity mismatch")
+    checkpoint_path = None
+    if manifest.checkpoint_filename is not None:
+        checkpoint_path = manifest_path.with_name(manifest.checkpoint_filename)
+        if not checkpoint_path.is_file():
+            raise ArtifactContractError(
+                f"Cloud artifact checkpoint is missing: {checkpoint_path}"
+            )
+        if manifest.checkpoint_sha256 is None or sha256_file(checkpoint_path) != manifest.checkpoint_sha256:
+            raise ArtifactContractError("Cloud artifact checkpoint checksum mismatch")
     if not allow_partial and not manifest.completion.is_complete:
         raise ArtifactContractError(
             f"Cannot load incomplete artifact: complete={manifest.complete}, total={manifest.total}, missing={manifest.missing}"
         )
     return CloudArtifact(
-        data_path, manifest_path, expected_identity, manifest.completion
+        data_path,
+        manifest_path,
+        expected_identity,
+        manifest.completion,
+        checkpoint_path=checkpoint_path,
+        strict_identity_match=strict_identity_match,
+        producing_job_sha256=str(manifest.identity.get("job_sha256"))
+        if manifest.identity.get("job_sha256") is not None
+        else None,
     )
 
 

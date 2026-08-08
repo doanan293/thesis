@@ -223,6 +223,7 @@ class RerankStage:
             {
                 "model": request.model,
                 "protocol": spec.reranker_protocol,
+                "parallelism": spec.kaggle_parallel,
                 "candidate_path": str(request.input_path),
                 "candidate_manifest_path": str(manifest_path),
                 "gguf_root": str(request.gguf_root),

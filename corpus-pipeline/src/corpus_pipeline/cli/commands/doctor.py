@@ -12,10 +12,11 @@ from corpus_pipeline.cli.runtime import (
     run_handler,
     state_from_context,
 )
+from corpus_pipeline.config.environment import PROJECT_ENV_FILE
 from corpus_pipeline.config.paths import PROJECT_ROOT
 from corpus_pipeline.orchestration.preflight import run_preflight
 
-DEFAULT_ENV_FILE = PROJECT_ROOT.parent / ".env"
+DEFAULT_ENV_FILE = PROJECT_ENV_FILE
 
 
 def doctor_command(

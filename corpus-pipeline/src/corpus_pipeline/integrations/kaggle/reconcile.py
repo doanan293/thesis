@@ -44,7 +44,8 @@ def plan_dataset(
             ActionVerb.WAIT,
             f"dataset status is {observed.status}",
         )
-    remote_fingerprint = (observed.manifest or {}).get("fingerprint")
+    manifest = observed.manifest or {}
+    remote_fingerprint = manifest.get("fingerprint") or manifest.get("sha256")
     if force or remote_fingerprint != desired.fingerprint:
         reason = "forced refresh" if force else "fingerprint changed"
         return ReconcileAction(

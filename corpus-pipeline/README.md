@@ -31,7 +31,7 @@ Local + Kaggle GPU là đường chạy chính khi cần embedding/reranking nha
 - Raw PDF, An Khang snapshot, curated tables, mappings, glossary và danh sách âm
   tiết đã có dưới `data/raw/`.
 - GGUF baseline đã có dưới `../ai-models/gguf/`.
-- Workflow Kaggle cần credentials/owner hợp lệ trong `../.env`.
+- Workflow Kaggle cần credentials/owner hợp lệ trong `.env`.
 
 Các guide có preflight command cụ thể để kiểm tra từng input trước khi chạy.
 
@@ -40,7 +40,9 @@ Các guide có preflight command cụ thể để kiểm tra từng input trư�
 - `data/processed/rag-final/`: final sections, chunks, manifest và validation
   report.
 - `data/processed/evaluation/`: evaluation dataset 10.000 queries.
-- `data/cache/`: embedding caches có thể resume/reuse.
+- `data/cache/`: các cache JSONL phẳng có thể resume/reuse và tự kiểm tra
+  checksum (`vector_embeddings/<model>.jsonl`,
+  `query_embeddings/<model>.jsonl`, `rerank_scores/<model>.jsonl`).
 - `data/runs/retrieval_eval/`: per-query checkpoint và Markdown metrics report.
 - Qdrant collection theo embedding model, ví dụ
   `thesis_chunks_qwen3_embedding_0_6b_fp16`.

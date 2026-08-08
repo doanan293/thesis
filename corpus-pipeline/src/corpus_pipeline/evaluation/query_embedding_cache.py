@@ -1,43 +1,37 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import corpus_pipeline.evaluation.query_hash as _query_hash
+from corpus_pipeline.cache.jsonl_records import (
+    CacheRecordError,
+    ValidatedSubset,
+    append_record,
+    load_records,
+    rewrite_records,
+    seal_record,
+)
+from corpus_pipeline.cache.jsonl_records import (
+    subset_sha256 as record_subset_sha256,
+)
 from corpus_pipeline.config.paths import QUERY_EMBEDDING_CACHE_DIR
+
+model_slug = _query_hash.model_slug
+normalize_query_for_hash = _query_hash.normalize_query_for_hash
+query_hash = _query_hash.query_hash
 
 
 class QueryEmbeddingCacheError(RuntimeError):
     pass
 
 
-def normalize_query_for_hash(query: str) -> str:
-    return str(query).strip()
-
-
-def query_hash(query: str) -> str:
-    normalized = normalize_query_for_hash(query)
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def model_slug(model_name: str) -> str:
-    return (
-        model_name.replace(":", "_")
-        .replace("-", "_")
-        .replace(".", "_")
-        .replace("/", "_")
-    )
-
-
 def default_query_embedding_cache_path(eval_path: Path, model_name: str) -> Path:
-    return (
-        QUERY_EMBEDDING_CACHE_DIR
-        / model_slug(model_name)
-        / f"{Path(eval_path).stem}.jsonl"
-    )
+    del eval_path
+    return QUERY_EMBEDDING_CACHE_DIR / f"{model_slug(model_name)}.jsonl"
 
 
 def validate_embedding(
@@ -61,9 +55,12 @@ def validate_embedding(
 @dataclass
 class QueryEmbeddingCache:
     path: Path
+    vector_dim: int | None = None
+    model_sha256: str = ""
 
     def __post_init__(self):
         self.path = Path(self.path)
+        self.model_sha256 = str(self.model_sha256)
         self.records: dict[tuple[str, str, str], list[float]] = {}
         self.record_metadata: dict[tuple[str, str, str], dict] = {}
         self.hits = 0
@@ -73,35 +70,70 @@ class QueryEmbeddingCache:
     def _load(self) -> None:
         if not self.path.exists():
             return
-        with self.path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    raise QueryEmbeddingCacheError(
-                        f"Invalid JSON in {self.path}:{line_number}: {exc}"
-                    ) from exc
-                self._load_record(record, line_number)
+        try:
+            records, has_legacy = load_records(self.path, allow_legacy=True)
+        except CacheRecordError as exc:
+            raise QueryEmbeddingCacheError(str(exc)) from exc
+        migrated = False
+        normalized_records: list[dict] = []
+        for line_number, record in enumerate(records, start=1):
+            normalized = self._normalize_record(record, line_number)
+            if "record_sha256" not in record or "cache_schema" not in record:
+                normalized = seal_record(normalized, "query-embedding-v2")
+                migrated = True
+            normalized_records.append(normalized)
+            self._load_record(normalized, line_number)
+        if has_legacy or migrated:
+            rewrite_records(self.path, normalized_records)
 
-    def _load_record(self, record: dict, line_number: int) -> None:
-        for field in ("model", "query_id", "query_hash", "embedding"):
+    def _normalize_record(self, record: dict, line_number: int) -> dict:
+        for field in ("model", "query_id", "embedding"):
             if field not in record:
                 raise QueryEmbeddingCacheError(
                     f"Cache record missing required field '{field}' in {self.path}:{line_number}"
                 )
+        query = str(record.get("query") or "")
+        if not query.strip():
+            raise QueryEmbeddingCacheError(
+                f"Cache record requires query text in {self.path}:{line_number}"
+            )
+        vector = validate_embedding(record["embedding"], self.path, line_number)
+        dimension = int(record.get("vector_dim") or len(vector))
+        if self.vector_dim is None:
+            self.vector_dim = dimension
+        if dimension != self.vector_dim or len(vector) != self.vector_dim:
+            raise QueryEmbeddingCacheError(
+                f"Query embedding dimension mismatch at {self.path}:{line_number}: "
+                f"{len(vector)} != {self.vector_dim}"
+            )
+        record_model_sha = str(record.get("model_sha256") or "")
+        if self.model_sha256 and record_model_sha not in ("", self.model_sha256):
+            raise QueryEmbeddingCacheError(
+                f"Model digest mismatch in {self.path}:{line_number}"
+            )
+        normalized = {
+            **record,
+            "model": str(record["model"]),
+            "model_sha256": self.model_sha256 or record_model_sha,
+            "query_id": str(record["query_id"]),
+            "query_hash": query_hash(query),
+            "query": query,
+            "vector_dim": self.vector_dim,
+            "embedding": vector,
+        }
+        return normalized
+
+    def _load_record(self, record: dict, line_number: int) -> None:
+        if record.get("query_hash") != query_hash(str(record.get("query") or "")):
+            raise QueryEmbeddingCacheError(
+                f"Query hash mismatch in {self.path}:{line_number}"
+            )
         vector = validate_embedding(record["embedding"], self.path, line_number)
         key = (str(record["model"]), str(record["query_id"]), str(record["query_hash"]))
+        # Append-only checkpoints may contain a newer replacement for a key;
+        # the last validated record is authoritative.
         self.records[key] = vector
-        self.record_metadata[key] = {
-            "model": key[0],
-            "query_id": key[1],
-            "query_hash": key[2],
-            "query": str(record.get("query") or ""),
-            "embedding": vector,
-            "created_at": str(record.get("created_at") or ""),
-        }
+        self.record_metadata[key] = dict(record)
 
     def prune_to_queries(self, model: str, rows: list[dict]) -> dict:
         allowed_keys = {
@@ -143,21 +175,79 @@ class QueryEmbeddingCache:
         self, model: str, query_id: str, query_text: str, embedding: list[float]
     ) -> list[float]:
         vector = validate_embedding(embedding)
+        if self.vector_dim is None:
+            self.vector_dim = len(vector)
+        if len(vector) != self.vector_dim:
+            raise QueryEmbeddingCacheError(
+                f"Query embedding dimension mismatch: {len(vector)} != {self.vector_dim}"
+            )
         key = (str(model), str(query_id), query_hash(query_text))
         record = {
             "model": str(model),
+            "model_sha256": self.model_sha256,
             "query_id": str(query_id),
             "query_hash": key[2],
             "query": str(query_text),
+            "vector_dim": self.vector_dim,
             "embedding": vector,
             "created_at": datetime.now(UTC).isoformat(),
         }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        record = append_record(self.path, record, schema="query-embedding-v2")
         self.records[key] = vector
         self.record_metadata[key] = record
         return list(vector)
+
+    @staticmethod
+    def default_path(model_name: str) -> Path:
+        return QUERY_EMBEDDING_CACHE_DIR / f"{model_slug(model_name)}.jsonl"
+
+    def replace_keys(self, keys: set[tuple[str, str, str]]) -> None:
+        kept = [
+            key_record
+            for key, key_record in self.record_metadata.items()
+            if key not in keys
+        ]
+        rewrite_records(
+            self.path, sorted(kept, key=lambda item: json.dumps(item, sort_keys=True))
+        )
+        self.records.clear()
+        self.record_metadata.clear()
+        self._load()
+
+    def validate_subset(self, rows: list[dict], model: str) -> ValidatedSubset:
+        expected = {
+            (
+                str(model),
+                str(row.get("query_id") or ""),
+                query_hash(str(row.get("query") or "")),
+            )
+            for row in rows
+        }
+        found = [
+            self.record_metadata[key]
+            for key in sorted(expected)
+            if key in self.record_metadata
+        ]
+        for record in found:
+            if record.get("model") != str(model):
+                raise QueryEmbeddingCacheError(
+                    "Query cache contains an unexpected model"
+                )
+        missing = len(expected) - len(found)
+        return ValidatedSubset(
+            total=len(expected),
+            complete=len(found),
+            missing=missing,
+            sha256=record_subset_sha256(found) if not missing else None,
+        )
+
+    def subset_sha256(self, rows: list[dict], model: str) -> str:
+        subset = self.validate_subset(rows, model)
+        if not subset.is_complete:
+            raise QueryEmbeddingCacheError(
+                f"Query embedding cache is missing {subset.missing} records"
+            )
+        return str(subset.sha256)
 
     def compact_to(
         self,

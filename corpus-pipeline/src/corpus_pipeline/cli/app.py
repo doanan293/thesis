@@ -13,6 +13,7 @@ from corpus_pipeline.cli.commands.source import source_app
 from corpus_pipeline.cli.commands.validate import validate
 from corpus_pipeline.cli.commands.vectors import vectors_app
 from corpus_pipeline.cli.runtime import CliState
+from corpus_pipeline.config.environment import load_project_env
 
 app = typer.Typer(
     name="corpus",
@@ -33,6 +34,7 @@ def _callback(
     ),
 ) -> None:
     """Operate the corpus pipeline by explicit stage."""
+    load_project_env()
     ctx.obj = CliState(json_output=json_output, debug=debug)
 
 

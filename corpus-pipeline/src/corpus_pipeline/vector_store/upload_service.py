@@ -4,11 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from corpus_pipeline.artifacts.bundle import load_bundle
-from corpus_pipeline.evaluation.artifact_contracts import (
-    ArtifactContractError,
-    sha256_file,
-)
+from corpus_pipeline.evaluation.artifact_contracts import sha256_file
 from corpus_pipeline.runtime.catalog import require_model
 from corpus_pipeline.vector_store.ingest_vectors import (
     DEFAULT_QDRANT_BATCH_SIZE,
@@ -16,6 +12,7 @@ from corpus_pipeline.vector_store.ingest_vectors import (
     collect_complete_cached_embeddings,
     load_qdrant_dependencies,
     read_normalized_input_points,
+    summarize_embedding_cache_completion,
     upsert_points_from_embeddings,
 )
 
@@ -23,7 +20,7 @@ from corpus_pipeline.vector_store.ingest_vectors import (
 @dataclass(frozen=True)
 class UploadVectorsRequest:
     chunks_path: Path
-    embeddings_dir: Path
+    embeddings_path: Path
     model: str
     qdrant_url: str
     qdrant_batch_size: int = DEFAULT_QDRANT_BATCH_SIZE
@@ -38,38 +35,33 @@ class UploadVectorsResult:
 
 
 def upload_vectors(request: UploadVectorsRequest) -> UploadVectorsResult:
-    bundle = load_bundle(
-        request.embeddings_dir,
-        expected_type="chunk_embeddings",
-        require_complete=True,
-    )
     spec = require_model(request.model)
     if spec.vector_dimension is None:
         raise ValueError(f"Embedding dimension is missing for {request.model}")
-    expected_identity = {
-        "input_sha256": sha256_file(request.chunks_path),
-        "model": request.model,
-        "model_sha256": spec.sha256,
-        "vector_dimension": spec.vector_dimension,
-    }
-    if bundle.manifest.identity != expected_identity:
-        raise ArtifactContractError(
-            "Embedding bundle identity does not match --chunks and --model"
+    points = read_normalized_input_points(request.chunks_path)
+    if not points or not request.embeddings_path.is_file():
+        raise RuntimeError("Embedding cache is incomplete")
+    cache = ChunkEmbeddingCache(
+        request.embeddings_path,
+        spec.vector_dimension,
+        model_sha256=spec.sha256,
+    )
+    completion = summarize_embedding_cache_completion(points, request.model, cache)
+    if not completion.is_complete:
+        raise RuntimeError(
+            f"Embedding cache is incomplete: {completion.missing} missing records"
         )
     parsed = urlparse(request.qdrant_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError(f"Invalid Qdrant URL: {request.qdrant_url}")
-    points = read_normalized_input_points(request.chunks_path)
     embeddings = collect_complete_cached_embeddings(
         points,
         request.model,
-        ChunkEmbeddingCache(bundle.data_path, spec.vector_dimension),
+        cache,
     )
     dependencies = load_qdrant_dependencies()
     alias_name = "thesis_chunks_" + spec.slug
-    digest = (
-        f"{expected_identity['input_sha256'][:12]}{bundle.manifest.data_sha256[:12]}"
-    )
+    digest = f"{sha256_file(request.chunks_path)[:12]}{cache.subset_sha256(points, request.model)[:12]}"
     collection_name = f"{alias_name}_{digest}"
     client = dependencies.helper_type(
         host=parsed.hostname,

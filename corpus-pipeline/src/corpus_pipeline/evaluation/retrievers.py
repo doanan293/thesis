@@ -290,6 +290,7 @@ class QdrantHybridRetriever(DenseQdrantRetriever):
         filter_builder=None,
         *,
         rrf_k: int,
+        prefetch_k: int | None = None,
     ):
         super().__init__(
             qdrant_client,
@@ -300,10 +301,12 @@ class QdrantHybridRetriever(DenseQdrantRetriever):
             filter_builder=filter_builder,
         )
         self.rrf_k = rrf_k
+        self.prefetch_k = prefetch_k
 
     def search(self, query, limit: int) -> list[RetrievalCandidate]:
         query_text = query.get("query", "") if isinstance(query, dict) else str(query)
         vector = self.embed_query(query)
+        prefetch_k = self.prefetch_k or limit
         query_filter = (
             self.filter_builder(query) if self.filter_builder is not None else None
         )
@@ -314,13 +317,13 @@ class QdrantHybridRetriever(DenseQdrantRetriever):
                     models.Prefetch(
                         query=vector,
                         using=DENSE_VECTOR_NAME,
-                        limit=limit,
+                        limit=prefetch_k,
                         filter=query_filter,
                     ),
                     models.Prefetch(
                         query=models.Document(text=query_text, model=BM25_MODEL_NAME),
                         using=BM25_SPARSE_VECTOR_NAME,
-                        limit=limit,
+                        limit=prefetch_k,
                         filter=query_filter,
                     ),
                 ]
@@ -354,3 +357,59 @@ class QdrantHybridRetriever(DenseQdrantRetriever):
                 )
             )
         return candidates
+
+    def search_batch(
+        self, queries: list[object], limit: int
+    ) -> list[list[RetrievalCandidate]]:
+        prefetch_k = self.prefetch_k or limit
+        requests = []
+        for query in queries:
+            query_text = (
+                query.get("query", "") if isinstance(query, dict) else str(query)
+            )
+            query_filter = (
+                self.filter_builder(query) if self.filter_builder is not None else None
+            )
+            requests.append(
+                models.QueryRequest(
+                    prefetch=[
+                        models.Prefetch(
+                            query=self.embed_query(query),
+                            using=DENSE_VECTOR_NAME,
+                            limit=prefetch_k,
+                            filter=query_filter,
+                        ),
+                        models.Prefetch(
+                            query=models.Document(
+                                text=query_text, model=BM25_MODEL_NAME
+                            ),
+                            using=BM25_SPARSE_VECTOR_NAME,
+                            limit=prefetch_k,
+                            filter=query_filter,
+                        ),
+                    ],
+                    query=models.RrfQuery(rrf=models.Rrf(k=self.rrf_k)),
+                    limit=limit,
+                    with_payload=True,
+                )
+            )
+        responses = self.qdrant_client.query_batch_points(
+            collection_name=self.collection_name, requests=requests
+        )
+        return [
+            [
+                RetrievalCandidate(
+                    chunk_id=str(
+                        (point.payload or {}).get("chunk_id")
+                        or (point.payload or {}).get("chunk_key")
+                        or ""
+                    ),
+                    score=float(getattr(point, "score", 0.0) or 0.0),
+                    rank=rank,
+                    source="hybrid",
+                    payload=point.payload or {},
+                )
+                for rank, point in enumerate(response.points, start=1)
+            ]
+            for response in responses
+        ]

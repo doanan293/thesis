@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from corpus_pipeline.config.environment import PROJECT_ENV_FILE, load_project_env
 from corpus_pipeline.config.paths import PROJECT_ROOT
 from corpus_pipeline.integrations.kaggle.api import (
     KaggleCommandRunner,
@@ -11,7 +12,6 @@ from corpus_pipeline.integrations.kaggle.api import (
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointService
 from corpus_pipeline.integrations.kaggle.config import (
     OwnerConfiguration,
-    parse_env_file,
     resolve_owner_configuration,
 )
 from corpus_pipeline.integrations.kaggle.dataset_service import DatasetService
@@ -31,13 +31,12 @@ from corpus_pipeline.integrations.kaggle.parsers import parse_kaggle_username
 from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
 from corpus_pipeline.integrations.kaggle.workspace import unwind_on_sigterm
 
-DEFAULT_ENV_PATH = PROJECT_ROOT.parent / ".env"
+DEFAULT_ENV_PATH = PROJECT_ENV_FILE
 DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 
 
 def load_kaggle_env(path: Path = DEFAULT_ENV_PATH) -> None:
-    for key, value in parse_env_file(path).items():
-        os.environ.setdefault(key, value)
+    load_project_env(path)
 
 
 def owner_configuration(

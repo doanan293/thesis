@@ -206,13 +206,29 @@ class KaggleCommandRunner:
     environment: dict[str, str] | None = None
     dry_run: bool = False
 
-    def start(self, args: list[str]) -> subprocess.Popen[str] | None:
+    def start(
+        self, args: list[str], *, capture_output: bool = False
+    ) -> subprocess.Popen[str] | None:
         self._validate(args)
         command = [self.executable, *args[1:]]
         if self.dry_run:
             print("DRY RUN: " + " ".join(command), flush=True)
             return None
-        return subprocess.Popen(command, env=self.environment, text=True)
+        streams = (
+            {
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.PIPE,
+                "bufsize": 1,
+            }
+            if capture_output
+            else {}
+        )
+        return subprocess.Popen(command, env=self.environment, text=True, **streams)
+
+    def redact(self, value: str) -> str:
+        environment = dict(os.environ)
+        environment.update(self.environment or {})
+        return _redact(value, environment)
 
     def run_result(
         self, args: list[str], *, operation: str = "command", target: str | None = None
@@ -226,15 +242,13 @@ class KaggleCommandRunner:
             command, env=self.environment, text=True, capture_output=True
         )
         stdout, stderr = completed.stdout or "", completed.stderr or ""
-        environment = dict(os.environ)
-        environment.update(self.environment or {})
         if completed.returncode or "error:" in stdout.casefold():
             raise KaggleCommandError(
                 operation=operation,
                 target=target,
                 returncode=completed.returncode or 1,
-                stdout=_redact(stdout, environment),
-                stderr=_redact(stderr, environment),
+                stdout=self.redact(stdout),
+                stderr=self.redact(stderr),
             )
         return KaggleCommandResult(tuple(command), completed.returncode, stdout, stderr)
 

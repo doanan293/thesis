@@ -59,6 +59,14 @@ def format_timed_log_lines(entry: str, elapsed: float) -> list[str]:
 
 
 def parse_dataset_status(output: str) -> str:
+    payload = parse_dataset_status_payload(output)
+    status = str(payload["status"]).strip().upper()
+    if status:
+        return status
+    raise RuntimeError(f"Unrecognized Kaggle dataset status: {output.strip()}")
+
+
+def parse_dataset_status_payload(output: str) -> dict:
     decoder = json.JSONDecoder()
     for index, character in enumerate(output):
         if character != "{":
@@ -68,9 +76,7 @@ def parse_dataset_status(output: str) -> str:
         except json.JSONDecodeError:
             continue
         if isinstance(payload, dict) and "status" in payload:
-            status = str(payload["status"]).strip().upper()
-            if status:
-                return status
+            return payload
     raise RuntimeError(f"Unrecognized Kaggle dataset status: {output.strip()}")
 
 

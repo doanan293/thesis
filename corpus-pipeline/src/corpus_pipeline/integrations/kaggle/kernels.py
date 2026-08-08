@@ -52,6 +52,13 @@ class PipelineKernelService:
             "identity": job.identity.payload,
             "job_sha256": job.identity.sha256,
         }
+        if checkpoint_reference:
+            checkpoint_filename = {
+                "query-embed": "query_embeddings.journal.jsonl",
+                "rerank": "rerank_scores.journal.jsonl",
+            }.get(job.stage.value)
+            if checkpoint_filename is not None:
+                config["checkpoint_filename"] = checkpoint_filename
         mounted_input = str(kaggle_input_path(job))
         if "input_path" in config:
             config["input_path"] = mounted_input

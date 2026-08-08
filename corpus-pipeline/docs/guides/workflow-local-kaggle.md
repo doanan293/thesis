@@ -1,18 +1,20 @@
 # Local + Kaggle workflow
 
-Workflow này giữ build, Qdrant, retrieval và metrics ở local; các model-heavy
-stage dùng cùng command với `--backend kaggle`. Không có Kaggle CLI public riêng.
+Workflow này giữ build, Qdrant, retrieval và metrics ở local; Kaggle chỉ chạy
+các model-heavy stage. Với benchmark `hybrid + rerank`, local chuẩn bị hoàn tất
+candidate bundle trước rồi Kaggle chỉ chấm reranker trên 30 candidates/query.
 
 ## 1. Kiểm tra môi trường
 
-Khai báo Kaggle credentials/owners trong `../.env`, sau đó chạy:
+Khai báo Kaggle credentials/owners trong `.env`, sau đó chạy:
 
 ```bash
 uv sync
 uv run corpus doctor --backend kaggle
+docker compose -f ../docker-compose.yml up -d qdrant
 ```
 
-## 2. Build corpus và evaluation ở local
+## 2. Build và evaluation ở local
 
 ```bash
 uv run corpus build
@@ -20,9 +22,9 @@ uv run corpus validate
 uv run corpus evaluation build
 ```
 
-## 3. Embed corpus trên Kaggle
+## 3. Embed corpus trên Kaggle, upload vector ở local
 
-Kiểm tra reconciliation mà không submit workload bằng shared flag `--dry-run`:
+Dry-run để kiểm tra reconciliation:
 
 ```bash
 uv run corpus embed chunks \
@@ -31,28 +33,14 @@ uv run corpus embed chunks \
   --dry-run
 ```
 
-Chạy thật:
+Chạy thật bằng cùng command không có `--dry-run`; chạy lại để resume nếu job bị
+ngắt. Sau khi bundle corpus đã sync về local:
 
 ```bash
-uv run corpus embed chunks \
-  --backend kaggle \
-  --model qwen3-embedding:0.6b-fp16
-```
-
-CLI reconcile dependencies/checkpoints và publish bundle local chuẩn. Chạy lại
-cùng command để resume.
-
-## 4. Upload vectors vào Qdrant local
-
-```bash
-docker compose -f ../docker-compose.yml up -d qdrant
 uv run corpus vectors upload --model qwen3-embedding:0.6b-fp16
 ```
 
-Không cần copy đường dẫn JSONL thủ công; command resolve bundle chuẩn và kiểm tra
-manifest/completion trước khi upload.
-
-## 5. Embed queries trên Kaggle
+## 4. Pre-embed query trên Kaggle
 
 ```bash
 uv run corpus embed queries \
@@ -60,62 +48,101 @@ uv run corpus embed queries \
   --model qwen3-embedding:0.6b-fp16
 ```
 
-## 6. Retrieve ở local
+Lệnh này tự động stream Kaggle kernel logs qua SSE trong cùng terminal, chờ
+kernel hoàn tất, rồi tải artifact về local. Stream chỉ kết nối khi kernel bắt
+đầu chạy và tự reconnect khi Kaggle trả lỗi tạm thời; status polling vẫn tiếp
+tục độc lập. Không cần chạy riêng `kaggle kernels logs -f`.
+
+Checkpoint được lưu theo model/runtime lineage. Khi input thay đổi, các query
+hoặc candidate pair không đổi được tái sử dụng; record mới hoặc có hash thay
+đổi mới chạy inference, còn record đã bị xóa sẽ không xuất hiện trong artifact
+canonical. Journal là append-only nên resume không rewrite toàn bộ embedding
+file. Với model topology replicated, worker gửi work đồng thời tới cả hai
+server/GPU; topology sharded dùng một server thấy cả hai GPU.
+
+Progress log có các nhóm `reusable`, `changed_or_new`, `deleted`, cùng
+`recent_rate` và `average_rate`. Nếu kernel bị ngắt hoặc hết budget, lần chạy
+lại đúng command sẽ tiếp tục từ các record đã commit trong checkpoint.
+
+Sau khi query-embedding file đã merge vào
+`data/cache/query_embeddings/<model-slug>.jsonl`, file này được dùng lại cho
+dense và hybrid. BM25-only không cần query embeddings. Ba baseline retrieval
+(`bm25`, `dense`, `hybrid`) đều chạy local; xem đầy đủ command trong
+[local-only workflow](workflow-local-only.md).
+
+## 5. Chuẩn bị hybrid candidate bundle ở local
+
+Pipeline chuẩn cho rerank là:
+
+```text
+dense top 50 + BM25 top 50
+  -> RRF (rrf-k=60), giữ top 30
+  -> candidate bundle hoàn chỉnh ở local
+  -> Kaggle reranker inference trên 30 candidates/query
+  -> metrics baseline và reranked ở local
+```
+
+Chạy retrieval và baseline metrics:
 
 ```bash
 uv run corpus retrieve \
-  --run kaggle-smoke \
+  --run hybrid \
   --retriever hybrid \
-  --candidate-k 50 \
-  --limit 50
+  --prefetch-k 50 \
+  --candidate-k 30 \
+  --rrf-k 60
+
+uv run corpus metrics --run hybrid --top-k 30
 ```
 
-Candidate bundle được ghi vào workspace của run và tự động trở thành input cho
-rerank.
+Candidate artifact phải complete trước khi submit rerank. Kaggle không embed
+query, không truy cập Qdrant, không chạy lại RRF và không tính metrics.
 
-## 7. Rerank trên Kaggle
+## 6. Chỉ chạy reranker trên Kaggle
+
+Kiểm tra dependency/checkpoint trước khi submit:
 
 ```bash
 uv run corpus rerank \
-  --run kaggle-smoke \
+  --run hybrid \
   --backend kaggle \
   --model qwen3-reranker:0.6b-fp16 \
   --dry-run
+```
 
+Chạy thật:
+
+```bash
 uv run corpus rerank \
-  --run kaggle-smoke \
+  --run hybrid \
   --backend kaggle \
   --model qwen3-reranker:0.6b-fp16
 ```
 
-Rerank dùng candidates từ cùng run; không truyền lại candidate path trong
-workflow thông thường.
+Rerank stage chỉ nhận candidate JSONL cùng manifest và merge scores vào
+`data/cache/rerank_scores/<model-slug>.jsonl`. Chạy lại cùng command để resume
+các pair còn thiếu; cache được kiểm tra checksum trước khi merge.
 
-## 8. Metrics offline ở local
+## 7. Metrics offline ở local
 
-```bash
-uv run corpus metrics --run kaggle-smoke --top-k 10
-```
-
-Metrics xác thực candidate/score identity rồi sinh baseline và reranked reports,
-không gọi Kaggle, Qdrant hoặc model server.
-
-## 9. Full run
-
-Sau khi smoke pass, dùng tên run khác và bỏ `--limit`:
+Sau khi score file đã merge về local:
 
 ```bash
-uv run corpus retrieve --run kaggle-full --retriever hybrid --candidate-k 50
-uv run corpus rerank --run kaggle-full --backend kaggle
-uv run corpus metrics --run kaggle-full --top-k 10
+uv run corpus metrics --run hybrid --top-k 30
 ```
+
+Report có baseline từ hybrid retrieval và reranked report từ cùng 30 candidates,
+bao gồm Hit@3/5/10/30, MRR và multi-section metrics khi dataset có query
+`multi_required`. Stage này không gọi Kaggle, model server hoặc Qdrant.
 
 ## Troubleshooting
 
-- Credential/owner lỗi: sửa `../.env`, rồi chạy lại `corpus doctor --backend kaggle`.
-- Job pending hoặc hết budget: chạy lại cùng stage; compatible checkpoint được reuse.
-- Artifact identity mismatch: dùng tên run mới hoặc rebuild stage upstream.
-- Xem flag chuẩn bằng `uv run corpus COMMAND --help`.
+- Credential/owner lỗi: sửa `.env`, rồi chạy lại `corpus doctor --backend kaggle`.
+- Job pending hoặc hết budget: chạy lại đúng stage để reconciler resume.
+- Candidate manifest không tương thích: dùng identity/run mới và không trộn
+  artifact từ job khác. Score cache khác candidate set sẽ báo thiếu pair trước
+  khi metrics chạy.
+- `--top-k` lớn hơn 30: retrieve lại với candidate depth tương ứng.
 
-Chi tiết command và exit code: [CLI reference](cli-reference.md). Chính sách
+Chi tiết command và semantics: [CLI reference](cli-reference.md). Chính sách
 artifact downstream: [Downstream](downstream.md).

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,8 @@ from corpus_pipeline.integrations.kaggle.workers.runtime import (
     artifact_from_output,
     identity_from_config,
     managed_model_servers,
+    resolve_input_file,
+    worker_deadline,
 )
 from corpus_pipeline.runtime.client import LlamaCppClient
 from corpus_pipeline.vector_store.ingest_vectors import (
@@ -22,10 +25,13 @@ from corpus_pipeline.vector_store.ingest_vectors import (
 
 
 def run_corpus_embed_worker(
-    config: dict, *, command_executor: Callable[[dict], int] | None = None
+    config: dict,
+    *,
+    command_executor: Callable[[dict], int] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> CloudArtifact:
     identity = identity_from_config(config)
-    input_path = Path(config["input_path"])
+    input_path = resolve_input_file(config, "input_path")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = Path(
@@ -38,16 +44,24 @@ def run_corpus_embed_worker(
             output_path,
             vector_dimension,
             allow_truncated_final_record=True,
+            model_sha256=str(identity.payload.get("model_sha256") or ""),
         )
+        deadline = worker_deadline(config, clock)
         with managed_model_servers(config) as servers:
             args = SimpleNamespace(
                 model=str(config["model"]),
                 input_batch_size=int(config["batch_size"]),
                 mock=False,
                 llama_clients=[LlamaCppClient(server.base_url) for server in servers],
-                runtime_stop_deadline=None,
+                runtime_stop_deadline=deadline,
             )
-            collect_or_create_embeddings(points, args, vector_dimension, cache)
+            collect_or_create_embeddings(
+                points,
+                args,
+                vector_dimension,
+                cache,
+                retain_embeddings=False,
+            )
         return_code = 0
     else:
         return_code = command_executor(config)

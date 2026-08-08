@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from corpus_pipeline.config.enums import Backend
+from corpus_pipeline.config.environment import PROJECT_ENV_FILE, parse_env_file
 from corpus_pipeline.config.paths import PROJECT_ROOT
-from corpus_pipeline.integrations.kaggle.config import parse_env_file
 
-DEFAULT_ENV_PATH = PROJECT_ROOT.parent / ".env"
+DEFAULT_ENV_PATH = PROJECT_ENV_FILE
 EMBEDDING_MODEL_FILENAME = "qwen3-embedding-0.6b-fp16.gguf"
 
 

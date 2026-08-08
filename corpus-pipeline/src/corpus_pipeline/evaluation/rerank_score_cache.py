@@ -5,13 +5,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from corpus_pipeline.cache.jsonl_records import (
+    CacheRecordError,
+    ValidatedSubset,
+    append_record,
+    load_records,
+    rewrite_records,
+    seal_record,
+)
+from corpus_pipeline.cache.jsonl_records import (
+    subset_sha256 as record_subset_sha256,
+)
 from corpus_pipeline.config.paths import RERANK_SCORE_CACHE_DIR
 from corpus_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
     ArtifactManifest,
     Completion,
     canonical_sha256,
-    iter_jsonl_objects,
     require_finite_number,
     write_json,
 )
@@ -28,16 +38,15 @@ class RerankScoreCacheError(ArtifactContractError):
 
 
 def default_rerank_score_cache_path(eval_path: Path, reranker_name: str) -> Path:
-    return (
-        RERANK_SCORE_CACHE_DIR
-        / model_slug(reranker_name)
-        / f"{Path(eval_path).stem}.jsonl"
-    )
+    del eval_path
+    return RERANK_SCORE_CACHE_DIR / f"{model_slug(reranker_name)}.jsonl"
 
 
 @dataclass(frozen=True, order=True)
 class RerankKey:
     reranker: str
+    model_sha256: str
+    request_contract_sha256: str
     query_id: str
     query_hash: str
     chunk_id: str
@@ -72,9 +81,13 @@ def _candidate_document_hash(candidate: RetrievalCandidate) -> str:
 @dataclass
 class RerankScoreCache:
     path: Path
+    model_sha256: str = ""
+    request_contract_sha256: str = ""
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
+        self.model_sha256 = str(self.model_sha256)
+        self.request_contract_sha256 = str(self.request_contract_sha256)
         self.records: dict[RerankKey, float] = {}
         self.record_metadata: dict[RerankKey, dict[str, Any]] = {}
         self._load()
@@ -94,6 +107,8 @@ class RerankScoreCache:
             raise RerankScoreCacheError("Rerank key requires chunk_id")
         return RerankKey(
             str(reranker),
+            self.model_sha256,
+            self.request_contract_sha256,
             query_id,
             query_hash(query),
             chunk_id,
@@ -103,10 +118,35 @@ class RerankScoreCache:
     def _load(self) -> None:
         if not self.path.exists():
             return
-        for line_number, record in enumerate(iter_jsonl_objects(self.path), start=1):
+        try:
+            records, has_legacy = load_records(self.path, allow_legacy=True)
+        except CacheRecordError as exc:
+            raise RerankScoreCacheError(str(exc)) from exc
+        normalized_records: list[dict[str, Any]] = []
+        migrated = False
+        for line_number, record in enumerate(records, start=1):
             try:
+                protocol = str(record.get("protocol") or "")
+                contract = str(
+                    record.get("request_contract_sha256")
+                    or (prompt_contract_hash(protocol=protocol) if protocol else "")
+                )
+                model_sha = str(record.get("model_sha256") or "")
+                if self.model_sha256 and model_sha not in ("", self.model_sha256):
+                    raise RerankScoreCacheError(
+                        f"Model digest mismatch in {self.path}:{line_number}"
+                    )
+                if self.request_contract_sha256 and contract not in (
+                    "",
+                    self.request_contract_sha256,
+                ):
+                    raise RerankScoreCacheError(
+                        f"Prompt contract mismatch in {self.path}:{line_number}"
+                    )
                 key = RerankKey(
                     str(record["reranker"]),
+                    self.model_sha256 or model_sha,
+                    self.request_contract_sha256 or contract,
                     str(record["query_id"]),
                     str(record["query_hash"]),
                     str(record["chunk_id"]),
@@ -117,11 +157,25 @@ class RerankScoreCache:
                 raise RerankScoreCacheError(
                     f"Invalid rerank score record at {self.path}:{line_number}"
                 ) from exc
-            self.records[key] = score
-            self.record_metadata[key] = {
+            normalized = {
                 **record,
+                "reranker": key.reranker,
+                "model_sha256": key.model_sha256,
+                "request_contract_sha256": key.request_contract_sha256,
+                "query_id": key.query_id,
+                "query_hash": key.query_hash,
+                "chunk_id": key.chunk_id,
+                "document_hash": key.document_hash,
                 "score": score,
             }
+            if "record_sha256" not in record or "cache_schema" not in record:
+                normalized = seal_record(normalized, "rerank-score-v2")
+                migrated = True
+            self.records[key] = score
+            self.record_metadata[key] = normalized
+            normalized_records.append(normalized)
+        if has_legacy or migrated:
+            rewrite_records(self.path, normalized_records)
 
     def set(
         self,
@@ -137,8 +191,22 @@ class RerankScoreCache:
         except ArtifactContractError as exc:
             raise RerankScoreCacheError(str(exc)) from exc
         key = self.key_for(reranker, query_row, candidate)
+        contract = self.request_contract_sha256
+        if not contract and protocol:
+            contract = prompt_contract_hash(protocol=str(protocol))
+            key = RerankKey(
+                key.reranker,
+                key.model_sha256,
+                contract,
+                key.query_id,
+                key.query_hash,
+                key.chunk_id,
+                key.document_hash,
+            )
         record = {
             "reranker": key.reranker,
+            "model_sha256": key.model_sha256,
+            "request_contract_sha256": contract,
             "query_id": key.query_id,
             "query_hash": key.query_hash,
             "chunk_id": key.chunk_id,
@@ -147,12 +215,38 @@ class RerankScoreCache:
         }
         if protocol is not None:
             record["protocol"] = str(protocol)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        record = append_record(self.path, record, schema="rerank-score-v2")
         self.records[key] = score
         self.record_metadata[key] = record
         return key
+
+    def validate_subset(
+        self, candidate_data_path: Path, reranker: str
+    ) -> ValidatedSubset:
+        expected = self.expected_keys_from_candidates(candidate_data_path, reranker)
+        found = [
+            self.record_metadata[key]
+            for key in sorted(expected)
+            if key in self.record_metadata
+        ]
+        missing = len(expected) - len(found)
+        return ValidatedSubset(
+            total=len(expected),
+            complete=len(found),
+            missing=missing,
+            sha256=record_subset_sha256(found) if not missing else None,
+        )
+
+    def replace_keys(self, keys: set[RerankKey]) -> None:
+        kept = [
+            record for key, record in self.record_metadata.items() if key not in keys
+        ]
+        rewrite_records(
+            self.path, sorted(kept, key=lambda item: json.dumps(item, sort_keys=True))
+        )
+        self.records.clear()
+        self.record_metadata.clear()
+        self._load()
 
     def require_score(
         self,

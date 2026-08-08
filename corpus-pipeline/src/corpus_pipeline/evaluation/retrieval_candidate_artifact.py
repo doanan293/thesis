@@ -17,6 +17,8 @@ from corpus_pipeline.evaluation.query_embedding_cache import query_hash
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from corpus_pipeline.evaluation.retrievers import candidate_document_text
 
+_RETRIEVAL_BATCH_SIZE = 64
+
 
 def document_hash(document_text: str) -> str:
     return hashlib.sha256(str(document_text).encode("utf-8")).hexdigest()
@@ -43,7 +45,11 @@ def _serialize_candidate(candidate: RetrievalCandidate) -> dict[str, Any]:
         "source": str(candidate.source),
         "document_text": text,
         "document_hash": document_hash(text),
-        "payload": dict(candidate.payload),
+        "payload": {
+            "chunk_id": chunk_id,
+            "section_id": candidate.payload.get("section_id"),
+            "chunk_index": candidate.payload.get("chunk_index"),
+        },
     }
 
 
@@ -148,40 +154,53 @@ def build_candidate_artifact(
     pair_count = 0
     with output_path.open("w", encoding="utf-8") as handle:
         batch_search = getattr(retriever, "search_batch", None)
-        if batch_search is not None:
-            search_results = batch_search(rows, candidate_k)
-            if len(search_results) != len(rows):
-                raise ValueError("batch retrieval returned an unexpected result count")
-        else:
-            search_results = [None] * len(rows)
-        for row, batched_candidates in zip(rows, search_results, strict=True):
-            search = getattr(retriever, "search_query_row", None)
-            if batched_candidates is not None:
-                candidates = batched_candidates
-            elif search is not None:
-                candidates = search(row, limit=candidate_k)
-            else:
-                candidates = (
-                    retriever.search(row, limit=candidate_k)
-                    if getattr(retriever, "accepts_query_row", False)
-                    else retriever.search(
-                        str(row.get("query") or ""), limit=candidate_k
+        row_batches = (
+            (
+                rows[start : start + _RETRIEVAL_BATCH_SIZE]
+                for start in range(0, len(rows), _RETRIEVAL_BATCH_SIZE)
+            )
+            if batch_search is not None
+            else (rows,)
+        )
+        for batch_rows in row_batches:
+            if batch_search is not None:
+                search_results = batch_search(batch_rows, candidate_k)
+                if len(search_results) != len(batch_rows):
+                    raise ValueError(
+                        "batch retrieval returned an unexpected result count"
                     )
+            else:
+                search_results = [None] * len(batch_rows)
+            for row, batched_candidates in zip(batch_rows, search_results, strict=True):
+                search = getattr(retriever, "search_query_row", None)
+                if batched_candidates is not None:
+                    candidates = batched_candidates
+                elif search is not None:
+                    candidates = search(row, limit=candidate_k)
+                else:
+                    candidates = (
+                        retriever.search(row, limit=candidate_k)
+                        if getattr(retriever, "accepts_query_row", False)
+                        else retriever.search(
+                            str(row.get("query") or ""), limit=candidate_k
+                        )
+                    )
+                serialized = [
+                    _serialize_candidate(candidate)
+                    for candidate in candidates[:candidate_k]
+                ]
+                record = {
+                    "query_id": str(row.get("query_id") or ""),
+                    "query": str(row.get("query") or ""),
+                    "query_hash": query_hash(str(row.get("query") or "")),
+                    "candidates": serialized,
+                }
+                _validate_query_record(record)
+                handle.write(
+                    json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
                 )
-            serialized = [
-                _serialize_candidate(candidate)
-                for candidate in candidates[:candidate_k]
-            ]
-            record = {
-                "query_id": str(row.get("query_id") or ""),
-                "query": str(row.get("query") or ""),
-                "query_hash": query_hash(str(row.get("query") or "")),
-                "candidates": serialized,
-            }
-            _validate_query_record(record)
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-            query_count += 1
-            pair_count += len(serialized)
+                query_count += 1
+                pair_count += len(serialized)
     manifest = ArtifactManifest.create(
         artifact_type="retrieval_candidates",
         data_path=output_path,

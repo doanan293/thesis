@@ -4,7 +4,6 @@ from corpus_pipeline.integrations.kaggle.api import (
 )
 from corpus_pipeline.integrations.kaggle.config import (
     OwnerConfiguration,
-    parse_env_file,
     resolve_owner_configuration,
 )
 from corpus_pipeline.integrations.kaggle.dataset_service import (
@@ -37,6 +36,5 @@ __all__ = [
     "OwnerConfiguration",
     "TemporaryWorkspace",
     "classify_command_error",
-    "parse_env_file",
     "resolve_owner_configuration",
 ]

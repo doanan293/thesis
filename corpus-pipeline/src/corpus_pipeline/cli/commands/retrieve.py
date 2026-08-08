@@ -22,9 +22,8 @@ from corpus_pipeline.config.defaults import (
 from corpus_pipeline.config.paths import (
     PROCESSED_EVALUATION_DIR,
     RETRIEVAL_EVAL_RUNS_DIR,
-    query_embedding_bundle_dir,
+    query_embedding_cache_path,
 )
-from corpus_pipeline.evaluation.artifact_contracts import sha256_file
 from corpus_pipeline.evaluation.retrieval_service import RetrieveRequest, run_retrieval
 
 
@@ -36,7 +35,8 @@ def resolve_query_embeddings_dir(
 ) -> Path | None:
     if explicit is not None or retriever == "bm25":
         return explicit
-    return query_embedding_bundle_dir(model, sha256_file(evaluation))
+    del evaluation
+    return query_embedding_cache_path(model)
 
 
 def retrieve(
@@ -52,6 +52,15 @@ def retrieve(
         int,
         typer.Option("--candidate-k", callback=lambda _c, _p, v: positive_int(str(v))),
     ] = DEFAULT_CANDIDATE_K,
+    prefetch_k: Annotated[
+        int | None,
+        typer.Option(
+            "--prefetch-k",
+            callback=lambda _c, _p, value: (
+                None if value is None else positive_int(str(value))
+            ),
+        ),
+    ] = None,
     rrf_k: Annotated[
         int, typer.Option("--rrf-k", callback=lambda _c, _p, v: positive_int(str(v)))
     ] = DEFAULT_RRF_K,
@@ -68,6 +77,7 @@ def retrieve(
             qdrant_url,
             retriever,
             candidate_k,
+            prefetch_k,
             rrf_k,
             limit,
             force,
@@ -84,6 +94,7 @@ def _run(
     qdrant_url,
     retriever,
     candidate_k,
+    prefetch_k,
     rrf_k,
     limit,
     force,
@@ -99,6 +110,7 @@ def _run(
             qdrant_url=qdrant_url,
             retriever=retriever,
             candidate_k=candidate_k,
+            prefetch_k=prefetch_k,
             rrf_k=rrf_k,
             limit=limit,
             force=force,

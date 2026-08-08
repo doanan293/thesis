@@ -16,10 +16,8 @@ from corpus_pipeline.config.defaults import DEFAULT_EMBEDDING_MODEL
 from corpus_pipeline.config.paths import (
     PROCESSED_EVALUATION_DIR,
     RAG_FINAL_CHUNKS_PATH,
-    VECTOR_EMBEDDING_CACHE_DIR,
-    query_embedding_bundle_dir,
+    query_embedding_cache_path,
 )
-from corpus_pipeline.evaluation.artifact_contracts import sha256_file
 from corpus_pipeline.evaluation.query_embedding_service import (
     KaggleQueryEmbeddingBackend,
     LocalQueryEmbeddingBackend,
@@ -32,6 +30,7 @@ from corpus_pipeline.vector_store.embedding_service import (
     KaggleChunkEmbeddingBackend,
     LocalChunkEmbeddingBackend,
 )
+from corpus_pipeline.vector_store.ingest_vectors import default_embedding_cache_path
 
 embed_app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -41,16 +40,14 @@ def embed_chunks_command(
     backend: Backend = Backend.LOCAL,
     chunks: Path = RAG_FINAL_CHUNKS_PATH,
     model: str = DEFAULT_EMBEDDING_MODEL,
-    output_dir: Path | None = None,
+    output: Path | None = None,
     force: bool = False,
     dry_run: bool = False,
     budget_seconds: int = 21_600,
     request_timeout_seconds: float = 900.0,
 ) -> CommandResult:
     require_model(model)
-    resolved_output = (
-        output_dir or VECTOR_EMBEDDING_CACHE_DIR / require_model(model).slug / "current"
-    )
+    resolved_output = output or default_embedding_cache_path(model)
     adapter = (
         LocalChunkEmbeddingBackend()
         if backend is Backend.LOCAL
@@ -60,7 +57,7 @@ def embed_chunks_command(
         ChunkEmbeddingRequest(
             chunks_path=chunks,
             model=model,
-            output_dir=resolved_output,
+            cache_path=resolved_output,
             force=force,
             dry_run=dry_run,
             budget_seconds=budget_seconds,
@@ -71,7 +68,7 @@ def embed_chunks_command(
     return CommandResult(
         "embed chunks",
         status,
-        result.bundle.root if result.bundle else None,
+        result.cache_path,
         {"actions": result.actions},
     )
 
@@ -82,7 +79,16 @@ def embed_chunks(
     backend: Annotated[Backend, typer.Option("--backend")] = Backend.LOCAL,
     chunks: Annotated[Path, typer.Option("--chunks")] = RAG_FINAL_CHUNKS_PATH,
     model: Annotated[str, typer.Option("--model")] = DEFAULT_EMBEDDING_MODEL,
-    output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "--output-dir",
+            file_okay=True,
+            dir_okay=False,
+            resolve_path=True,
+        ),
+    ] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     budget_seconds: Annotated[int, typer.Option("--budget-seconds")] = 21_600,
@@ -96,7 +102,7 @@ def embed_chunks(
             backend=backend,
             chunks=chunks,
             model=model,
-            output_dir=output_dir,
+            output=output,
             force=force,
             dry_run=dry_run,
             budget_seconds=budget_seconds,
@@ -121,9 +127,7 @@ def embed_queries(
     ] = 900.0,
 ) -> None:
     require_model(model)
-    resolved_output = output_dir or query_embedding_bundle_dir(
-        model, sha256_file(evaluation)
-    )
+    resolved_output = output_dir or query_embedding_cache_path(model)
     run_handler(
         state_from_context(ctx),
         lambda: _query_embedding_result(
@@ -154,6 +158,6 @@ def _query_embedding_result(result) -> CommandResult:
     return CommandResult(
         "embed queries",
         CommandStatus.INCOMPLETE if result.incomplete else CommandStatus.COMPLETE,
-        result.bundle.root if result.bundle else None,
-        {"actions": result.actions},
+        result.cache_path,
+        {"actions": result.actions, "subset_sha256": result.subset_sha256},
     )
