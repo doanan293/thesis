@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,15 +12,12 @@ from corpus_pipeline.evaluation.artifact_contracts import (
     require_finite_number,
     write_json,
 )
-from corpus_pipeline.evaluation.query_embedding_cache import query_hash
+from corpus_pipeline.evaluation.query_hash import query_hash
+from corpus_pipeline.evaluation.rerank_contract import document_hash
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from corpus_pipeline.evaluation.retrievers import candidate_document_text
 
 _RETRIEVAL_BATCH_SIZE = 64
-
-
-def document_hash(document_text: str) -> str:
-    return hashlib.sha256(str(document_text).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)

@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from corpus_pipeline.integrations.kaggle.api import kernel_metadata
-from corpus_pipeline.integrations.kaggle.dependencies import kaggle_input_path
+from corpus_pipeline.integrations.kaggle.dependencies import kaggle_input_root
 from corpus_pipeline.integrations.kaggle.kernel_service import KernelService
 from corpus_pipeline.integrations.kaggle.models import StageJob
 
@@ -59,15 +59,15 @@ class PipelineKernelService:
             }.get(job.stage.value)
             if checkpoint_filename is not None:
                 config["checkpoint_filename"] = checkpoint_filename
-        mounted_input = str(kaggle_input_path(job))
-        if "input_path" in config:
-            config["input_path"] = mounted_input
-        if "candidate_path" in config:
-            config["candidate_path"] = mounted_input
-        if "candidate_manifest_path" in config:
-            config["candidate_manifest_path"] = str(
-                Path(mounted_input).with_name("manifest.json")
-            )
+        mounted_root = kaggle_input_root(job)
+        config["input_files"] = {
+            key: {
+                "path": str(mounted_root / descriptor["filename"]),
+                "filename": descriptor["filename"],
+                "sha256": descriptor["sha256"],
+            }
+            for key, descriptor in job.input_bundle.descriptors().items()
+        }
         (bundle / "stage_config.json").write_text(
             json.dumps(config, indent=2), encoding="utf-8"
         )

@@ -1,5 +1,9 @@
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
+    CreateAlias,
+    CreateAliasOperation,
+    DeleteAlias,
+    DeleteAliasOperation,
     Distance,
     Modifier,
     PayloadSchemaType,
@@ -42,6 +46,9 @@ class QdrantClientHelper:
         collections = [c.name for c in self.client.get_collections().collections]
         return self.collection_name in collections
 
+    def point_count(self) -> int:
+        return int(self.client.get_collection(self.collection_name).points_count)
+
     def init_collection(self, vector_size=None):
         size = vector_size or self.vector_size
         if not self.collection_exists():
@@ -70,21 +77,29 @@ class QdrantClientHelper:
         self.client.delete_collection(self.collection_name)
         self.init_collection(vector_size=self.vector_size)
 
-    def switch_alias(self, alias_name: str) -> None:
+    def switch_alias(
+        self,
+        alias_name: str,
+        *,
+        delete_legacy_collection: bool = False,
+    ) -> None:
         """Atomically point a stable alias at this versioned collection."""
         collections = {item.name for item in self.client.get_collections().collections}
+        aliases = {item.alias_name for item in self.client.get_aliases().aliases}
         actions = []
         if alias_name in collections:
-            from qdrant_client.models import DeleteAliasOperation
-
-            actions.append(DeleteAliasOperation(alias_name=alias_name))
-        from qdrant_client.models import CreateAliasOperation
-
+            if not delete_legacy_collection:
+                raise RuntimeError(
+                    f"Refusing to delete legacy collection '{alias_name}'"
+                )
+            self.client.delete_collection(alias_name)
+        if alias_name in aliases:
+            actions.append(
+                DeleteAliasOperation(delete_alias=DeleteAlias(alias_name=alias_name))
+            )
         actions.append(
             CreateAliasOperation(
-                create_alias=__import__(
-                    "qdrant_client.models", fromlist=["CreateAlias"]
-                ).CreateAlias(
+                create_alias=CreateAlias(
                     collection_name=self.collection_name,
                     alias_name=alias_name,
                 )

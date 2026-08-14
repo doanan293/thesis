@@ -8,11 +8,16 @@ from corpus_pipeline.artifacts.bundle import load_bundle
 from corpus_pipeline.cache.jsonl_records import merge_records
 from corpus_pipeline.config.paths import WORK_DIR, rerank_score_cache_path
 from corpus_pipeline.evaluation.artifact_contracts import canonical_sha256
+from corpus_pipeline.evaluation.rerank_artifacts import (
+    finalize_run_rerank_bundle,
+    load_registered_rerank_bundle,
+    migrate_legacy_rerank,
+)
 from corpus_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
     prompt_contract_hash,
 )
-from corpus_pipeline.evaluation.rerankers import LlamaCppReranker
+from corpus_pipeline.evaluation.rerankers import LlamaCppReranker, Reranker
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
 )
@@ -31,7 +36,6 @@ from corpus_pipeline.vector_store.ingest_vectors import (
 class RerankRequest:
     run_root: Path
     candidates_dir: Path | None
-    output_dir: Path | None
     model: str
     force: bool
     dry_run: bool
@@ -41,7 +45,8 @@ class RerankRequest:
 
 @dataclass(frozen=True)
 class RerankStageResult:
-    cache_path: Path | None
+    artifact_dir: Path | None
+    variant_sha256: str
     subset_sha256: str | None
     actions: tuple[str, ...]
     incomplete: bool = False
@@ -62,6 +67,18 @@ def rerank_checkpoint_path(output_dir: Path, candidate_sha256: str, model: str) 
 
 
 class LocalRerankBackend:
+    def __init__(
+        self,
+        reranker_factory: Callable[[object, float], Reranker] | None = None,
+    ):
+        self.reranker_factory = reranker_factory or self._default_reranker
+
+    @staticmethod
+    def _default_reranker(spec, timeout: float) -> Reranker:
+        manager = LlamaCppComposeManager(DEFAULT_COMPOSE_FILE)
+        endpoint = resolve_server("compose", [], spec, manager, DEFAULT_GGUF_ROOT)[0]
+        return LlamaCppReranker(spec, LlamaCppClient(endpoint, timeout=timeout))
+
     def run(self, request: RerankRequest) -> RerankStageResult:
         spec = require_model(request.model)
         if spec.kind is not ModelKind.RERANKER:
@@ -73,10 +90,43 @@ class LocalRerankBackend:
         candidate_bundle = load_bundle(
             candidates_dir, expected_type="retrieval_candidates", require_complete=True
         )
+        from corpus_pipeline.evaluation.variant_identity import RerankVariantIdentity
+
+        identity = RerankVariantIdentity.create(
+            candidate_bundle.manifest.data_sha256, request.model
+        )
+        existing = workspace.variant_records().get(identity.sha256)
+        if existing is not None:
+            bundle = load_registered_rerank_bundle(workspace, identity.sha256, existing)
+            return RerankStageResult(
+                bundle.root,
+                identity.sha256,
+                bundle.manifest.data_sha256,
+                ("reuse=complete variant",),
+            )
+        try:
+            migrated = migrate_legacy_rerank(workspace, candidate_bundle)
+        except (OSError, RuntimeError, ValueError):
+            migrated = None
+        if migrated is not None:
+            digest, migrated_record = migrated
+            bundle = load_registered_rerank_bundle(workspace, digest, migrated_record)
+            if digest == identity.sha256:
+                return RerankStageResult(
+                    bundle.root,
+                    digest,
+                    bundle.manifest.data_sha256,
+                    ("reuse=migrated legacy variant",),
+                )
         if request.dry_run:
-            return RerankStageResult(None, None, ("dry-run",))
-        cache_path = request.output_dir or rerank_score_cache_path(request.model)
+            return RerankStageResult(
+                None,
+                identity.sha256,
+                None,
+                (f"target rerank variant {identity.sha256}", "dry-run"),
+            )
         contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        cache_path = rerank_score_cache_path(request.model, spec.sha256, contract)
         cache = RerankScoreCache(
             cache_path,
             model_sha256=spec.sha256,
@@ -87,11 +137,7 @@ class LocalRerankBackend:
         )
         if request.force:
             cache.replace_keys(expected)
-        manager = LlamaCppComposeManager(DEFAULT_COMPOSE_FILE)
-        endpoint = resolve_server("compose", [], spec, manager, DEFAULT_GGUF_ROOT)[0]
-        reranker = LlamaCppReranker(
-            spec, LlamaCppClient(endpoint, timeout=request.request_timeout_seconds)
-        )
+        reranker = self.reranker_factory(spec, request.request_timeout_seconds)
         processed = 0
         for record in CandidateArtifactReader.from_data_path(
             candidate_bundle.data_path
@@ -114,12 +160,25 @@ class LocalRerankBackend:
                 )
                 processed += 1
         subset = cache.validate_subset(candidate_bundle.data_path, request.model)
-        workspace.record_rerank_scores(cache_path, request.model)
+        if not subset.is_complete:
+            return RerankStageResult(
+                None,
+                identity.sha256,
+                None,
+                (f"scored={processed}",),
+                incomplete=True,
+            )
+        bundle = finalize_run_rerank_bundle(
+            workspace=workspace,
+            candidate_bundle=candidate_bundle,
+            cache_path=cache_path,
+            identity=identity,
+        )
         return RerankStageResult(
-            cache_path,
+            bundle.root,
+            identity.sha256,
             subset.sha256,
             (f"scored={processed}",),
-            incomplete=not subset.is_complete,
         )
 
 
@@ -167,7 +226,36 @@ class KaggleRerankBackend:
             expected_type="retrieval_candidates",
             require_complete=True,
         )
-        cache_path = request.output_dir or rerank_score_cache_path(request.model)
+        from corpus_pipeline.evaluation.variant_identity import RerankVariantIdentity
+
+        identity = RerankVariantIdentity.create(
+            candidate_bundle.manifest.data_sha256, request.model
+        )
+        existing = workspace.variant_records().get(identity.sha256)
+        if existing is not None:
+            bundle = load_registered_rerank_bundle(workspace, identity.sha256, existing)
+            return RerankStageResult(
+                bundle.root,
+                identity.sha256,
+                bundle.manifest.data_sha256,
+                ("reuse=complete variant",),
+            )
+        try:
+            migrated = migrate_legacy_rerank(workspace, candidate_bundle)
+        except (OSError, RuntimeError, ValueError):
+            migrated = None
+        if migrated is not None:
+            digest, migrated_record = migrated
+            bundle = load_registered_rerank_bundle(workspace, digest, migrated_record)
+            if digest == identity.sha256:
+                return RerankStageResult(
+                    bundle.root,
+                    digest,
+                    bundle.manifest.data_sha256,
+                    ("reuse=migrated legacy variant",),
+                )
+        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        cache_path = rerank_score_cache_path(request.model, spec.sha256, contract)
         remote_dir = WORK_DIR / "kaggle-rerank-scores" / spec.slug
         result = run_kaggle_stage(
             stage=StageName.RERANK,
@@ -179,15 +267,18 @@ class KaggleRerankBackend:
             check_only=request.dry_run,
             budget_seconds=request.budget_seconds,
         )
-        actions = tuple(action.reason for action in result.actions)
+        actions = tuple(
+            f"{action.verb.value} {action.resource_kind} {action.reference}: {action.reason}"
+            for action in result.actions
+        )
         if result.artifact_path is None:
             return RerankStageResult(
                 None,
+                identity.sha256,
                 None,
-                actions,
+                (f"target rerank variant {identity.sha256}", *actions),
                 incomplete=not result.completion.is_complete,
             )
-        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
         remote = RerankScoreCache(
             result.artifact_path,
             model_sha256=spec.sha256,
@@ -213,10 +304,23 @@ class KaggleRerankBackend:
             request_contract_sha256=contract,
         )
         subset = local.validate_subset(candidate_bundle.data_path, request.model)
-        workspace.record_rerank_scores(cache_path, request.model)
+        if not subset.is_complete:
+            return RerankStageResult(
+                None,
+                identity.sha256,
+                None,
+                actions,
+                incomplete=True,
+            )
+        bundle = finalize_run_rerank_bundle(
+            workspace=workspace,
+            candidate_bundle=candidate_bundle,
+            cache_path=cache_path,
+            identity=identity,
+        )
         return RerankStageResult(
-            cache_path,
+            bundle.root,
+            identity.sha256,
             subset.sha256,
             actions,
-            incomplete=not subset.is_complete,
         )

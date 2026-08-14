@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -20,6 +20,96 @@ def canonical_sha256(value: object) -> str:
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class InputFile:
+    key: str
+    source_path: Path
+    filename: str
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if not self.key.strip():
+            raise ValueError("input key must not be empty")
+        if not self.source_path.is_file():
+            raise ValueError(f"input file is missing: {self.source_path}")
+        if self.filename == "dependency_manifest.json":
+            raise ValueError("reserved mounted filename: dependency_manifest.json")
+        if not self.filename.strip() or Path(self.filename).name != self.filename:
+            raise ValueError(f"invalid mounted input filename: {self.filename!r}")
+        actual_digest = _sha256_file(self.source_path)
+        if actual_digest != self.sha256:
+            raise ValueError(
+                f"input file sha256 mismatch for {self.key}: "
+                f"{actual_digest} != {self.sha256}"
+            )
+
+    @classmethod
+    def create(
+        cls, key: str, source_path: Path, *, filename: str | None = None
+    ) -> InputFile:
+        source = Path(source_path)
+        if not key.strip():
+            raise ValueError("input key must not be empty")
+        if not source.is_file():
+            raise ValueError(f"input file is missing: {source}")
+        mounted_name = source.name if filename is None else filename
+        return cls(key, source, mounted_name, _sha256_file(source))
+
+    def descriptor(self) -> dict[str, str]:
+        return {"filename": self.filename, "sha256": self.sha256}
+
+
+@dataclass(frozen=True)
+class InputBundle:
+    files: tuple[InputFile, ...]
+    sha256: str
+
+    @classmethod
+    def create(cls, files: Sequence[InputFile]) -> InputBundle:
+        items = tuple(files)
+        if not items:
+            raise ValueError("input bundle must contain at least one file")
+        by_key = {item.key: item for item in items}
+        if len(by_key) != len(items):
+            duplicate = next(
+                item.key
+                for item in items
+                if sum(other.key == item.key for other in items) > 1
+            )
+            raise ValueError(f"duplicate input key: {duplicate}")
+        filenames = [item.filename for item in items]
+        if len(set(filenames)) != len(filenames):
+            duplicate = next(
+                filename for filename in filenames if filenames.count(filename) > 1
+            )
+            raise ValueError(f"duplicate mounted filename: {duplicate}")
+        descriptors = {key: by_key[key].descriptor() for key in sorted(by_key)}
+        return cls(
+            items,
+            canonical_sha256({"schema_version": 1, "files": descriptors}),
+        )
+
+    def file(self, key: str) -> InputFile:
+        try:
+            return next(item for item in self.files if item.key == key)
+        except StopIteration as exc:
+            raise KeyError(f"input bundle has no logical key {key!r}") from exc
+
+    def descriptors(self) -> dict[str, dict[str, str]]:
+        return {
+            key: self.file(key).descriptor()
+            for key in sorted(item.key for item in self.files)
+        }
 
 
 class StageName(StrEnum):
@@ -67,9 +157,7 @@ class JobIdentity:
     @property
     def reuse_payload(self) -> dict[str, JSONValue]:
         return {
-            key: value
-            for key, value in self.payload.items()
-            if key != "input_sha256"
+            key: value for key, value in self.payload.items() if key != "input_sha256"
         }
 
     @property
@@ -105,7 +193,7 @@ class StageJob:
     contract_version: int
     model: str
     identity: JobIdentity
-    input_path: Path
+    input_bundle: InputBundle
     output_dir: Path
     local_cache_path: Path
     data_filename: str

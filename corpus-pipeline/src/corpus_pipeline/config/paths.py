@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from corpus_pipeline.evaluation.artifact_contracts import canonical_sha256
 from corpus_pipeline.runtime.catalog import require_model
 
 WORKSPACE_ROOT_ENV = "CORPUS_PIPELINE_ROOT"
@@ -81,5 +82,16 @@ def query_embedding_cache_path(model: str) -> Path:
     return QUERY_EMBEDDING_CACHE_DIR / f"{require_model(model).slug}.jsonl"
 
 
-def rerank_score_cache_path(model: str) -> Path:
-    return RERANK_SCORE_CACHE_DIR / f"{require_model(model).slug}.jsonl"
+def rerank_score_cache_path(
+    model: str,
+    model_sha256: str,
+    request_contract_sha256: str,
+) -> Path:
+    identity = canonical_sha256(
+        {
+            "model": model,
+            "model_sha256": model_sha256,
+            "request_contract_sha256": request_contract_sha256,
+        }
+    )
+    return RERANK_SCORE_CACHE_DIR / require_model(model).slug / f"{identity}.jsonl"

@@ -79,7 +79,8 @@ def build_retriever_for_request(
     collection_name = model_collection_name(request.embedding_model)
     client = _qdrant_client(request.qdrant_url)
     collections = {item.name for item in client.get_collections().collections}
-    if collection_name not in collections:
+    aliases = {item.alias_name for item in client.get_aliases().aliases}
+    if collection_name not in collections | aliases:
         raise ValueError(
             f"Qdrant collection '{collection_name}' is missing; ingest vectors for "
             f"{request.embedding_model} first"

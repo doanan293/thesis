@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 from corpus_pipeline.artifacts.jsonl import iter_jsonl_objects
 from corpus_pipeline.cache.jsonl_records import seal_record
-from corpus_pipeline.evaluation.query_embedding_cache import query_hash
-from corpus_pipeline.evaluation.rerank_score_cache import prompt_contract_hash
-from corpus_pipeline.evaluation.retrieval_candidate_artifact import document_hash
+from corpus_pipeline.evaluation.query_hash import query_hash
+from corpus_pipeline.evaluation.rerank_contract import (
+    document_hash,
+    prompt_contract_hash,
+)
 from corpus_pipeline.integrations.kaggle.models import CloudArtifact
+from corpus_pipeline.integrations.kaggle.parsers import format_elapsed
 from corpus_pipeline.integrations.kaggle.workers.checkpointing import (
     AppendOnlyJournal,
 )
@@ -100,11 +104,21 @@ def _pair_details(candidate_path: Path) -> dict[str, tuple[str, str]]:
     return details
 
 
+def _emit_progress(message: str) -> None:
+    print(f"[rerank] {message}", flush=True)
+
+
 def run_rerank_worker(
-    config: dict, *, score_pair: Callable[[str, str, str], float] | None = None
+    config: dict,
+    *,
+    score_pair: Callable[[str, str, str], float] | None = None,
+    emit: Callable[[str], None] = _emit_progress,
+    clock: Callable[[], float] = time.monotonic,
 ) -> CloudArtifact:
+    started = clock()
     identity = identity_from_config(config)
-    candidate_path = resolve_input_file(config, "candidate_path")
+    candidate_path = resolve_input_file(config, "candidates")
+    resolve_input_file(config, "candidate_manifest")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     data_path = output_dir / "rerank_scores.jsonl"
@@ -125,7 +139,31 @@ def run_rerank_worker(
     missing = [pair for pair in pairs if _pair_key(pair) not in existing]
     deadline = worker_deadline(config)
 
+    expected_by_query: dict[str, int] = {}
+    for pair in pairs:
+        query_id = pair["query_id"]
+        expected_by_query[query_id] = expected_by_query.get(query_id, 0) + 1
+    remaining_by_query = dict(expected_by_query)
+    for record in existing.values():
+        remaining_by_query[record["query_id"]] -= 1
+    completed_queries = sum(
+        remaining == 0 for remaining in remaining_by_query.values()
+    )
+    next_milestone = ((completed_queries // 500) + 1) * 500
+    last_reported_pairs = len(existing)
+    last_reported_at = started
+    newly_processed_pairs = 0
+    emit(
+        f"input queries total={len(expected_by_query)} "
+        f"reusable={completed_queries} "
+        f"missing={len(expected_by_query) - completed_queries} "
+        f"pairs total={len(pairs)} reusable={len(existing)} "
+        f"missing={len(missing)}"
+    )
+
     def commit(records: list[dict]) -> None:
+        nonlocal completed_queries, last_reported_at, last_reported_pairs
+        nonlocal newly_processed_pairs, next_milestone
         if not records:
             return
         contract = prompt_contract_hash(protocol=protocol)
@@ -142,6 +180,30 @@ def run_rerank_worker(
         ]
         journal.append_batch(records)
         existing.update({_pair_key(record): record for record in records})
+        newly_processed_pairs += len(records)
+        for record in records:
+            query_id = record["query_id"]
+            remaining_by_query[query_id] -= 1
+            if remaining_by_query[query_id] == 0:
+                completed_queries += 1
+        while completed_queries >= next_milestone:
+            now = clock()
+            recent_rate = (len(existing) - last_reported_pairs) / max(
+                now - last_reported_at, 1.0
+            )
+            average_rate = newly_processed_pairs / max(now - started, 1.0)
+            emit(
+                f"milestone={next_milestone} "
+                f"processed={completed_queries}/{len(expected_by_query)} queries "
+                f"pairs={len(existing)}/{len(pairs)} "
+                f"progress={completed_queries / max(len(expected_by_query), 1) * 100:.2f}% "
+                f"elapsed={format_elapsed(max(0.0, now - started))} "
+                f"recent_rate={recent_rate:.2f} "
+                f"average_rate={average_rate:.2f} pairs/s"
+            )
+            next_milestone += 500
+            last_reported_pairs = len(existing)
+            last_reported_at = now
 
     if score_pair is not None:
         batch_size = max(1, int(config.get("batch_size", 32)))
@@ -256,7 +318,7 @@ def run_rerank_worker(
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.touch(exist_ok=True)
     journal.compact(pairs, data_path)
-    return artifact_from_output(
+    artifact = artifact_from_output(
         data_path,
         artifact_type="rerank_scores",
         identity=identity,
@@ -264,6 +326,12 @@ def run_rerank_worker(
         complete=len(existing),
         checkpoint_path=journal_path,
     )
+    emit(
+        f"artifact queries={completed_queries}/{len(expected_by_query)} "
+        f"pairs={len(existing)}/{len(pairs)} "
+        f"complete={'true' if len(existing) == len(pairs) else 'false'}"
+    )
+    return artifact
 
 
 def main() -> int:

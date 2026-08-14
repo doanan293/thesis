@@ -42,6 +42,11 @@ def rerank(
     ] = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> None:
     run_root = RETRIEVAL_EVAL_RUNS_DIR / run
+    if output_dir is not None:
+        typer.echo(
+            "Warning: --output-dir is deprecated; rerank artifacts are stored under the run",
+            err=True,
+        )
     adapter = (
         LocalRerankBackend() if backend is Backend.LOCAL else KaggleRerankBackend()
     )
@@ -50,14 +55,13 @@ def rerank(
         lambda: _result(
             adapter.run(
                 RerankRequest(
-                    run_root,
-                    candidates,
-                    output_dir,
-                    model,
-                    force,
-                    dry_run,
-                    budget_seconds,
-                    request_timeout_seconds,
+                    run_root=run_root,
+                    candidates_dir=candidates,
+                    model=model,
+                    force=force,
+                    dry_run=dry_run,
+                    budget_seconds=budget_seconds,
+                    request_timeout_seconds=request_timeout_seconds,
                 )
             )
         ),
@@ -69,6 +73,10 @@ def _result(result) -> CommandResult:
     return CommandResult(
         "rerank",
         CommandStatus.INCOMPLETE if result.incomplete else CommandStatus.COMPLETE,
-        result.cache_path,
-        {"actions": result.actions, "subset_sha256": result.subset_sha256},
+        result.artifact_dir,
+        {
+            "actions": result.actions,
+            "subset_sha256": result.subset_sha256,
+            "variant_sha256": result.variant_sha256,
+        },
     )

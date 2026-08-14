@@ -78,7 +78,7 @@ def run_query_embed_worker(
 ) -> CloudArtifact:
     started = clock()
     identity = identity_from_config(config)
-    input_path = resolve_input_file(config, "input_path")
+    input_path = resolve_input_file(config, "input")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     data_path = output_dir / "query_embeddings.jsonl"

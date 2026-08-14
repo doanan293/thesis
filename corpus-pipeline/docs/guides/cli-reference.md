@@ -24,6 +24,29 @@ corpus metrics --run NAME
 Global `--json` emits a machine-readable envelope and `--debug` enables
 tracebacks. Dùng `uv run corpus COMMAND --help` để xem default thực tế.
 
+## Run, retriever và model
+
+`--run` đặt tên workspace dưới `data/runs/retrieval_eval/<run-name>/`. Retrieval,
+rerank và metrics dùng tên này để mở lại cùng một workspace và các artifact đã
+đóng băng; tên run không tự chọn thuật toán.
+
+`--retriever` độc lập chọn cách tạo candidates: `bm25`, `dense` hoặc `hybrid`.
+`--model` của `corpus retrieve` chọn embedding identity và Qdrant collection
+tương ứng. BM25 không embed query nhưng vẫn resolve collection đó, vì các điểm
+trong collection có BM25 sparse vector. `--model` của `corpus rerank` là
+reranker model, không phải embedding model. `corpus metrics` chỉ đọc artifact
+đã có và không chạy model.
+
+| Run name | Retriever | Important parameters |
+| --- | --- | --- |
+| `bm25-qwen06b-k30` | `bm25` | embedding collection `qwen06b`, `candidate-k=30` |
+| `dense-qwen06b-k30` | `dense` | embedding `qwen06b`, `candidate-k=30` |
+| `hybrid-qwen06b-p50-k30-rrf60` | `hybrid` | embedding `qwen06b`, `prefetch-k=50`, `candidate-k=30`, `rrf-k=60` |
+
+Run identity còn đóng băng evaluation path/checksum, collection, query-embedding
+digest, limit và các K parameters. Khi một identity field thay đổi, nên dùng
+tên run mới thay vì dùng `--force` một cách tùy ý.
+
 ## Retrieval modes
 
 | Retriever | Query embeddings | Qdrant vectors | Candidate semantics |
@@ -55,8 +78,9 @@ Benchmark hybrid chuẩn:
 
 ```bash
 uv run corpus retrieve \
-  --run hybrid \
+  --run hybrid-qwen06b-p50-k30-rrf60 \
   --retriever hybrid \
+  --model qwen3-embedding:0.6b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
   --rrf-k 60
@@ -70,10 +94,38 @@ Nếu hybrid bỏ qua `--prefetch-k`, effective value bằng `candidate-k`. Valu
 
 `corpus rerank` chỉ đọc complete candidate bundle của run. Với Kaggle backend,
 stage chỉ load reranker model và score candidate pairs; không embed, retrieve,
-truy cập Qdrant hoặc tính metrics.
+truy cập Qdrant hoặc tính metrics. Rerank gắn score vào run hiện có, không chạy
+lại retrieval và không tạo một retrieval run thứ hai.
 
-`corpus metrics --run NAME --top-k 30` tạo baseline report. Nếu run có complete,
-tương thích rerank score cache, command tạo thêm reranked report. Metrics gồm:
+```bash
+uv run corpus rerank \
+  --run hybrid-qwen06b-p50-k30-rrf60 \
+  --backend local \
+  --model qwen3-reranker:0.6b-fp16
+
+uv run corpus metrics \
+  --run hybrid-qwen06b-p50-k30-rrf60 \
+  --top-k 30
+```
+
+Một run dùng chung candidate bundle bất biến cho mọi reranker. Mỗi lần rerank
+hoàn tất tạo một score variant bất biến dưới run; đổi model, GGUF SHA hoặc prompt
+contract sẽ tạo variant mới. Không cần truyền `--output-dir`.
+
+Metrics mặc định tạo/reuse baseline và report cho tất cả reranker variants đã
+hoàn tất. Có thể lọc theo model hoặc đúng variant:
+
+```bash
+uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf60 --top-k 30
+uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf60 \
+  --model qwen3-reranker:0.6b-fp16 --top-k 30
+uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf60 \
+  --variant VARIANT_SHA256_PREFIX --top-k 30
+```
+
+`--model` và `--variant` loại trừ nhau. `--output-dir` của rerank/metrics còn
+được chấp nhận tạm thời cho script cũ nhưng chỉ phát cảnh báo; output chuẩn
+luôn do run tự sinh. Metrics gồm:
 
 - Hit@3, Hit@5, Hit@10, Hit@30.
 - MRR.
@@ -84,12 +136,23 @@ tương thích rerank score cache, command tạo thêm reranked report. Metrics 
 
 ## Artifacts và exit codes
 
-Candidate và report artifacts được publish thành bundle có `manifest.json`.
-Corpus embeddings, query embeddings và rerank scores là các cache JSONL phẳng:
-`data/cache/vector_embeddings/<model-slug>.jsonl`,
-`data/cache/query_embeddings/<model-slug>.jsonl` và
-`data/cache/rerank_scores/<model-slug>.jsonl`. Mỗi record có checksum; cache
-resume theo key và chỉ digest subset đang dùng được ghi vào run identity.
+Candidate, rerank score và metrics artifacts được publish thành bundle có
+`manifest.json`. Candidate bundle dùng chung tại `candidates/`; rerank bundles
+được lưu theo `rerank/<model-slug>/<variant-id>/`, còn reports theo
+`reports/baseline/<metrics-id>/` hoặc
+`reports/rerank/<model-slug>/<variant-id>/<metrics-id>/`.
+
+Global corpus/query embeddings vẫn là cache JSONL. Rerank execution cache cũng
+được version theo model SHA và prompt contract:
+
+```text
+data/cache/vector_embeddings/<model-slug>.jsonl
+data/cache/query_embeddings/<model-slug>.jsonl
+data/cache/rerank_scores/<model-slug>/<execution-identity>.jsonl
+```
+
+Mỗi record có checksum; cache resume theo key, còn run-owned bundle là nguồn
+artifact chuẩn và không bị ghi đè bởi model khác.
 Retrieval, rerank và metrics dùng chung workspace named dưới
 `data/runs/retrieval_eval/` qua `--run NAME`. Không trộn artifact candidate hoặc
 input giữa các run/model/evaluation identity khác nhau.

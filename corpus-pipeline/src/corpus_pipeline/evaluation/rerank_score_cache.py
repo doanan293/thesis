@@ -21,14 +21,16 @@ from corpus_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
     ArtifactManifest,
     Completion,
-    canonical_sha256,
     require_finite_number,
     write_json,
 )
-from corpus_pipeline.evaluation.query_embedding_cache import model_slug, query_hash
+from corpus_pipeline.evaluation.query_hash import model_slug, query_hash
+from corpus_pipeline.evaluation.rerank_contract import (
+    document_hash,
+    prompt_contract_hash,
+)
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
-    document_hash,
 )
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 
@@ -53,21 +55,6 @@ class RerankKey:
     document_hash: str
 
 
-def prompt_contract_hash(
-    *,
-    protocol: str,
-    instruction: str = "",
-    template_version: str = "rerank-prompt-v1",
-) -> str:
-    return canonical_sha256(
-        {
-            "protocol": protocol,
-            "instruction": instruction,
-            "template_version": template_version,
-        }
-    )
-
-
 def _candidate_document_hash(candidate: RetrievalCandidate) -> str:
     if candidate.document_hash:
         return candidate.document_hash
@@ -83,6 +70,7 @@ class RerankScoreCache:
     path: Path
     model_sha256: str = ""
     request_contract_sha256: str = ""
+    rewrite_legacy: bool = True
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
@@ -174,7 +162,7 @@ class RerankScoreCache:
             self.records[key] = score
             self.record_metadata[key] = normalized
             normalized_records.append(normalized)
-        if has_legacy or migrated:
+        if (has_legacy or migrated) and self.rewrite_legacy:
             rewrite_records(self.path, normalized_records)
 
     def set(
@@ -236,6 +224,17 @@ class RerankScoreCache:
             missing=missing,
             sha256=record_subset_sha256(found) if not missing else None,
         )
+
+    def subset_records(
+        self, candidate_data_path: Path, reranker: str
+    ) -> list[dict[str, Any]]:
+        expected = self.expected_keys_from_candidates(candidate_data_path, reranker)
+        missing = expected - set(self.record_metadata)
+        if missing:
+            raise RerankScoreCacheError(
+                f"Rerank score cache is missing {len(missing)} records"
+            )
+        return [self.record_metadata[key] for key in sorted(expected)]
 
     def replace_keys(self, keys: set[RerankKey]) -> None:
         kept = [

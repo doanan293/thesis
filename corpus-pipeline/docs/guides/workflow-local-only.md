@@ -25,14 +25,14 @@ uv run corpus evaluation build
 
 uv run corpus embed chunks \
   --backend local \
-  --model qwen3-embedding:0.6b-fp16
+  --model qwen3-embedding:4b-fp16
 
 uv run corpus vectors upload \
-  --model qwen3-embedding:0.6b-fp16
+  --model qwen3-embedding:4b-fp16
 
 uv run corpus embed queries \
   --backend local \
-  --model qwen3-embedding:0.6b-fp16
+  --model qwen3-embedding:4b-fp16
 ```
 
 `embed queries` ghi vào một file duy nhất theo model tại
@@ -51,23 +51,36 @@ Multi-section Recall và Multi-all-hit tại cùng các cutoff.
 
 ```bash
 uv run corpus retrieve \
-  --run bm25 \
+  --run bm25-qwen4b-k30 \
   --retriever bm25 \
+  --model qwen3-embedding:4b-fp16 \
   --candidate-k 30
 
-uv run corpus metrics --run bm25 --top-k 30
+uv run corpus metrics \
+  --run bm25-qwen4b-k30 \
+  --top-k 30
 ```
+
+BM25 không dùng query embedding. `--model` ở đây vẫn chọn collection
+`thesis_chunks_qwen3_embedding_0_6b_fp16`, nơi mỗi point có cả BM25 sparse
+vector.
 
 ### Dense-only
 
 ```bash
 uv run corpus retrieve \
-  --run dense \
+  --run dense-qwen4b-k30 \
   --retriever dense \
+  --model qwen3-embedding:4b-fp16 \
   --candidate-k 30
 
-uv run corpus metrics --run dense --top-k 30
+uv run corpus metrics \
+  --run dense-qwen4b-k30 \
+  --top-k 30
 ```
+
+Dense validate và dùng lại query-embedding cache tương ứng với cùng embedding
+model `qwen3-embedding:4b-fp16`.
 
 ### Hybrid
 
@@ -76,13 +89,16 @@ và chỉ giữ top 30 trong candidate artifact:
 
 ```bash
 uv run corpus retrieve \
-  --run hybrid \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
   --retriever hybrid \
+  --model qwen3-embedding:4b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
   --rrf-k 60
 
-uv run corpus metrics --run hybrid --top-k 30
+uv run corpus metrics \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --top-k 30
 ```
 
 `--prefetch-k` là số kết quả của từng nhánh; `--candidate-k` là số kết quả sau
@@ -95,20 +111,42 @@ Không chạy hybrid retrieval lần thứ hai. Run `hybrid` đã có candidate 
 đúng 30 candidates/query. Có thể rerank local như sau:
 
 ```bash
-uv run corpus rerank --run hybrid --backend local
-uv run corpus metrics --run hybrid --top-k 30
+uv run corpus rerank \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --backend local \
+  --model qwen3-reranker:0.6b-fp16
+uv run corpus metrics \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --top-k 30
 ```
 
-Metrics lần đầu là `baseline.md`; sau khi có rerank scores trong
-`data/cache/rerank_scores/<model-slug>.jsonl`, lần chạy lại tạo thêm
-`reranked.md` từ cùng candidate artifact.
+Candidate bundle không bị thay đổi khi đổi reranker. Mỗi model/revision tạo
+score variant riêng dưới run. Metrics mặc định tính baseline và mọi variant đã
+hoàn tất; dùng `--model` hoặc `--variant` để lọc. Không cần tự chọn output
+directory:
+
+```bash
+uv run corpus rerank \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --backend local \
+  --model bge-reranker-v2-m3:f16
+
+uv run corpus metrics \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --model bge-reranker-v2-m3:f16 \
+  --top-k 30
+```
+
+Global score cache chỉ phục vụ resume; artifact chuẩn nằm trong run và không bị
+ghi đè khi chạy model khác.
 
 ## 5. Smoke test và resume
 
 Thêm `--limit 50` vào từng lệnh `retrieve` để kiểm tra nhanh trước khi bỏ giới
-hạn. Dùng tên run riêng cho mỗi cấu hình. Không trộn candidates, query bundle
-hoặc model giữa các run; nếu identity thay đổi, chọn tên run mới hoặc dùng
-`--force` có chủ đích.
+hạn. Ví dụ, dùng `hybrid-qwen4b-p50-k30-rrf60-smoke50` cho smoke run và
+`hybrid-qwen4b-p50-k30-rrf60` cho benchmark đầy đủ; bỏ `--limit` làm thay đổi
+run identity. Không trộn candidates, query bundle hoặc model giữa các run; nếu
+identity thay đổi, chọn tên run mới hoặc dùng `--force` có chủ đích.
 
 Metrics chỉ đọc frozen artifacts trong workspace và không khởi động model server
 hoặc truy cập Qdrant.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +10,15 @@ from corpus_pipeline.config.defaults import DEFAULT_TOP_K
 from corpus_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
     sha256_file,
+)
+from corpus_pipeline.evaluation.metrics_artifacts import (
+    MetricsArtifactResult,
+    publish_metrics_artifact,
+    select_rerank_variants,
+)
+from corpus_pipeline.evaluation.rerank_artifacts import (
+    load_registered_rerank_bundle,
+    migrate_legacy_rerank,
 )
 from corpus_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
@@ -25,10 +34,19 @@ from corpus_pipeline.evaluation.retrieval_metrics import (
     score_ranked_payloads,
 )
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
-from corpus_pipeline.evaluation.run_workspace import RunWorkspace, load_run_record
+from corpus_pipeline.evaluation.run_workspace import (
+    RunWorkspace,
+    load_run_record,
+)
+from corpus_pipeline.evaluation.variant_identity import MetricsArtifactIdentity
 from corpus_pipeline.runtime.catalog import require_model
 
 DISPLAY_HIT_KS = (3, 5, 10, 30)
+BREAKDOWN_DIMENSIONS = ("eval_group", "difficulty")
+EVAL_GROUP_DISPLAY_LABELS = {
+    "ankhang": "brand_product_qa",
+    "chunk_risk": "chunk_level_retrieval",
+}
 
 
 def validate_metrics_cutoff(top_k: int, candidate_k: int) -> None:
@@ -82,39 +100,80 @@ def markdown_metric_table(metrics: dict) -> str:
     return "\n".join(lines)
 
 
+def accumulate_breakdown_metrics(breakdowns: dict, hits: dict, row: dict) -> None:
+    for dimension in BREAKDOWN_DIMENSIONS:
+        value = str(row.get(dimension) or "unknown")
+        accumulate_metrics(breakdowns[dimension][value], hits, row)
+
+
+def markdown_breakdown_tables(breakdowns: dict) -> str:
+    sections = []
+    for dimension in BREAKDOWN_DIMENSIONS:
+        lines = [
+            f"## Breakdown by {dimension}",
+            "",
+            f"| {dimension} | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | MRR |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for value, metrics in sorted(breakdowns[dimension].items()):
+            count = metrics["count"]
+            display_value = (
+                EVAL_GROUP_DISPLAY_LABELS.get(value, value)
+                if dimension == "eval_group"
+                else value
+            )
+            cells = [display_value, str(int(count))]
+            cells.extend(
+                f"{metrics.get(f'hit@{k}', 0.0) / count * 100:.2f}%"
+                for k in DISPLAY_HIT_KS
+            )
+            cells.append(f"{metrics.get('mrr', 0.0) / count:.4f}")
+            lines.append("| " + " | ".join(cells) + " |")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
+
+
 @dataclass(frozen=True)
 class MetricsRequest:
     run_root: Path
     top_k: int = DEFAULT_TOP_K
     window_size: int = 3
-    candidates_dir: Path | None = None
-    rerank_scores_dir: Path | None = None
-    output_dir: Path | None = None
+    model: str | None = None
+    variant: str | None = None
 
 
 @dataclass(frozen=True)
 class MetricsResult:
-    baseline_report: Path
-    baseline_results: Path
-    reranked_report: Path | None
-    reranked_results: Path | None
+    baseline: MetricsArtifactResult
+    reranked: tuple[MetricsArtifactResult, ...]
+
+
+@dataclass(frozen=True)
+class RerankMetricInput:
+    variant_sha256: str
+    model: str
+    cache: RerankScoreCache
 
 
 @dataclass(frozen=True)
 class MetricInputs:
     evaluation_rows: dict[str, dict]
     candidates: CandidateArtifactReader
-    rerank_scores: RerankScoreCache | None
-    output_dir: Path
-    reranker: str | None = None
+    candidate_data_sha256: str
+    evaluation_sha256: str
+    rerank_variants: tuple[RerankMetricInput, ...]
+    run_root: Path
 
 
 def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
-    record = load_run_record(request.run_root / "run.json")
+    run_path = request.run_root / "run.json"
+    record = load_run_record(run_path)
     validate_metrics_cutoff(request.top_k, record.identity.candidate_k)
-    candidates_dir = request.candidates_dir or Path(
-        record.candidates_dir or request.run_root / "candidates"
-    )
+    candidates_dir = request.run_root / "candidates"
+    if record.candidates_dir:
+        candidates_dir = Path(record.candidates_dir)
+        if not candidates_dir.is_absolute():
+            candidates_dir = request.run_root / candidates_dir
     candidate_bundle = load_bundle(
         candidates_dir, expected_type="retrieval_candidates", require_complete=True
     )
@@ -126,50 +185,59 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
     rows = {}
     for row in iter_jsonl_objects(evaluation):
         rows[str(row["query_id"])] = row
-    score_cache = None
-    reranker = None
-    score_dir = request.rerank_scores_dir or (
-        Path(record.rerank_scores_dir) if record.rerank_scores_dir else None
+    workspace = RunWorkspace(request.run_root, record.identity)
+    if record.schema_version == 1 and record.legacy_rerank is not None:
+        migrate_legacy_rerank(workspace, candidate_bundle)
+        record = load_run_record(run_path)
+    selected = select_rerank_variants(
+        record.rerank_variants,
+        model=request.model,
+        variant=request.variant,
     )
-    if score_dir:
-        score_path = Path(score_dir)
-        if score_path.is_dir():
-            score_bundle = load_bundle(
-                score_path, expected_type="rerank_score_cache", require_complete=True
-            )
-            score_path = score_bundle.data_path
-            reranker = str(score_bundle.manifest.identity.get("reranker") or "")
-        else:
-            reranker = str(record.reranker or "")
-        if not reranker:
+    rerank_inputs: list[RerankMetricInput] = []
+    for variant_sha256, variant_record in selected.items():
+        score_bundle = load_registered_rerank_bundle(
+            workspace, variant_sha256, variant_record
+        )
+        reranker = str(score_bundle.manifest.identity.get("reranker") or "")
+        if reranker != variant_record.model:
             raise RerankScoreCacheError(
-                "Rerank score cache requires the reranker model in run.json"
+                f"Rerank variant model mismatch for {variant_sha256}"
             )
         spec = require_model(reranker)
         contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
         score_cache = RerankScoreCache(
-            score_path,
+            score_bundle.data_path,
             model_sha256=spec.sha256,
             request_contract_sha256=contract,
+            rewrite_legacy=False,
         )
         subset = score_cache.validate_subset(candidate_bundle.data_path, reranker)
         if not subset.is_complete:
             raise RerankScoreCacheError(
                 f"Rerank score cache is missing {subset.missing} records"
             )
+        rerank_inputs.append(RerankMetricInput(variant_sha256, reranker, score_cache))
     return MetricInputs(
         rows,
         CandidateArtifactReader.from_data_path(candidate_bundle.data_path),
-        score_cache,
-        request.output_dir or request.run_root / "reports",
-        reranker,
+        candidate_bundle.manifest.data_sha256,
+        record.identity.evaluation_sha256,
+        tuple(rerank_inputs),
+        request.run_root,
     )
 
 
 def _records(
-    inputs: MetricInputs, top_k: int, window_size: int, reranked: bool = False
+    inputs: MetricInputs,
+    top_k: int,
+    window_size: int,
+    rerank_input: RerankMetricInput | None = None,
 ):
     metrics = new_metric_bucket()
+    breakdowns = {
+        dimension: defaultdict(new_metric_bucket) for dimension in BREAKDOWN_DIMENSIONS
+    }
     output = []
     for record in inputs.candidates:
         row = inputs.evaluation_rows[record["query_id"]]
@@ -185,9 +253,9 @@ def _records(
             )
             for item in record["candidates"]
         ]
-        if reranked:
+        if rerank_input is not None:
             scored = [
-                (inputs.rerank_scores.require_score(inputs.reranker or "", row, c), c)
+                (rerank_input.cache.require_score(rerank_input.model, row, c), c)
                 for c in candidates
             ]
             candidates = [
@@ -201,44 +269,59 @@ def _records(
             payloads, row, top_k=top_k, window_size=window_size
         )
         accumulate_metrics(metrics, hits, row)
+        accumulate_breakdown_metrics(breakdowns, hits, row)
         output.append({"query_id": record["query_id"], **hits})
-    return dict(metrics), output
-
-
-def _write(output_dir: Path, name: str, metrics: dict, results: list[dict]):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    jsonl = output_dir / f"{name}.jsonl"
-    with jsonl.open("w", encoding="utf-8") as handle:
-        for item in results:
-            handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
-    report = output_dir / f"{name}.md"
-    report.write_text(
-        f"# {name.title()} Retrieval Metrics\n\n{markdown_metric_table(metrics)}\n",
-        encoding="utf-8",
+    return (
+        dict(metrics),
+        {
+            dimension: {
+                value: dict(bucket) for value, bucket in dimension_buckets.items()
+            }
+            for dimension, dimension_buckets in breakdowns.items()
+        },
+        output,
     )
-    return report, jsonl
 
 
 def run_metrics(request: MetricsRequest) -> MetricsResult:
     inputs = load_and_validate_metric_inputs(request)
-    baseline, baseline_rows = _records(inputs, request.top_k, request.window_size)
-    baseline_report, baseline_results = _write(
-        inputs.output_dir, "baseline", baseline, baseline_rows
+    baseline, baseline_breakdowns, baseline_rows = _records(
+        inputs, request.top_k, request.window_size
     )
-    if inputs.rerank_scores is None:
-        result = MetricsResult(baseline_report, baseline_results, None, None)
-        RunWorkspace(
-            request.run_root, load_run_record(request.run_root / "run.json").identity
-        ).record_reports(inputs.output_dir)
-        return result
-    reranked, reranked_rows = _records(inputs, request.top_k, request.window_size, True)
-    reranked_report, reranked_results = _write(
-        inputs.output_dir, "reranked", reranked, reranked_rows
+    baseline_identity = MetricsArtifactIdentity.create(
+        evaluation_sha256=inputs.evaluation_sha256,
+        candidate_data_sha256=inputs.candidate_data_sha256,
+        top_k=request.top_k,
+        window_size=request.window_size,
     )
-    result = MetricsResult(
-        baseline_report, baseline_results, reranked_report, reranked_results
+    baseline_artifact = publish_metrics_artifact(
+        inputs.run_root,
+        baseline_identity,
+        baseline,
+        baseline_breakdowns,
+        baseline_rows,
     )
-    RunWorkspace(
-        request.run_root, load_run_record(request.run_root / "run.json").identity
-    ).record_reports(inputs.output_dir)
-    return result
+    reranked_artifacts: list[MetricsArtifactResult] = []
+    for rerank_input in inputs.rerank_variants:
+        reranked, breakdowns, rows = _records(
+            inputs, request.top_k, request.window_size, rerank_input
+        )
+        identity = MetricsArtifactIdentity.create(
+            evaluation_sha256=inputs.evaluation_sha256,
+            candidate_data_sha256=inputs.candidate_data_sha256,
+            top_k=request.top_k,
+            window_size=request.window_size,
+            rerank_variant_sha256=rerank_input.variant_sha256,
+        )
+        reranked_artifacts.append(
+            publish_metrics_artifact(
+                inputs.run_root,
+                identity,
+                reranked,
+                breakdowns,
+                rows,
+                model=rerank_input.model,
+                variant_sha256=rerank_input.variant_sha256,
+            )
+        )
+    return MetricsResult(baseline_artifact, tuple(reranked_artifacts))

@@ -17,7 +17,7 @@ from corpus_pipeline.integrations.kaggle.workers.runtime import (
     worker_deadline,
 )
 from corpus_pipeline.runtime.client import LlamaCppClient
-from corpus_pipeline.vector_store.ingest_vectors import (
+from corpus_pipeline.vector_store.embedding_core import (
     ChunkEmbeddingCache,
     collect_or_create_embeddings,
     read_normalized_input_points,
@@ -31,7 +31,7 @@ def run_corpus_embed_worker(
     clock: Callable[[], float] = time.monotonic,
 ) -> CloudArtifact:
     identity = identity_from_config(config)
-    input_path = resolve_input_file(config, "input_path")
+    input_path = resolve_input_file(config, "input")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = Path(

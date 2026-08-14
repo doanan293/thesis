@@ -24,6 +24,20 @@ Hai workflow đều bắt đầu từ raw inputs đã có trong `data/raw/`, ch�
 50 queries, sau đó mới mở rộng lên benchmark đầy đủ 10.000 queries. Workflow
 Local + Kaggle GPU là đường chạy chính khi cần embedding/reranking nhanh hơn.
 
+## Mental model cho retrieval evaluation
+
+- `--run` là tên workspace/thí nghiệm dùng chung cho retrieval, rerank và
+  metrics; tên này không chọn thuật toán.
+- `--retriever` chọn `bm25`, `dense` hoặc `hybrid`.
+- `--model` của `corpus retrieve` chọn embedding model và Qdrant collection;
+  workflow baseline dùng `qwen3-embedding:0.6b-fp16`.
+- `--model` của `corpus rerank` chọn reranker model; baseline dùng
+  `qwen3-reranker:0.6b-fp16`. `corpus metrics` không chạy model.
+
+Ví dụ, run `dense-qwen06b-k30` là tên thí nghiệm, còn `--retriever dense` mới
+là lựa chọn thuật toán. Xem [CLI reference](docs/guides/cli-reference.md) để biết
+run identity và quy ước đặt tên đầy đủ.
+
 ## Prerequisites chung
 
 - Python environment được quản lý bằng `uv`.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -38,27 +39,55 @@ def find_unique(root: Path, filename: str, required: bool = True) -> Path | None
 def resolve_input_file(
     config: dict, key: str, *, input_root: Path = Path("/kaggle/input")
 ) -> Path:
-    configured = Path(str(config[key]))
-    if configured.is_file():
-        return configured
-    identity = config.get("identity")
-    expected_sha256 = (
-        str(identity.get("input_sha256") or "")
-        if isinstance(identity, dict)
-        else ""
-    )
-    candidates = [
-        path
-        for path in Path(input_root).rglob(configured.name)
-        if path.is_file()
-        and (not expected_sha256 or sha256_file(path) == expected_sha256)
-    ]
-    if len(candidates) != 1:
+    descriptor = config.get("input_files")
+    if not isinstance(descriptor, dict) or key not in descriptor:
+        raise RuntimeError(f"Worker config is missing input descriptor for {key!r}")
+    value = descriptor[key]
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Input descriptor for {key!r} must be an object")
+    configured_value = value.get("path")
+    filename = value.get("filename")
+    expected_sha256 = value.get("sha256")
+    if not all(
+        isinstance(item, str) and item.strip()
+        for item in (configured_value, filename, expected_sha256)
+    ):
         raise RuntimeError(
-            f"Expected one mounted input matching {configured.name} "
-            f"and job SHA-256, found {len(candidates)} under {input_root}"
+            f"Input descriptor for {key!r} requires path, filename, and sha256"
         )
-    return candidates[0]
+    if Path(filename).name != filename:
+        raise RuntimeError(f"Input descriptor for {key!r} has invalid filename")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise RuntimeError(f"Input descriptor for {key!r} has invalid sha256")
+
+    configured = Path(configured_value)
+    if (
+        configured.name == filename
+        and configured.is_file()
+        and sha256_file(configured) == expected_sha256
+    ):
+        return configured
+
+    named = [path for path in Path(input_root).rglob(filename) if path.is_file()]
+    matches = [path for path in named if sha256_file(path) == expected_sha256]
+    if len(matches) == 1:
+        return matches[0]
+    digest_prefix = expected_sha256[:12]
+    if not named:
+        raise RuntimeError(
+            f"Expected input {key!r} with filename {filename!r}; "
+            f"no mounted file found under {input_root}"
+        )
+    if not matches:
+        raise RuntimeError(
+            f"Expected input {key!r} with filename {filename!r} and "
+            f"checksum {digest_prefix}...; checksum mismatch among "
+            f"{len(named)} candidate(s)"
+        )
+    raise RuntimeError(
+        f"Expected one input {key!r} with filename {filename!r} and "
+        f"checksum {digest_prefix}...; found {len(matches)} matches"
+    )
 
 
 def resolve_optional_input_file(
@@ -74,9 +103,7 @@ def resolve_optional_input_file(
     if configured.is_file():
         return configured
     candidates = [
-        path
-        for path in Path(input_root).rglob(configured.name)
-        if path.is_file()
+        path for path in Path(input_root).rglob(configured.name) if path.is_file()
     ]
     if not candidates:
         return None

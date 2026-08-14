@@ -29,7 +29,7 @@ Dry-run để kiểm tra reconciliation:
 ```bash
 uv run corpus embed chunks \
   --backend kaggle \
-  --model qwen3-embedding:0.6b-fp16 \
+  --model qwen3-embedding:4b-fp16 \
   --dry-run
 ```
 
@@ -37,7 +37,7 @@ Chạy thật bằng cùng command không có `--dry-run`; chạy lại để re
 ngắt. Sau khi bundle corpus đã sync về local:
 
 ```bash
-uv run corpus vectors upload --model qwen3-embedding:0.6b-fp16
+uv run corpus vectors upload --model qwen3-embedding:4b-fp16
 ```
 
 ## 4. Pre-embed query trên Kaggle
@@ -45,7 +45,7 @@ uv run corpus vectors upload --model qwen3-embedding:0.6b-fp16
 ```bash
 uv run corpus embed queries \
   --backend kaggle \
-  --model qwen3-embedding:0.6b-fp16
+  --model qwen3-embedding:4b-fp16
 ```
 
 Lệnh này tự động stream Kaggle kernel logs qua SSE trong cùng terminal, chờ
@@ -86,13 +86,16 @@ Chạy retrieval và baseline metrics:
 
 ```bash
 uv run corpus retrieve \
-  --run hybrid \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
   --retriever hybrid \
+  --model qwen3-embedding:4b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
   --rrf-k 60
 
-uv run corpus metrics --run hybrid --top-k 30
+uv run corpus metrics \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --top-k 30
 ```
 
 Candidate artifact phải complete trước khi submit rerank. Kaggle không embed
@@ -104,7 +107,7 @@ Kiểm tra dependency/checkpoint trước khi submit:
 
 ```bash
 uv run corpus rerank \
-  --run hybrid \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
   --backend kaggle \
   --model qwen3-reranker:0.6b-fp16 \
   --dry-run
@@ -114,26 +117,36 @@ Chạy thật:
 
 ```bash
 uv run corpus rerank \
-  --run hybrid \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
   --backend kaggle \
   --model qwen3-reranker:0.6b-fp16
 ```
 
-Rerank stage chỉ nhận candidate JSONL cùng manifest và merge scores vào
-`data/cache/rerank_scores/<model-slug>.jsonl`. Chạy lại cùng command để resume
-các pair còn thiếu; cache được kiểm tra checksum trước khi merge.
+Rerank stage chỉ nhận candidate JSONL cùng manifest. Chạy lại cùng command để
+resume các pair còn thiếu; global cache được version theo model SHA/prompt
+contract, sau đó score được finalize thành variant bất biến trong run. Đổi sang
+model rerank khác sẽ tạo variant khác, không ghi đè candidates hoặc score cũ.
+
+Input của mỗi Kaggle stage hiện dùng contract version 2. Với rerank, candidate
+JSONL và manifest được publish trong cùng một input bundle có fingerprint tổng
+hợp, nhưng worker vẫn kiểm tra SHA-256 riêng của từng file sau khi Kaggle mount
+dataset. Lần chạy đầu tiên sau khi cập nhật contract sẽ tự tạo lineage/job mới;
+không cần xóa dataset hoặc kernel cũ.
 
 ## 7. Metrics offline ở local
 
 Sau khi score file đã merge về local:
 
 ```bash
-uv run corpus metrics --run hybrid --top-k 30
+uv run corpus metrics \
+  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --top-k 30
 ```
 
-Report có baseline từ hybrid retrieval và reranked report từ cùng 30 candidates,
-bao gồm Hit@3/5/10/30, MRR và multi-section metrics khi dataset có query
-`multi_required`. Stage này không gọi Kaggle, model server hoặc Qdrant.
+Lệnh trên tạo/reuse baseline và report cho mọi reranker variant hoàn chỉnh từ
+cùng 30 candidates. Dùng `--model MODEL` hoặc `--variant VARIANT_PREFIX` để
+chọn một nhóm/variant. Reports được lưu tự động theo model, variant và metrics
+identity; stage này không gọi Kaggle, model server hoặc Qdrant.
 
 ## Troubleshooting
 
@@ -142,6 +155,12 @@ bao gồm Hit@3/5/10/30, MRR và multi-section metrics khi dataset có query
 - Candidate manifest không tương thích: dùng identity/run mới và không trộn
   artifact từ job khác. Score cache khác candidate set sẽ báo thiếu pair trước
   khi metrics chạy.
+- `no mounted file found`: dataset input chưa được mount hoặc thiếu file có đúng
+  tên; chạy lại sau khi dependency đạt trạng thái `READY`.
+- `checksum mismatch`: file đã mount nhưng không trùng SHA-256 của bundle; không
+  bỏ qua lỗi này, hãy để reconciler publish lại đúng version input dataset.
+- `multiple checksum matches`: nhiều dataset mount có cùng filename và nội dung;
+  gỡ dependency thừa rồi chạy lại để worker chỉ còn một file khớp.
 - `--top-k` lớn hơn 30: retrieve lại với candidate depth tương ứng.
 
 Chi tiết command và semantics: [CLI reference](cli-reference.md). Chính sách

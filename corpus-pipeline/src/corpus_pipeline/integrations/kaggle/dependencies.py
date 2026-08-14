@@ -36,8 +36,8 @@ def input_dataset_slug(job: StageJob) -> str:
     return f"pipeline-input-{job.identity.sha256[:16]}"
 
 
-def kaggle_input_path(job: StageJob) -> Path:
-    return Path("/kaggle/input") / input_dataset_slug(job) / job.input_path.name
+def kaggle_input_root(job: StageJob) -> Path:
+    return Path("/kaggle/input") / input_dataset_slug(job)
 
 
 class DependencyService:
@@ -123,45 +123,36 @@ def default_desired_datasets(
     def materialize_model(root: Path) -> Path:
         return stage_model_dataset(model, root, owners.execution)
 
-    input_digest = sha256_file(job.input_path)
+    input_digest = job.input_bundle.sha256
     input_slug = input_dataset_slug(job)
     input_ref = f"{owners.execution}/{input_slug}"
-    is_corpus_embed = getattr(job.stage, "value", job.stage) == "corpus-embed"
 
     def materialize_input(root: Path) -> Path:
         target = Path(root)
         target.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(job.input_path, target / job.input_path.name)
-        candidate_manifest = job.worker_config.get("candidate_manifest_path")
-        if isinstance(candidate_manifest, str) and candidate_manifest:
-            manifest_path = Path(candidate_manifest)
-            shutil.copy2(manifest_path, target / manifest_path.name)
+        for input_file in job.input_bundle.files:
+            actual_digest = sha256_file(input_file.source_path)
+            if actual_digest != input_file.sha256:
+                raise ValueError(
+                    f"Input bundle file changed for {input_file.key}: "
+                    f"{actual_digest} != {input_file.sha256}"
+                )
+            shutil.copy2(input_file.source_path, target / input_file.filename)
         (target / "dependency_manifest.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "resource_kind": "input",
                     "fingerprint": input_digest,
+                    "files": job.input_bundle.descriptors(),
                 },
+                ensure_ascii=False,
                 indent=2,
+                sort_keys=True,
             )
             + "\n",
             encoding="utf-8",
         )
-        if is_corpus_embed:
-            (target / "manifest.json").write_text(
-                json.dumps(
-                    {
-                        "file": job.input_path.name,
-                        "row_count": job.expected_total,
-                        "schema_version": 1,
-                        "sha256": input_digest,
-                    },
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
         return target
 
     return (
@@ -179,7 +170,7 @@ def default_desired_datasets(
             input_ref,
             f"Kaggle Pipeline Input {job.stage.value}"[:50],
             input_digest,
-            "manifest.json" if is_corpus_embed else "dependency_manifest.json",
+            "dependency_manifest.json",
             False,
             materialize_input,
         ),

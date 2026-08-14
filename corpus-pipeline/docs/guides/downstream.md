@@ -21,7 +21,7 @@ chung này sau khi corpus, Qdrant collection và evaluation report đã hoàn t�
 7. Với `chunk_window`, policy downstream nên lấy chunk hit cộng 1-2 chunk trước/sau trong cùng `section_id` từ Qdrant nếu cần mở rộng context, tùy ngân sách token.
 8. Với `search_only`, không hydrate nguyên section. Trường hợp cần tra cứu biệt dược thì dùng chunk hit trong Qdrant làm evidence hoặc lookup theo dòng/index riêng.
 9. Luôn chạy `uv run corpus validate` trước khi ingest corpus mới vào vector database.
-10. Postgres app chỉ dùng cho trạng thái ứng dụng như user/session/message/retrieval audit/feedback qua `src/postgres_store/schema/rag_app_schema.sql`; corpus text không được import vào Postgres production.
+10. Postgres app chỉ dùng cho trạng thái ứng dụng như user/session/message/retrieval audit/feedback qua `src/corpus_pipeline/integrations/postgres/schema/rag_app_schema.sql`; corpus text không được import vào Postgres production.
 
 ---
 

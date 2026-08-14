@@ -69,23 +69,34 @@ def upload_vectors(request: UploadVectorsRequest) -> UploadVectorsResult:
         collection_name=collection_name,
         vector_size=spec.vector_dimension,
     )
-    client.init_collection()
-    if client.collection_exists():
-        if hasattr(client, "switch_alias"):
-            client.switch_alias(alias_name)
-        return UploadVectorsResult(
-            alias_name, 0, reused=True, physical_collection=collection_name
+    expected_count = len(points)
+    target_exists = client.collection_exists()
+    reused = target_exists and client.point_count() == expected_count
+    if reused:
+        uploaded = 0
+    else:
+        if target_exists:
+            client.clear_collection()
+        else:
+            client.init_collection()
+        uploaded = upsert_points_from_embeddings(
+            points,
+            embeddings,
+            client,
+            request.qdrant_batch_size,
+            False,
+            dependencies,
         )
-    uploaded = upsert_points_from_embeddings(
-        points,
-        embeddings,
-        client,
-        request.qdrant_batch_size,
-        False,
-        dependencies,
-    )
-    if hasattr(client, "switch_alias"):
-        client.switch_alias(alias_name)
+        actual_count = client.point_count()
+        if actual_count != expected_count:
+            raise RuntimeError(
+                f"Qdrant point count mismatch for '{collection_name}': "
+                f"expected {expected_count}, got {actual_count}"
+            )
+    client.switch_alias(alias_name, delete_legacy_collection=True)
     return UploadVectorsResult(
-        alias_name, uploaded, physical_collection=collection_name
+        alias_name,
+        uploaded,
+        reused=reused,
+        physical_collection=collection_name,
     )

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 class RunConflictError(RuntimeError):
@@ -26,14 +26,66 @@ class RunIdentity:
 
 
 @dataclass(frozen=True)
+class RerankVariantRecord:
+    model: str
+    artifact_dir: str
+    status: Literal["complete"] = "complete"
+
+
+@dataclass(frozen=True)
+class LegacyRerankReference:
+    model: str
+    cache_path: str
+
+
+@dataclass(frozen=True)
 class RunRecord:
     schema_version: int
     identity: RunIdentity
-    status: str
+    status: str | None = None
     candidates_dir: str | None = None
     rerank_scores_dir: str | None = None
     reports_dir: str | None = None
     reranker: str | None = None
+    rerank_variants: dict[str, RerankVariantRecord] = field(default_factory=dict)
+    legacy_rerank: LegacyRerankReference | None = None
+    legacy_status: str | None = None
+
+    def to_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "identity": asdict(self.identity),
+        }
+        if self.schema_version == 1:
+            payload.update(
+                status=self.legacy_status or self.status or "created",
+                candidates_dir=self.candidates_dir,
+                rerank_scores_dir=(
+                    self.legacy_rerank.cache_path
+                    if self.legacy_rerank is not None
+                    else self.rerank_scores_dir
+                ),
+                reports_dir=self.reports_dir,
+                reranker=(
+                    self.legacy_rerank.model
+                    if self.legacy_rerank is not None
+                    else self.reranker
+                ),
+            )
+        elif self.schema_version == 2:
+            payload.update(
+                candidates_dir=self.candidates_dir,
+                reports_dir=self.reports_dir,
+                rerank_variants={
+                    digest: asdict(variant)
+                    for digest, variant in sorted(self.rerank_variants.items())
+                },
+            )
+        else:
+            raise RunConflictError(
+                f"Unsupported run registry schema: {self.schema_version}"
+            )
+        return payload
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -49,6 +101,9 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def load_run_record(path: Path) -> RunRecord:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    schema_version = int(payload["schema_version"])
+    if schema_version not in {1, 2}:
+        raise RunConflictError(f"Unsupported run registry schema: {schema_version}")
     raw_identity = dict(payload["identity"])
     if "prefetch_k" not in raw_identity:
         raw_identity["prefetch_k"] = (
@@ -56,14 +111,48 @@ def load_run_record(path: Path) -> RunRecord:
             if raw_identity.get("retriever") == "hybrid"
             else None
         )
+    identity = RunIdentity(**raw_identity)
+    if schema_version == 1:
+        reranker = payload.get("reranker")
+        cache_path = payload.get("rerank_scores_dir")
+        legacy = (
+            LegacyRerankReference(str(reranker), str(cache_path))
+            if reranker and cache_path
+            else None
+        )
+        return RunRecord(
+            schema_version=1,
+            identity=identity,
+            status=str(payload.get("status") or "created"),
+            candidates_dir=payload.get("candidates_dir"),
+            rerank_scores_dir=cache_path,
+            reports_dir=payload.get("reports_dir"),
+            reranker=reranker,
+            legacy_rerank=legacy,
+            legacy_status=str(payload.get("status") or "created"),
+        )
+    raw_variants = payload.get("rerank_variants") or {}
+    if not isinstance(raw_variants, dict):
+        raise RunConflictError("Run rerank_variants must be an object")
+    variants: dict[str, RerankVariantRecord] = {}
+    for digest, raw_variant in raw_variants.items():
+        if not isinstance(raw_variant, dict):
+            raise RunConflictError(f"Invalid rerank variant record: {digest}")
+        if raw_variant.get("status", "complete") != "complete":
+            raise RunConflictError(
+                f"Unsupported incomplete rerank variant status: {digest}"
+            )
+        variants[str(digest)] = RerankVariantRecord(
+            str(raw_variant["model"]),
+            str(raw_variant["artifact_dir"]),
+            "complete",
+        )
     return RunRecord(
-        int(payload["schema_version"]),
-        RunIdentity(**raw_identity),
-        str(payload["status"]),
-        payload.get("candidates_dir"),
-        payload.get("rerank_scores_dir"),
-        payload.get("reports_dir"),
-        payload.get("reranker"),
+        schema_version=2,
+        identity=identity,
+        candidates_dir=payload.get("candidates_dir"),
+        reports_dir=payload.get("reports_dir"),
+        rerank_variants=variants,
     )
 
 
@@ -103,21 +192,69 @@ class RunWorkspace:
                 os.replace(record_path, previous)
         workspace = cls(root, identity)
         root.mkdir(parents=True, exist_ok=True)
-        workspace.write_record(RunRecord(1, identity, "created"))
+        workspace.write_record(RunRecord(schema_version=2, identity=identity))
         return workspace
 
     def write_record(self, record: RunRecord) -> None:
-        atomic_write_json(self.root / "run.json", asdict(record))
+        atomic_write_json(self.root / "run.json", record.to_payload())
 
     def record_candidates(self, artifact: Any) -> None:
+        current = load_run_record(self.root / "run.json")
+        candidate_dir = Path(artifact.data_path).parent
+        try:
+            candidate_value = candidate_dir.relative_to(self.root).as_posix()
+        except ValueError:
+            candidate_value = str(candidate_dir)
         self.write_record(
             RunRecord(
-                1,
-                self.identity,
-                "retrieved",
-                candidates_dir=str(Path(artifact.data_path).parent),
+                schema_version=current.schema_version,
+                identity=self.identity,
+                status="retrieved",
+                candidates_dir=candidate_value,
+                rerank_scores_dir=current.rerank_scores_dir,
+                reports_dir=current.reports_dir,
+                reranker=current.reranker,
+                rerank_variants=current.rerank_variants,
+                legacy_rerank=current.legacy_rerank,
+                legacy_status=current.legacy_status,
             )
         )
+
+    def resolve_relative_path(self, value: str) -> Path:
+        candidate = Path(value)
+        return candidate if candidate.is_absolute() else self.root / candidate
+
+    def register_rerank_variant(
+        self, variant_sha256: str, variant: RerankVariantRecord
+    ) -> None:
+        if Path(variant.artifact_dir).is_absolute():
+            raise RunConflictError("Run artifact paths must be relative")
+        current = load_run_record(self.root / "run.json")
+        existing = current.rerank_variants.get(variant_sha256)
+        if existing is not None and existing != variant:
+            raise RunConflictError(
+                f"Rerank variant {variant_sha256} is already registered differently"
+            )
+        variants = {**current.rerank_variants, variant_sha256: variant}
+        self.write_record(
+            RunRecord(
+                schema_version=2,
+                identity=current.identity,
+                candidates_dir=current.candidates_dir,
+                reports_dir=current.reports_dir,
+                rerank_variants=variants,
+            )
+        )
+
+    def variant_records(
+        self, model: str | None = None
+    ) -> dict[str, RerankVariantRecord]:
+        variants = load_run_record(self.root / "run.json").rerank_variants
+        return {
+            digest: item
+            for digest, item in variants.items()
+            if model is None or item.model == model
+        }
 
     def record_rerank_scores(
         self, cache_path: Path, reranker: str | None = None

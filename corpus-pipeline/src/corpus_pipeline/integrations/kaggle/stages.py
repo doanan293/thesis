@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Protocol
 
 from corpus_pipeline.evaluation.rerank_score_cache import prompt_contract_hash
-from corpus_pipeline.integrations.kaggle.artifacts import sha256_file
 from corpus_pipeline.integrations.kaggle.models import (
+    InputBundle,
+    InputFile,
     JobIdentity,
     StageJob,
     StageName,
     StageRequest,
-    canonical_sha256,
 )
 from corpus_pipeline.runtime.catalog import ModelKind, require_model
 
@@ -77,7 +77,7 @@ class StageAdapter(Protocol):
 @dataclass(frozen=True)
 class CorpusEmbedStage:
     name: StageName = StageName.CORPUS_EMBED
-    contract_version: int = 1
+    contract_version: int = 2
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
@@ -85,14 +85,16 @@ class CorpusEmbedStage:
             raise ValueError(
                 f"corpus-embed requires an embedding model: {request.model}"
             )
-        input_sha = sha256_file(request.input_path)
+        input_bundle = InputBundle.create(
+            (InputFile.create("input", request.input_path),)
+        )
         total = _count_jsonl(request.input_path)
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
             model=request.model,
             model_sha256=spec.sha256,
-            input_sha256=input_sha,
+            input_sha256=input_bundle.sha256,
             runtime_parameters={
                 "vector_dimension": spec.vector_dimension,
                 "batch_size": spec.kaggle_request_batch_size,
@@ -106,7 +108,7 @@ class CorpusEmbedStage:
             contract_version=self.contract_version,
             model=request.model,
             identity=identity,
-            input_path=request.input_path,
+            input_bundle=input_bundle,
             output_dir=output_dir,
             local_cache_path=output_dir / "vector_embeddings.jsonl",
             data_filename="vector_embeddings.jsonl",
@@ -114,7 +116,6 @@ class CorpusEmbedStage:
             worker_module="corpus_pipeline.integrations.kaggle.workers.corpus_embed",
             worker_config={
                 "model": request.model,
-                "input_path": str(request.input_path),
                 "gguf_root": str(request.gguf_root),
                 "vector_dimension": spec.vector_dimension,
                 "batch_size": spec.kaggle_request_batch_size,
@@ -126,7 +127,7 @@ class CorpusEmbedStage:
 @dataclass(frozen=True)
 class QueryEmbedStage:
     name: StageName = StageName.QUERY_EMBED
-    contract_version: int = 1
+    contract_version: int = 2
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
@@ -134,14 +135,16 @@ class QueryEmbedStage:
             raise ValueError(
                 f"query-embed requires an embedding model: {request.model}"
             )
-        input_sha = sha256_file(request.input_path)
+        input_bundle = InputBundle.create(
+            (InputFile.create("input", request.input_path),)
+        )
         total = _count_jsonl(request.input_path)
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
             model=request.model,
             model_sha256=spec.sha256,
-            input_sha256=input_sha,
+            input_sha256=input_bundle.sha256,
             runtime_parameters={"batch_size": spec.kaggle_request_batch_size},
         )
         output_dir = (
@@ -152,7 +155,7 @@ class QueryEmbedStage:
             self.contract_version,
             request.model,
             identity,
-            request.input_path,
+            input_bundle,
             output_dir,
             output_dir / "query_embeddings.jsonl",
             "query_embeddings.jsonl",
@@ -160,7 +163,6 @@ class QueryEmbedStage:
             "corpus_pipeline.integrations.kaggle.workers.query_embed",
             {
                 "model": request.model,
-                "input_path": str(request.input_path),
                 "gguf_root": str(request.gguf_root),
                 "vector_dimension": spec.vector_dimension,
                 "batch_size": spec.kaggle_request_batch_size,
@@ -172,7 +174,7 @@ class QueryEmbedStage:
 @dataclass(frozen=True)
 class RerankStage:
     name: StageName = StageName.RERANK
-    contract_version: int = 1
+    contract_version: int = 2
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
@@ -187,11 +189,11 @@ class RerankStage:
             raise ValueError(
                 f"rerank requires adjacent candidate manifest: {manifest_path}"
             )
-        input_sha = canonical_sha256(
-            {
-                "candidate_sha256": sha256_file(request.input_path),
-                "manifest_sha256": sha256_file(manifest_path),
-            }
+        input_bundle = InputBundle.create(
+            (
+                InputFile.create("candidates", request.input_path),
+                InputFile.create("candidate_manifest", manifest_path),
+            )
         )
         pair_count = _candidate_pair_count(request.input_path)
         protocol_hash = prompt_contract_hash(protocol=spec.reranker_protocol)
@@ -200,7 +202,7 @@ class RerankStage:
             contract_version=self.contract_version,
             model=request.model,
             model_sha256=spec.sha256,
-            input_sha256=input_sha,
+            input_sha256=input_bundle.sha256,
             runtime_parameters={
                 "protocol": spec.reranker_protocol,
                 "prompt_contract_sha256": protocol_hash,
@@ -214,7 +216,7 @@ class RerankStage:
             self.contract_version,
             request.model,
             identity,
-            request.input_path,
+            input_bundle,
             output_dir,
             output_dir / "rerank_scores.jsonl",
             "rerank_scores.jsonl",
@@ -224,8 +226,6 @@ class RerankStage:
                 "model": request.model,
                 "protocol": spec.reranker_protocol,
                 "parallelism": spec.kaggle_parallel,
-                "candidate_path": str(request.input_path),
-                "candidate_manifest_path": str(manifest_path),
                 "gguf_root": str(request.gguf_root),
                 "job_sha256": identity.sha256,
             },
