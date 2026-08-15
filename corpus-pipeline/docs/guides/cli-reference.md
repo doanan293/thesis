@@ -26,9 +26,11 @@ tracebacks. Dùng `uv run corpus COMMAND --help` để xem default thực tế.
 
 ## Run, retriever và model
 
-`--run` đặt tên workspace dưới `data/runs/retrieval_eval/<run-name>/`. Retrieval,
-rerank và metrics dùng tên này để mở lại cùng một workspace và các artifact đã
-đóng băng; tên run không tự chọn thuật toán.
+`--run` dùng cùng một tên dưới hai cây: metadata ở
+`data/retrieval_eval/<run-name>/` và payload lớn ở
+`data/heavy/retrieval_eval/<run-name>/`. Retrieval, rerank và metrics dùng tên
+này để mở lại cùng một workspace và các artifact đã đóng băng; tên run không tự
+chọn thuật toán.
 
 `--retriever` độc lập chọn cách tạo candidates: `bm25`, `dense` hoặc `hybrid`.
 `--model` của `corpus retrieve` chọn embedding identity và Qdrant collection
@@ -137,7 +139,7 @@ luôn do run tự sinh. Metrics gồm:
 ### Runtime profiling
 
 Khi chạy Kaggle production, hệ thống tự benchmark workload tương ứng đúng một
-lần nếu chưa có profile hợp lệ. Profile được lưu dưới `data/runtime_profiles/`
+lần nếu chưa có profile hợp lệ. Profile được lưu dưới `data/runtime_kaggle_profiles/`
 và các lần sau sẽ tái sử dụng; profile bị vô hiệu khi model, runtime, topology
 hoặc search space thay đổi. Benchmark luôn dùng 512 mẫu và lỗi benchmark sẽ
 dừng pipeline, không rơi về profile mặc định.
@@ -154,19 +156,18 @@ Candidate, rerank score và metrics artifacts được publish thành bundle có
 `reports/baseline/<metrics-id>/` hoặc
 `reports/rerank/<model-slug>/<variant-id>/<metrics-id>/`.
 
-Global corpus/query embeddings vẫn là cache JSONL. Rerank execution cache cũng
+Global corpus/query embeddings vẫn là cache JSONL dưới `data/heavy/cache/`. Rerank execution cache cũng
 được version theo model SHA và prompt contract:
 
 ```text
-data/cache/vector_embeddings/<model-slug>.jsonl
-data/cache/query_embeddings/<model-slug>.jsonl
-data/cache/rerank_scores/<model-slug>/<execution-identity>.jsonl
+data/heavy/cache/vector_embeddings/<model-slug>.jsonl
+data/heavy/cache/query_embeddings/<model-slug>.jsonl
+data/heavy/cache/rerank_scores/<model-slug>/<execution-identity>.jsonl
 ```
 
 Mỗi record có checksum; cache resume theo key, còn run-owned bundle là nguồn
 artifact chuẩn và không bị ghi đè bởi model khác.
-Retrieval, rerank và metrics dùng chung workspace named dưới
-`data/runs/retrieval_eval/` qua `--run NAME`. Không trộn artifact candidate hoặc
+Retrieval, rerank và metrics dùng chung workspace named qua `--run NAME`. Không trộn artifact candidate hoặc
 input giữa các run/model/evaluation identity khác nhau.
 
 | Code | Meaning |

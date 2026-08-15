@@ -1089,7 +1089,7 @@ def audit_part_chains(inputs: CorpusInputs, report: ValidationReport) -> None:
                 severity="auto_fixable",
                 message="Salbutamol descriptor monograph was emitted as part-* section",
                 snippet=text_snippet(section.get("text")),
-                source_evidence="# SALBUTAMOL followed by plain parenthetical descriptor in data/interim/text/full.cleaned.md",
+                source_evidence="# SALBUTAMOL followed by plain parenthetical descriptor in data/heavy/.work/manual/text/full.cleaned.md",
                 auto_fixable=True,
                 recommended_action="Merge the plain parenthetical descriptor into the title before parsing so ids use salbutamol-dung-trong-ho-hap or salbutamol-dung-trong-san-khoa.",
             )

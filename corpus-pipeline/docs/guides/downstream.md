@@ -29,7 +29,7 @@ chung này sau khi corpus, Qdrant collection và evaluation report đã hoàn t�
 
 Quy định quản lý dữ liệu trong dự án:
 
-- **Source / Provenance Inputs**: Nằm trong `data/raw/`; các snapshot An Khang lớn được phân vùng trong `data/raw/ankhang/`.
-- **Rebuildable workspace outputs**: Nằm trong `data/.work/` trong lúc build và tự xoá sau publish; chỉ artifact cuối trong `data/processed/rag-final/` được giữ lâu dài.
-- **Final Reproducible Contracts**: Nằm trong `data/processed/rag-final/` và `data/processed/evaluation/`.
-- **Local Experiment Outputs**: Nằm trong `data/runs/` và local caches nằm trong `data/cache/`; cả hai thư mục này được `.gitignore` bỏ qua.
+- **Source / Provenance Inputs**: Inputs nhỏ nằm trong `data/resources/`, source manifests trong `data/manifests/source/`, còn PDF/snapshot lớn nằm trong `data/heavy/raw/`.
+- **Rebuildable workspace outputs**: Nằm trong `data/heavy/.work/` trong lúc build và tự xoá sau publish; failed workspace được giữ dưới `.work/failed/`.
+- **Final Reproducible Contracts**: Payload nằm trong `data/heavy/processed/`, metadata snapshot nằm trong `data/manifests/corpus/`.
+- **Local Experiment Outputs**: Metadata/report nhỏ nằm trong `data/retrieval_eval/`; candidates, rerank bundles, per-query reports và caches nằm trong `data/heavy/`.

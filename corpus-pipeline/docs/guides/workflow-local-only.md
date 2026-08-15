@@ -5,7 +5,8 @@ local, nhưng sau khi corpus vectors và query embeddings đã hoàn chỉnh th�
 stage retrieval và metrics không cần model server, Kaggle hoặc Internet.
 
 Retrieval, rerank và metrics chia sẻ một named run dưới
-`data/runs/retrieval_eval/`. Mỗi run đóng băng evaluation input, model,
+`data/retrieval_eval/`, với payload lớn tương ứng dưới `data/heavy/retrieval_eval/`.
+Mỗi run đóng băng evaluation input, model,
 retriever, K và query-embedding identity.
 
 ## 1. Kiểm tra môi trường
@@ -36,7 +37,7 @@ uv run corpus embed queries \
 ```
 
 `embed queries` ghi vào một file duy nhất theo model tại
-`data/cache/query_embeddings/qwen3_embedding_0_6b_fp16.jsonl`. File này được
+`data/heavy/cache/query_embeddings/qwen3_embedding_0_6b_fp16.jsonl`. File này được
 dùng lại cho `dense` và `hybrid`; BM25-only không cần query cache. Nếu stage bị
 ngắt, chạy lại cùng command để resume. Mỗi dòng có checksum và được kiểm tra
 trước khi retrieval sử dụng.

@@ -76,7 +76,7 @@ utilization, memory, latency và retry counters; `server-<n>.log` chỉ giữ ph
 embedding hoặc score.
 
 Sau khi query-embedding file đã merge vào
-`data/cache/query_embeddings/<model-slug>.jsonl`, file này được dùng lại cho
+`data/heavy/cache/query_embeddings/<model-slug>.jsonl`, file này được dùng lại cho
 dense và hybrid. BM25-only không cần query embeddings. Ba baseline retrieval
 (`bm25`, `dense`, `hybrid`) đều chạy local; xem đầy đủ command trong
 [local-only workflow](workflow-local-only.md).
@@ -152,7 +152,7 @@ mới. Contract mới tạo lineage/variant mới; không trộn score từ cont
 ## 7. Runtime profiling trên Kaggle
 
 Lệnh production tự benchmark workload tương ứng khi profile chưa tồn tại, sau
-đó lưu profile vào `data/runtime_profiles/`. Các lần chạy sau dùng lại profile.
+đó lưu profile vào `data/runtime_kaggle_profiles/`. Các lần chạy sau dùng lại profile.
 
 ```bash
 uv run corpus rerank --run hybrid-qwen4b-p50-k30-rrf60 --backend kaggle --model qwen3-reranker:0.6b-fp16
