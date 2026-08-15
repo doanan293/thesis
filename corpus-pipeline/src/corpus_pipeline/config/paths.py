@@ -37,14 +37,18 @@ def resolve_workspace_root(explicit: Path | None = None) -> Path:
 PROJECT_ROOT = resolve_workspace_root()
 DATA_DIR = PROJECT_ROOT / "data"
 
-RAW_DIR = DATA_DIR / "raw"
+HEAVY_DATA_DIR = DATA_DIR / "heavy"
+RESOURCES_DIR = DATA_DIR / "resources"
+MANIFESTS_DIR = DATA_DIR / "manifests"
+
+RAW_DIR = HEAVY_DATA_DIR / "raw"
 RAW_ANKHANG_DIR = RAW_DIR / "ankhang"
 RAW_ANKHANG_HTML_DIR = RAW_ANKHANG_DIR / "html"
-RAW_CURATION_DIR = RAW_DIR / "curation"
+RAW_CURATION_DIR = RESOURCES_DIR / "curation"
 RAW_ANKHANG_SNAPSHOTS_DIR = RAW_ANKHANG_DIR / "snapshots"
 
-INTERIM_DIR = DATA_DIR / "interim"
-PROCESSED_DIR = DATA_DIR / "processed"
+INTERIM_DIR = HEAVY_DATA_DIR / ".work" / "manual"
+PROCESSED_DIR = HEAVY_DATA_DIR / "processed"
 
 TEXT_INTERIM_DIR = INTERIM_DIR / "text"
 RAG_INTERIM_DIR = INTERIM_DIR / "rag"
@@ -55,20 +59,26 @@ ANKHANG_MARKDOWN_INTERIM_DIR = INTERIM_DIR / "ankhang_markdown"
 RAG_FINAL_DIR = PROCESSED_DIR / "rag-final"
 PROCESSED_EVALUATION_DIR = PROCESSED_DIR / "evaluation"
 
-DATA_RUNS_DIR = DATA_DIR / "runs"
-RETRIEVAL_EVAL_RUNS_DIR = DATA_RUNS_DIR / "retrieval_eval"
+RETRIEVAL_EVAL_DIR = DATA_DIR / "retrieval_eval"
+HEAVY_RETRIEVAL_EVAL_DIR = HEAVY_DATA_DIR / "retrieval_eval"
+DATA_RUNS_DIR = DATA_DIR
+RETRIEVAL_EVAL_RUNS_DIR = RETRIEVAL_EVAL_DIR
 
-DATA_CACHE_DIR = DATA_DIR / "cache"
+DATA_CACHE_DIR = HEAVY_DATA_DIR / "cache"
 QUERY_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "query_embeddings"
 RERANK_SCORE_CACHE_DIR = DATA_CACHE_DIR / "rerank_scores"
 VECTOR_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "vector_embeddings"
 
-WORK_DIR = DATA_DIR / ".work"
-RUNTIME_PROFILE_DIR = DATA_DIR / "runtime_profiles"
+WORK_DIR = HEAVY_DATA_DIR / ".work"
+RUNTIME_PROFILE_DIR = DATA_DIR / "runtime_kaggle_profiles"
 RAG_FINAL_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
 RAG_FINAL_CHUNKS_PATH = RAG_FINAL_DIR / "chunks.jsonl"
 RAG_FINAL_MANIFEST_PATH = RAG_FINAL_DIR / "manifest.json"
 RAG_FINAL_VALIDATION_PATH = RAG_FINAL_DIR / "validation_report.json"
+
+
+def retrieval_run_roots(run: str) -> tuple[Path, Path]:
+    return RETRIEVAL_EVAL_DIR / run, HEAVY_RETRIEVAL_EVAL_DIR / run
 
 
 def chunk_embedding_bundle_dir(model: str, corpus_sha256: str) -> Path:
