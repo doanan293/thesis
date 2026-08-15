@@ -8,6 +8,7 @@ from corpus_pipeline.evaluation.rerank_service import (
     RerankRequest,
 )
 from corpus_pipeline.evaluation.run_workspace import load_run_record
+from corpus_pipeline.integrations.kaggle import auto_profile
 from corpus_pipeline.integrations.kaggle import service as kaggle_service
 from corpus_pipeline.integrations.kaggle.models import ActionVerb, ReconcileAction
 
@@ -83,9 +84,18 @@ def fake_kaggle_dry_run(**_kwargs):
 
 
 def test_kaggle_dry_run_formats_resource_identity_and_does_not_register(
-    complete_run, monkeypatch
+    complete_run, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(kaggle_service, "run_kaggle_stage", fake_kaggle_dry_run)
+    original_ensure_profile = auto_profile.ensure_runtime_profile
+
+    def isolated_profile(**kwargs):
+        return original_ensure_profile(
+            **kwargs,
+            profile_root=tmp_path / "profiles",
+        )
+
+    monkeypatch.setattr(auto_profile, "ensure_runtime_profile", isolated_profile)
 
     result = KaggleRerankBackend().run(
         request(complete_run, "qwen3-reranker:0.6b-fp16", dry_run=True)
