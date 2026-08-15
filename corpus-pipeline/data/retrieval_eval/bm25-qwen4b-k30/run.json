@@ -1,0 +1,20 @@
+{
+  "candidates_dir": "/home/andv/personal/thesis/corpus-pipeline/data/runs/retrieval_eval/bm25-qwen4b-k30/candidates",
+  "identity": {
+    "candidate_k": 30,
+    "collection_name": "thesis_chunks_qwen3_embedding_4b_fp16",
+    "embedding_model": "qwen3-embedding:4b-fp16",
+    "evaluation_path": "/home/andv/personal/thesis/corpus-pipeline/data/processed/evaluation/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "f648bbd5740c2e5b6ca4498b6fa6e9d49319a033679d6a923fb050a37378cdfe",
+    "limit": null,
+    "prefetch_k": null,
+    "query_embeddings_sha256": null,
+    "retriever": "bm25",
+    "rrf_k": 60
+  },
+  "reports_dir": "/home/andv/personal/thesis/corpus-pipeline/data/runs/retrieval_eval/bm25-qwen4b-k30/reports",
+  "rerank_scores_dir": null,
+  "reranker": null,
+  "schema_version": 1,
+  "status": "metrics"
+}

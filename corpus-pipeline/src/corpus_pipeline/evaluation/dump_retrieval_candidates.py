@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from corpus_pipeline.config.paths import (
+    HEAVY_RETRIEVAL_EVAL_DIR,
     PROCESSED_EVALUATION_DIR,
-    RETRIEVAL_EVAL_RUNS_DIR,
 )
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifact,
@@ -15,7 +15,7 @@ from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 
 DEFAULT_EVAL_JSONL = PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl"
-DEFAULT_OUTPUT_DIR = RETRIEVAL_EVAL_RUNS_DIR / "candidates"
+DEFAULT_OUTPUT_DIR = HEAVY_RETRIEVAL_EVAL_DIR / "candidates"
 
 
 def build_dump_payload(

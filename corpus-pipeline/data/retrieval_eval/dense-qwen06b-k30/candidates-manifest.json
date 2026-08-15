@@ -1,0 +1,21 @@
+{
+  "artifact_type": "retrieval_candidates",
+  "created_at": "2026-08-08T13:10:15.428139+00:00",
+  "data_filename": "candidates.jsonl",
+  "data_sha256": "db32136f03b73e0e1e4e287461b31eebf065c034247e7e7387546717d2308071",
+  "identity": {
+    "candidate_k": 30,
+    "collection_name": "thesis_chunks_qwen3_embedding_0_6b_fp16",
+    "embedding_model": "qwen3-embedding:0.6b-fp16",
+    "evaluation_path": "/home/andv/personal/thesis/corpus-pipeline/data/processed/evaluation/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "f648bbd5740c2e5b6ca4498b6fa6e9d49319a033679d6a923fb050a37378cdfe",
+    "limit": null,
+    "pair_count": 300000,
+    "prefetch_k": null,
+    "query_embeddings_sha256": "bbb52bdf77a1f9e12807df7ab45a6a9aeea04ba6233c8a71831c800e575dda26",
+    "retriever": "dense",
+    "rrf_k": 60
+  },
+  "record_count": 10000,
+  "schema_version": 1
+}

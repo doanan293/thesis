@@ -1,0 +1,20 @@
+{
+  "candidates_dir": "/home/andv/personal/thesis/corpus-pipeline/data/runs/retrieval_eval/dense-gemma300m-k30/candidates",
+  "identity": {
+    "candidate_k": 30,
+    "collection_name": "thesis_chunks_embeddinggemma_300m",
+    "embedding_model": "embeddinggemma:300m",
+    "evaluation_path": "/home/andv/personal/thesis/corpus-pipeline/data/processed/evaluation/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "f648bbd5740c2e5b6ca4498b6fa6e9d49319a033679d6a923fb050a37378cdfe",
+    "limit": null,
+    "prefetch_k": null,
+    "query_embeddings_sha256": "926ba26b501a652a4d5f668b6bc9d4c6cec94bb5ad2b50765a26855f3681ee8b",
+    "retriever": "dense",
+    "rrf_k": 60
+  },
+  "reports_dir": "/home/andv/personal/thesis/corpus-pipeline/data/runs/retrieval_eval/dense-gemma300m-k30/reports",
+  "rerank_scores_dir": null,
+  "reranker": null,
+  "schema_version": 1,
+  "status": "metrics"
+}
