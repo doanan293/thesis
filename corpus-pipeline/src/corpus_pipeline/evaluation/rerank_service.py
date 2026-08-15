@@ -42,6 +42,7 @@ class RerankRequest:
     request_timeout_seconds: float
     benchmark: bool = False
     benchmark_pairs: int = 512
+    artifact_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,10 @@ class LocalRerankBackend:
         if request.benchmark:
             raise ValueError("benchmark requires --backend kaggle")
         workspace = RunWorkspace.open_or_create(
-            request.run_root, _identity(request), force=request.force
+            request.run_root,
+            _identity(request),
+            artifact_root=request.artifact_root,
+            force=request.force,
         )
         candidates_dir = request.candidates_dir or workspace.candidates_dir
         candidate_bundle = load_bundle(
@@ -225,7 +229,10 @@ class KaggleRerankBackend:
         if spec.kind is not ModelKind.RERANKER:
             raise ValueError("--model must select a reranker model")
         workspace = RunWorkspace.open_or_create(
-            request.run_root, _identity(request), force=request.force
+            request.run_root,
+            _identity(request),
+            artifact_root=request.artifact_root,
+            force=request.force,
         )
         candidates_dir = request.candidates_dir or workspace.candidates_dir
         candidate_bundle = load_bundle(
@@ -261,7 +268,9 @@ class KaggleRerankBackend:
                     bundle.manifest.data_sha256,
                     ("reuse=migrated legacy variant",),
                 )
-        from corpus_pipeline.integrations.kaggle.auto_profile import ensure_runtime_profile
+        from corpus_pipeline.integrations.kaggle.auto_profile import (
+            ensure_runtime_profile,
+        )
 
         resolution = ensure_runtime_profile(
             workload="rerank",

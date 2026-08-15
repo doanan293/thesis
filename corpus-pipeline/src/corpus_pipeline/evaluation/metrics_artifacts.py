@@ -63,15 +63,15 @@ def select_rerank_variants(
 
 
 def _report_parent(
-    run_root: Path,
+    root: Path,
     model: str | None,
     variant_sha256: str | None,
 ) -> Path:
     if model is None:
-        return Path(run_root) / "reports" / "baseline"
+        return Path(root) / "reports" / "baseline"
     model_slug = require_model(model).slug
     variant_prefix = (variant_sha256 or "")[:12]
-    return Path(run_root) / "reports" / "rerank" / model_slug / variant_prefix
+    return Path(root) / "reports" / "rerank" / model_slug / variant_prefix
 
 
 def _report_dir(parent: Path, metrics_sha256: str) -> Path:
@@ -113,7 +113,8 @@ def _load_metrics_bundle(
 
 
 def publish_metrics_artifact(
-    run_root: Path,
+    artifact_root: Path,
+    summary_root: Path,
     identity: MetricsArtifactIdentity,
     metrics: dict,
     breakdowns: dict,
@@ -126,13 +127,34 @@ def publish_metrics_artifact(
         markdown_metric_table,
     )
 
-    parent = _report_parent(run_root, model, variant_sha256)
+    parent = _report_parent(artifact_root, model, variant_sha256)
+    summary_parent = _report_parent(summary_root, model, variant_sha256)
     target = _report_dir(parent, identity.sha256)
+    summary_target = summary_parent / target.relative_to(parent)
+    same_target = summary_target.resolve() == target.resolve()
     if target.exists():
         bundle = _load_metrics_bundle(target, identity)
+        if same_target:
+            return MetricsArtifactResult(
+                target,
+                target / "report.md",
+                bundle.data_path,
+                identity.sha256,
+                model,
+                variant_sha256,
+            )
+        summary_target.mkdir(parents=True, exist_ok=True)
+        if not (summary_target / "report.md").is_file():
+            temporary_summary = summary_target / ".report.md.tmp"
+            shutil.copy2(target / "report.md", temporary_summary)
+            os.replace(temporary_summary, summary_target / "report.md")
+        if not (summary_target / "metrics-manifest.json").is_file():
+            temporary_manifest = summary_target / ".metrics-manifest.json.tmp"
+            shutil.copy2(target / "manifest.json", temporary_manifest)
+            os.replace(temporary_manifest, summary_target / "metrics-manifest.json")
         return MetricsArtifactResult(
             target,
-            target / "report.md",
+            summary_target / "report.md",
             bundle.data_path,
             identity.sha256,
             model,
@@ -174,9 +196,26 @@ def publish_metrics_artifact(
         os.replace(temporary, target)
         temporary = Path()
         promoted = _load_metrics_bundle(target, identity)
+        if same_target:
+            return MetricsArtifactResult(
+                target,
+                target / "report.md",
+                promoted.data_path,
+                identity.sha256,
+                model,
+                variant_sha256,
+            )
+        summary_target.parent.mkdir(parents=True, exist_ok=True)
+        temporary_summary = summary_target.with_name(f".{summary_target.name}.tmp")
+        if summary_target.exists():
+            shutil.rmtree(summary_target)
+        temporary_summary.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target / "report.md", temporary_summary / "report.md")
+        shutil.copy2(target / "manifest.json", temporary_summary / "metrics-manifest.json")
+        os.replace(temporary_summary, summary_target)
         return MetricsArtifactResult(
             target,
-            target / "report.md",
+            summary_target / "report.md",
             promoted.data_path,
             identity.sha256,
             model,

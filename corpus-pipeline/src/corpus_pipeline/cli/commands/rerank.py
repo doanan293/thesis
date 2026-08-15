@@ -17,7 +17,7 @@ from corpus_pipeline.config.defaults import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     DEFAULT_RERANKER_MODEL,
 )
-from corpus_pipeline.config.paths import RETRIEVAL_EVAL_RUNS_DIR
+from corpus_pipeline.config.paths import retrieval_run_roots
 from corpus_pipeline.evaluation.rerank_service import (
     KaggleRerankBackend,
     LocalRerankBackend,
@@ -41,7 +41,7 @@ def rerank(
         float, typer.Option("--request-timeout-seconds")
     ] = DEFAULT_REQUEST_TIMEOUT_SECONDS,
 ) -> None:
-    run_root = RETRIEVAL_EVAL_RUNS_DIR / run
+    run_root, artifact_root = retrieval_run_roots(run)
     if output_dir is not None:
         typer.echo(
             "Warning: --output-dir is deprecated; rerank artifacts are stored under the run",
@@ -62,6 +62,7 @@ def rerank(
                     dry_run=dry_run,
                     budget_seconds=budget_seconds,
                     request_timeout_seconds=request_timeout_seconds,
+                    artifact_root=artifact_root,
                 )
             )
         ),

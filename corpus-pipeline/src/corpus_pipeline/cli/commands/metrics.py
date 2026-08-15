@@ -12,7 +12,7 @@ from corpus_pipeline.cli.runtime import (
     state_from_context,
 )
 from corpus_pipeline.config.defaults import DEFAULT_TOP_K
-from corpus_pipeline.config.paths import RETRIEVAL_EVAL_RUNS_DIR
+from corpus_pipeline.config.paths import retrieval_run_roots
 from corpus_pipeline.evaluation.metrics_service import MetricsRequest, run_metrics
 
 
@@ -40,13 +40,15 @@ def metrics(
 
 
 def _run(run, top_k, window_size, model, variant):
+    metadata_root, artifact_root = retrieval_run_roots(run)
     result = run_metrics(
         MetricsRequest(
-            RETRIEVAL_EVAL_RUNS_DIR / run,
+            metadata_root,
             top_k,
             window_size,
             model,
             variant,
+            artifact_root,
         )
     )
     return CommandResult(

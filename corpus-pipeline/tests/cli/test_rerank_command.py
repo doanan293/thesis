@@ -5,6 +5,7 @@ from typer.testing import CliRunner
 
 import corpus_pipeline.cli.commands.rerank as rerank_command
 from corpus_pipeline.cli.app import app
+from corpus_pipeline.config.paths import HEAVY_RETRIEVAL_EVAL_DIR
 
 runner = CliRunner()
 
@@ -40,6 +41,7 @@ def test_rerank_warns_and_uses_canonical_artifact(monkeypatch):
     assert result.exit_code == 0
     assert "deprecated" in result.stderr
     assert captured["request"].model == "qwen3-reranker:0.6b-fp16"
+    assert captured["request"].artifact_root == HEAVY_RETRIEVAL_EVAL_DIR / "experiment"
     assert "variant_sha256=variant" in result.stdout
 
 

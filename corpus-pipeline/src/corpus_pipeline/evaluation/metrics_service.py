@@ -139,6 +139,7 @@ class MetricsRequest:
     window_size: int = 3
     model: str | None = None
     variant: str | None = None
+    artifact_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -168,11 +169,10 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
     run_path = request.run_root / "run.json"
     record = load_run_record(run_path)
     validate_metrics_cutoff(request.top_k, record.identity.candidate_k)
-    candidates_dir = request.run_root / "candidates"
+    workspace = RunWorkspace(request.run_root, record.identity, request.artifact_root)
+    candidates_dir = workspace.candidates_dir
     if record.candidates_dir:
-        candidates_dir = Path(record.candidates_dir)
-        if not candidates_dir.is_absolute():
-            candidates_dir = request.run_root / candidates_dir
+        candidates_dir = workspace.resolve_relative_path(record.candidates_dir)
     candidate_bundle = load_bundle(
         candidates_dir, expected_type="retrieval_candidates", require_complete=True
     )
@@ -184,7 +184,6 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
     rows = {}
     for row in iter_jsonl_objects(evaluation):
         rows[str(row["query_id"])] = row
-    workspace = RunWorkspace(request.run_root, record.identity)
     if record.schema_version == 1 and record.legacy_rerank is not None:
         migrate_legacy_rerank(workspace, candidate_bundle)
         record = load_run_record(run_path)
@@ -298,7 +297,8 @@ def run_metrics(request: MetricsRequest) -> MetricsResult:
         window_size=request.window_size,
     )
     baseline_artifact = publish_metrics_artifact(
-        inputs.run_root,
+        request.artifact_root or inputs.run_root,
+        request.run_root,
         baseline_identity,
         baseline,
         baseline_breakdowns,
@@ -318,7 +318,8 @@ def run_metrics(request: MetricsRequest) -> MetricsResult:
         )
         reranked_artifacts.append(
             publish_metrics_artifact(
-                inputs.run_root,
+                request.artifact_root or inputs.run_root,
+                request.run_root,
                 identity,
                 reranked,
                 breakdowns,

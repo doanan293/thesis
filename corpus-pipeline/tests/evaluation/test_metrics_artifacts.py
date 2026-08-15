@@ -1,6 +1,9 @@
 import pytest
 
-from corpus_pipeline.evaluation.metrics_artifacts import select_rerank_variants
+from corpus_pipeline.evaluation.metrics_artifacts import (
+    publish_metrics_artifact,
+    select_rerank_variants,
+)
 from corpus_pipeline.evaluation.metrics_service import MetricsRequest, run_metrics
 from corpus_pipeline.evaluation.rerank_artifacts import finalize_run_rerank_bundle
 from corpus_pipeline.evaluation.run_workspace import (
@@ -8,7 +11,10 @@ from corpus_pipeline.evaluation.run_workspace import (
     RunWorkspace,
     load_run_record,
 )
-from corpus_pipeline.evaluation.variant_identity import RerankVariantIdentity
+from corpus_pipeline.evaluation.variant_identity import (
+    MetricsArtifactIdentity,
+    RerankVariantIdentity,
+)
 
 
 def test_select_variants_defaults_to_all_and_model_keeps_all_revisions():
@@ -61,3 +67,28 @@ def test_metrics_publishes_baseline_and_variant_without_overwriting(
     assert first.reranked[0].artifact_dir != second.reranked[0].artifact_dir
     assert first.baseline.report_path.is_file()
     assert first.reranked[0].report_path.is_file()
+
+
+def test_metrics_payload_and_markdown_use_separate_roots(tmp_path):
+    heavy_root = tmp_path / "heavy" / "retrieval_eval" / "run-a"
+    summary_root = tmp_path / "retrieval_eval" / "run-a"
+    identity = MetricsArtifactIdentity.create(
+        evaluation_sha256="evaluation",
+        candidate_data_sha256="candidates",
+        top_k=1,
+        window_size=3,
+    )
+
+    result = publish_metrics_artifact(
+        heavy_root,
+        summary_root,
+        identity,
+        {"count": 0, "mrr": 0.0},
+        {"eval_group": {}, "difficulty": {}},
+        [],
+    )
+
+    assert result.results_path.is_relative_to(heavy_root)
+    assert result.report_path.is_relative_to(summary_root)
+    assert result.report_path.is_file()
+    assert (result.artifact_dir / "manifest.json").is_file()
