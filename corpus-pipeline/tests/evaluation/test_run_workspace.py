@@ -64,7 +64,33 @@ def test_record_candidates_stores_relative_path_when_inside_run(tmp_path):
     candidate_path = tmp_path / "candidates" / "candidates.jsonl"
     candidate_path.parent.mkdir()
     candidate_path.write_text("{}\n", encoding="utf-8")
+    manifest_path = candidate_path.with_name("manifest.json")
+    manifest_path.write_text("{}\n", encoding="utf-8")
 
-    workspace.record_candidates(SimpleNamespace(data_path=candidate_path))
+    workspace.record_candidates(
+        SimpleNamespace(data_path=candidate_path, manifest_path=manifest_path)
+    )
 
     assert load_run_record(tmp_path / "run.json").candidates_dir == "candidates"
+
+
+def test_split_workspace_keeps_registry_and_manifest_outside_heavy_root(tmp_path):
+    metadata = tmp_path / "retrieval_eval" / "run-a"
+    heavy = tmp_path / "heavy" / "retrieval_eval" / "run-a"
+    workspace = RunWorkspace.open_or_create(
+        metadata, identity(), artifact_root=heavy
+    )
+    artifact = SimpleNamespace(
+        data_path=heavy / "candidates" / "candidates.jsonl",
+        manifest_path=heavy / "candidates" / "manifest.json",
+    )
+    artifact.data_path.parent.mkdir(parents=True)
+    artifact.data_path.write_text("{}\n", encoding="utf-8")
+    artifact.manifest_path.write_text('{"complete":1}\n', encoding="utf-8")
+
+    workspace.record_candidates(artifact)
+
+    assert (metadata / "run.json").is_file()
+    assert (metadata / "candidates-manifest.json").read_bytes() == artifact.manifest_path.read_bytes()
+    assert workspace.candidates_dir == heavy / "candidates"
+    assert load_run_record(metadata / "run.json").candidates_dir == "candidates"

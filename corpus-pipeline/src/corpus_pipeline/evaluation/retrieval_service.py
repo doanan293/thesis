@@ -56,6 +56,7 @@ class RetrieveRequest:
     limit: int | None
     force: bool
     prefetch_k: int | None = None
+    artifact_root: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -177,7 +178,10 @@ def run_retrieval(request: RetrieveRequest) -> RetrieveResult:
         prefetch_k=request.prefetch_k,
     )
     workspace = RunWorkspace.open_or_create(
-        request.run_root, identity, force=request.force
+        request.run_root,
+        identity,
+        artifact_root=request.artifact_root,
+        force=request.force,
     )
     existing_data = workspace.candidates_dir / "candidates.jsonl"
     existing_manifest = workspace.candidates_dir / "manifest.json"

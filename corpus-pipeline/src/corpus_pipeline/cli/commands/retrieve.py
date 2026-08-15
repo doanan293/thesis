@@ -21,8 +21,8 @@ from corpus_pipeline.config.defaults import (
 )
 from corpus_pipeline.config.paths import (
     PROCESSED_EVALUATION_DIR,
-    RETRIEVAL_EVAL_RUNS_DIR,
     query_embedding_cache_path,
+    retrieval_run_roots,
 )
 from corpus_pipeline.evaluation.retrieval_service import RetrieveRequest, run_retrieval
 
@@ -99,13 +99,14 @@ def _run(
     limit,
     force,
 ) -> CommandResult:
+    metadata_root, artifact_root = retrieval_run_roots(run)
     result = run_retrieval(
         RetrieveRequest(
             evaluation_path=evaluation,
             query_embeddings_dir=resolve_query_embeddings_dir(
                 evaluation, model, retriever, query_embeddings
             ),
-            run_root=RETRIEVAL_EVAL_RUNS_DIR / run,
+            run_root=metadata_root,
             embedding_model=model,
             qdrant_url=qdrant_url,
             retriever=retriever,
@@ -114,6 +115,7 @@ def _run(
             rrf_k=rrf_k,
             limit=limit,
             force=force,
+            artifact_root=artifact_root,
         )
     )
     return CommandResult(

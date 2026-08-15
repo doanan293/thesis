@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -160,22 +161,32 @@ def load_run_record(path: Path) -> RunRecord:
 class RunWorkspace:
     root: Path
     identity: RunIdentity
+    artifact_root: Path | None = None
+
+    @property
+    def artifact_base(self) -> Path:
+        return self.artifact_root or self.root
 
     @property
     def candidates_dir(self) -> Path:
-        return self.root / "candidates"
+        return self.artifact_base / "candidates"
 
     @property
     def rerank_scores_dir(self) -> Path:
-        return self.root / "rerank-scores"
+        return self.artifact_base / "rerank-scores"
 
     @property
     def reports_dir(self) -> Path:
-        return self.root / "reports"
+        return self.artifact_base / "reports"
 
     @classmethod
     def open_or_create(
-        cls, root: Path, identity: RunIdentity, *, force: bool = False
+        cls,
+        root: Path,
+        identity: RunIdentity,
+        *,
+        artifact_root: Path | None = None,
+        force: bool = False,
     ) -> RunWorkspace:
         root = Path(root)
         record_path = root / "run.json"
@@ -190,7 +201,7 @@ class RunWorkspace:
             if current.identity != identity and force:
                 previous = root / "run.previous.json"
                 os.replace(record_path, previous)
-        workspace = cls(root, identity)
+        workspace = cls(root, identity, artifact_root)
         root.mkdir(parents=True, exist_ok=True)
         workspace.write_record(RunRecord(schema_version=2, identity=identity))
         return workspace
@@ -202,9 +213,13 @@ class RunWorkspace:
         current = load_run_record(self.root / "run.json")
         candidate_dir = Path(artifact.data_path).parent
         try:
-            candidate_value = candidate_dir.relative_to(self.root).as_posix()
+            candidate_value = candidate_dir.relative_to(self.artifact_base).as_posix()
         except ValueError:
             candidate_value = str(candidate_dir)
+        snapshot = self.root / "candidates-manifest.json"
+        temporary = snapshot.with_name(f".{snapshot.name}.tmp")
+        shutil.copy2(Path(artifact.manifest_path), temporary)
+        os.replace(temporary, snapshot)
         self.write_record(
             RunRecord(
                 schema_version=current.schema_version,
@@ -222,7 +237,7 @@ class RunWorkspace:
 
     def resolve_relative_path(self, value: str) -> Path:
         candidate = Path(value)
-        return candidate if candidate.is_absolute() else self.root / candidate
+        return candidate if candidate.is_absolute() else self.artifact_base / candidate
 
     def register_rerank_variant(
         self, variant_sha256: str, variant: RerankVariantRecord
