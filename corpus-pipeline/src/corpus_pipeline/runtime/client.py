@@ -6,6 +6,8 @@ from collections.abc import Callable
 
 import requests
 
+from corpus_pipeline.runtime.model_profiles import RerankContract
+
 
 class LlamaCppError(RuntimeError):
     pass
@@ -196,6 +198,9 @@ class LlamaCppClient:
         return tokens[0]
 
     def rerank_completion(self, prompt: str, model: str) -> float:
+        from corpus_pipeline.runtime.model_profiles import qwen3_rerank_contract
+
+        contract = qwen3_rerank_contract()
         yes_id = self._single_token_id("yes", model)
         no_id = self._single_token_id("no", model)
         if yes_id == no_id:
@@ -203,20 +208,33 @@ class LlamaCppClient:
                 "Rerank yes and no candidates must use different tokens"
             )
         payload = self._request(
-            "/completion",
-            {
-                "model": model,
-                "prompt": prompt,
-                "n_predict": 1,
-                "temperature": 1.0,
-                "samplers": ["temperature"],
-                "n_probs": 2,
-                "min_keep": 2,
-                "post_sampling_probs": True,
-                "logit_bias": [[yes_id, 100.0], [no_id, 100.0]],
-            },
+            "/completion", self.completion_payload(prompt, contract, model=model, yes_id=yes_id, no_id=no_id)
         )
         return self._parse_completion_score(payload, yes_id, no_id)
+
+    @staticmethod
+    def completion_payload(
+        prompt: str,
+        contract: RerankContract,
+        *,
+        model: str = "",
+        yes_id: int,
+        no_id: int,
+    ) -> dict:
+        scoring = contract.scoring
+        if contract.protocol != "completion_logprobs" or scoring is None:
+            raise ValueError("completion payload requires a completion contract")
+        return {
+            "model": model,
+            "prompt": prompt,
+            "n_predict": scoring.n_predict,
+            "temperature": scoring.temperature,
+            "samplers": list(scoring.samplers),
+            "n_probs": scoring.n_probs,
+            "min_keep": scoring.min_keep,
+            "post_sampling_probs": scoring.post_sampling_probs,
+            "logit_bias": [[yes_id, scoring.logit_bias], [no_id, scoring.logit_bias]],
+        }
 
     def _parse_completion_score(self, payload: dict, yes_id: int, no_id: int) -> float:
         probabilities = payload.get("completion_probabilities")
@@ -265,10 +283,14 @@ class LlamaCppClient:
         return candidate_probabilities[yes_id] / total
 
     async def rerank_completions_async(
-        self, prompts: list[str], model: str, concurrency: int = 16
+        self, prompts: list[str], model: str, concurrency: int = 16, contract: RerankContract | None = None
     ) -> list[float]:
         if not prompts:
             return []
+        if contract is None:
+            from corpus_pipeline.runtime.model_profiles import qwen3_rerank_contract
+
+            contract = qwen3_rerank_contract()
         import asyncio
 
         import httpx
@@ -285,52 +307,52 @@ class LlamaCppClient:
         async def _fetch_one(async_client: httpx.AsyncClient, prompt: str) -> float:
             async with semaphore:
                 url = f"{self.base_url}/completion"
-                payload = {
-                    "model": model,
-                    "prompt": prompt,
-                    "n_predict": 1,
-                    "temperature": 1.0,
-                    "samplers": ["temperature"],
-                    "n_probs": 2,
-                    "min_keep": 2,
-                    "post_sampling_probs": True,
-                    "logit_bias": [[yes_id, 100.0], [no_id, 100.0]],
-                }
-                try:
-                    response = await async_client.post(
-                        url, json=payload, timeout=self.timeout
-                    )
-                except Exception as exc:
-                    retryable = isinstance(
-                        exc,
-                        httpx.RequestError | ConnectionError | TimeoutError,
-                    )
-                    raise LlamaCppRequestError(
-                        f"llama.cpp request failed for /completion: {exc}",
-                        retryable=retryable,
-                    ) from exc
-
-                status_code = response.status_code
-                if status_code >= 400:
-                    body = response.text[:2000]
-                    retryable = status_code in {408, 429} or status_code >= 500
-                    detail = f": {body}" if body else ""
-                    raise LlamaCppRequestError(
-                        f"llama.cpp request failed for /completion: HTTP {status_code}{detail}",
-                        status_code=status_code,
-                        retryable=retryable,
-                    )
-                try:
-                    res_json = response.json()
-                except Exception as exc:
-                    raise LlamaCppResponseError(
-                        f"llama.cpp response for /completion is not valid JSON: {exc}"
-                    ) from exc
-                if not isinstance(res_json, dict):
-                    raise LlamaCppResponseError(
-                        "llama.cpp response for /completion must be an object"
-                    )
-                return self._parse_completion_score(res_json, yes_id, no_id)
+                payload = self.completion_payload(
+                    prompt, contract, model=model, yes_id=yes_id, no_id=no_id
+                )
+                last_error: LlamaCppRequestError | None = None
+                for attempt in range(1, self.max_attempts + 1):
+                    try:
+                        response = await async_client.post(
+                            url, json=payload, timeout=self.timeout
+                        )
+                    except Exception as exc:
+                        retryable = isinstance(
+                            exc,
+                            httpx.RequestError | ConnectionError | TimeoutError,
+                        )
+                        last_error = LlamaCppRequestError(
+                            f"llama.cpp request failed for /completion: {exc}",
+                            retryable=retryable,
+                        )
+                    else:
+                        status_code = response.status_code
+                        if status_code >= 400:
+                            body = response.text[:2000]
+                            retryable = status_code in {408, 429} or status_code >= 500
+                            detail = f": {body}" if body else ""
+                            last_error = LlamaCppRequestError(
+                                f"llama.cpp request failed for /completion: HTTP {status_code}{detail}",
+                                status_code=status_code,
+                                retryable=retryable,
+                            )
+                        else:
+                            try:
+                                res_json = response.json()
+                            except Exception as exc:
+                                raise LlamaCppResponseError(
+                                    f"llama.cpp response for /completion is not valid JSON: {exc}"
+                                ) from exc
+                            if not isinstance(res_json, dict):
+                                raise LlamaCppResponseError(
+                                    "llama.cpp response for /completion must be an object"
+                                )
+                            return self._parse_completion_score(res_json, yes_id, no_id)
+                    if last_error is None or not last_error.retryable or attempt >= self.max_attempts:
+                        break
+                    await asyncio.sleep(self.retry_delay_seconds * attempt)
+                assert last_error is not None
+                raise last_error
 
         async with httpx.AsyncClient() as async_client:
             tasks = [_fetch_one(async_client, prompt) for prompt in prompts]
@@ -338,35 +360,44 @@ class LlamaCppClient:
 
     def _request(self, path: str, payload: dict) -> dict:
         url = f"{self.base_url}{path}"
-        try:
-            response = self._post(url, json=payload, timeout=self.timeout)
-        except Exception as exc:
-            retryable = isinstance(
-                exc,
-                requests.exceptions.RequestException | ConnectionError | TimeoutError,
-            )
-            raise LlamaCppRequestError(
-                f"llama.cpp request failed for {path}: {exc}",
-                retryable=retryable,
-            ) from exc
-        status_code = int(getattr(response, "status_code", 200))
-        if status_code >= 400:
-            body = str(getattr(response, "text", ""))[:2000]
-            retryable = status_code in {408, 429} or status_code >= 500
-            detail = f": {body}" if body else ""
-            raise LlamaCppRequestError(
-                f"llama.cpp request failed for {path}: HTTP {status_code}{detail}",
-                status_code=status_code,
-                retryable=retryable,
-            )
-        try:
-            result = response.json()
-        except Exception as exc:
-            raise LlamaCppResponseError(
-                f"llama.cpp response for {path} is not valid JSON: {exc}"
-            ) from exc
-        if not isinstance(result, dict):
-            raise LlamaCppResponseError(
-                f"llama.cpp response for {path} must be an object"
-            )
-        return result
+        last_error: LlamaCppRequestError | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = self._post(url, json=payload, timeout=self.timeout)
+            except Exception as exc:
+                retryable = isinstance(
+                    exc,
+                    requests.exceptions.RequestException | ConnectionError | TimeoutError,
+                )
+                last_error = LlamaCppRequestError(
+                    f"llama.cpp request failed for {path}: {exc}",
+                    retryable=retryable,
+                )
+            else:
+                status_code = int(getattr(response, "status_code", 200))
+                if status_code >= 400:
+                    body = str(getattr(response, "text", ""))[:2000]
+                    retryable = status_code in {408, 429} or status_code >= 500
+                    detail = f": {body}" if body else ""
+                    last_error = LlamaCppRequestError(
+                        f"llama.cpp request failed for {path}: HTTP {status_code}{detail}",
+                        status_code=status_code,
+                        retryable=retryable,
+                    )
+                else:
+                    try:
+                        result = response.json()
+                    except Exception as exc:
+                        raise LlamaCppResponseError(
+                            f"llama.cpp response for {path} is not valid JSON: {exc}"
+                        ) from exc
+                    if not isinstance(result, dict):
+                        raise LlamaCppResponseError(
+                            f"llama.cpp response for {path} must be an object"
+                        )
+                    return result
+            if last_error is None or not last_error.retryable or attempt >= self.max_attempts:
+                break
+            self._sleep(self.retry_delay_seconds * attempt)
+        assert last_error is not None
+        raise last_error

@@ -47,6 +47,7 @@ class CloudArtifactManifest:
     reuse_sha256: str | None = None
     checkpoint_filename: str | None = None
     checkpoint_sha256: str | None = None
+    runtime: dict[str, Any] | None = None
 
     @property
     def completion(self) -> Completion:
@@ -132,6 +133,11 @@ def _load_manifest(path: Path) -> CloudArtifactManifest:
             if payload.get("checkpoint_sha256") is not None
             else None
         ),
+        runtime=(
+            dict(payload["runtime"])
+            if isinstance(payload.get("runtime"), dict)
+            else None
+        ),
     )
 
 
@@ -168,6 +174,15 @@ def load_cloud_artifact(
         raise ArtifactContractError(
             f"Cannot load incomplete artifact: complete={manifest.complete}, total={manifest.total}, missing={manifest.missing}"
         )
+    diagnostic_paths = [
+        candidate
+        for candidate in (
+            manifest_path.with_name("telemetry.json"),
+            manifest_path.with_name("benchmark_report.md"),
+            *sorted(manifest_path.parent.glob("server-*.log")),
+        )
+        if candidate.is_file()
+    ]
     return CloudArtifact(
         data_path,
         manifest_path,
@@ -178,6 +193,7 @@ def load_cloud_artifact(
         producing_job_sha256=str(manifest.identity.get("job_sha256"))
         if manifest.identity.get("job_sha256") is not None
         else None,
+        diagnostic_paths=tuple(diagnostic_paths),
     )
 
 
@@ -196,4 +212,8 @@ def promote_complete_artifact(artifact: CloudArtifact, destination: Path) -> Pat
         staged_manifest = Path(raw) / "manifest.json"
         shutil.copy2(artifact.manifest_path, staged_manifest)
         os.replace(staged_manifest, destination.with_name("manifest.json"))
+        for diagnostic in artifact.diagnostic_paths:
+            staged_diagnostic = Path(raw) / diagnostic.name
+            shutil.copy2(diagnostic, staged_diagnostic)
+            os.replace(staged_diagnostic, destination.with_name(diagnostic.name))
     return destination

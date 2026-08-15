@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from corpus_pipeline.integrations.kaggle import dependencies
 from corpus_pipeline.integrations.kaggle.models import StageName
 from corpus_pipeline.integrations.kaggle.stages import RerankStage
+from corpus_pipeline.runtime.catalog import require_model
 
 
 def _job(tmp_path: Path):
@@ -31,6 +32,9 @@ def _job(tmp_path: Path):
         owners=SimpleNamespace(
             execution="owner", runtime="owner", corpus="owner", checkpoint="owner"
         ),
+        runtime_profile=require_model(
+            "qwen3-reranker:0.6b-fp16"
+        ).rerank_search_space.candidates[0],
     )
     return RerankStage().build_job(request), candidates, manifest
 

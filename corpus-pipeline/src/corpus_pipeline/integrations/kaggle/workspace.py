@@ -155,6 +155,20 @@ class TemporaryWorkspace:
 
 
 @contextmanager
+def managed_staging_directory(
+    parent: Path | None = None, *, prefix: str = "corpus-pipeline-stage-"
+):
+    """Yield an ephemeral staging directory and remove it on every exit."""
+    root = Path(parent) if parent is not None else None
+    if root is not None:
+        root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=prefix, dir=str(root) if root else None
+    ) as raw:
+        yield Path(raw)
+
+
+@contextmanager
 def unwind_on_sigterm():
     previous = signal.getsignal(signal.SIGTERM)
 

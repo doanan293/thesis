@@ -134,6 +134,18 @@ luôn do run tự sinh. Metrics gồm:
 
 `--top-k` không được lớn hơn `candidate-k` của run identity.
 
+### Runtime profiling
+
+Khi chạy Kaggle production, hệ thống tự benchmark workload tương ứng đúng một
+lần nếu chưa có profile hợp lệ. Profile được lưu dưới `data/runtime_profiles/`
+và các lần sau sẽ tái sử dụng; profile bị vô hiệu khi model, runtime, topology
+hoặc search space thay đổi. Benchmark luôn dùng 512 mẫu và lỗi benchmark sẽ
+dừng pipeline, không rơi về profile mặc định.
+
+Mỗi level trong report có batch size, concurrency, item count, input
+characters, elapsed time, throughput, status và error category. Level lỗi vẫn
+được ghi để so sánh; recommendation chỉ chọn từ level hợp lệ.
+
 ## Artifacts và exit codes
 
 Candidate, rerank score và metrics artifacts được publish thành bundle có

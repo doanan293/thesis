@@ -35,6 +35,11 @@ class CheckpointService:
         ).strip("-")
         return f"{self.owner}/re-eval-{job.stage.value}-{model_slug[:24]}-{job.identity.reuse_sha256[:8]}-checkpoint"
 
+    def empty(self, job: StageJob) -> CheckpointState:
+        return CheckpointState(
+            None, None, Completion(job.expected_total, 0, job.expected_total)
+        )
+
     def inspect(self, job: StageJob) -> CheckpointState:
         reference = self.reference(job)
         state = self.datasets.inspect_state(reference, active_owner=self.owner)
@@ -101,3 +106,14 @@ class CheckpointService:
             )
         self.datasets.wait_for_dataset_ready(reference)
         return reference
+
+    def publish_if_better(
+        self,
+        job: StageJob,
+        artifact: CloudArtifact,
+        current: CheckpointState,
+    ) -> CheckpointState:
+        if artifact.completion.complete <= current.completion.complete:
+            return current
+        reference = self.publish(job, artifact)
+        return CheckpointState(reference, artifact, artifact.completion)

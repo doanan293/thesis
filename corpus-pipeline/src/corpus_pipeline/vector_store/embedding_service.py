@@ -33,6 +33,8 @@ class ChunkEmbeddingRequest:
     dry_run: bool
     budget_seconds: int
     request_timeout_seconds: float
+    benchmark: bool = False
+    benchmark_items: int = 512
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class EmbeddingStageResult:
     cache_path: Path | None
     actions: tuple[str, ...]
     incomplete: bool = False
+    benchmark_report: Path | None = None
+    benchmark_levels: int = 0
 
 
 class ChunkEmbeddingBackend(Protocol):
@@ -75,6 +79,8 @@ class LocalChunkEmbeddingBackend:
         spec = require_model(request.model)
         if spec.kind is not ModelKind.EMBEDDING:
             raise ValueError("--model must select an embedding model")
+        if request.benchmark:
+            raise ValueError("benchmark requires --backend kaggle")
         if request.dry_run:
             return EmbeddingStageResult(None, ("dry-run",))
         points = read_normalized_input_points(request.chunks_path)
@@ -146,6 +152,20 @@ class KaggleChunkEmbeddingBackend:
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
 
         spec = require_model(request.model)
+        from corpus_pipeline.integrations.kaggle.auto_profile import ensure_runtime_profile
+
+        resolution = ensure_runtime_profile(
+            workload="corpus-embed",
+            benchmark_stage=StageName.CORPUS_EMBED_BENCHMARK.value,
+            model=request.model,
+            input_path=request.chunks_path,
+            gguf_root=DEFAULT_GGUF_ROOT,
+            budget_seconds=request.budget_seconds,
+            dry_run=request.dry_run,
+            force=request.force,
+        )
+        if resolution.profile is None:
+            return EmbeddingStageResult(None, (f"profile={resolution.action}",), incomplete=True)
         result = run_kaggle_stage(
             stage=StageName.CORPUS_EMBED,
             model=request.model,
@@ -157,6 +177,7 @@ class KaggleChunkEmbeddingBackend:
             force=request.force,
             check_only=request.dry_run,
             budget_seconds=request.budget_seconds,
+            runtime_profile=resolution.profile.selected,
         )
         if result.artifact_path is None:
             return EmbeddingStageResult(

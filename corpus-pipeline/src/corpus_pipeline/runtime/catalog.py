@@ -3,6 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from corpus_pipeline.runtime.model_profiles import (
+    EmbeddingRuntimeProfile,
+    EmbeddingWorkloadProfile,
+    RerankContract,
+    RerankRuntimeProfile,
+    native_rerank_contract,
+    qwen3_rerank_contract,
+)
+from corpus_pipeline.runtime.runtime_profiles import (
+    EmbeddingRuntimeSearchSpaces,
+    RuntimeCandidate,
+    RuntimeSearchSpace,
+)
+
 
 class ModelKind(StrEnum):
     EMBEDDING = "embedding"
@@ -31,6 +45,11 @@ class ModelSpec:
     kaggle_physical_batch_size: int = 2048
     vector_dimension: int | None = None
     reranker_protocol: str | None = None
+    rerank_contract: RerankContract | None = None
+    rerank_runtime: RerankRuntimeProfile | None = None
+    embedding_runtime: EmbeddingRuntimeProfile | None = None
+    rerank_search_space: RuntimeSearchSpace | None = None
+    embedding_search_space: EmbeddingRuntimeSearchSpaces | None = None
 
     @property
     def slug(self) -> str:
@@ -58,6 +77,40 @@ def _embedding(
     parallel: int,
     batch: int,
 ) -> ModelSpec:
+    benchmark_concurrency = (1, 2) if topology is ModelTopology.SHARDED_1X2 else (1, 2, 4)
+    embedding_profile = EmbeddingRuntimeProfile(
+        query=EmbeddingWorkloadProfile(
+            production_batch_size=batch,
+            production_concurrency=1,
+            benchmark_batch_sizes=tuple(sorted({max(1, batch // 2), batch, batch * 2})),
+            benchmark_concurrency=benchmark_concurrency,
+        ),
+        corpus=EmbeddingWorkloadProfile(
+            production_batch_size=batch,
+            production_concurrency=1,
+            benchmark_batch_sizes=tuple(sorted({max(1, batch // 2), batch, batch * 2})),
+            benchmark_concurrency=benchmark_concurrency,
+        ),
+        context_per_slot=2048,
+        logical_batch_size=2048,
+        physical_batch_size=2048,
+    )
+    def candidates(batch_sizes: tuple[int, ...]) -> RuntimeSearchSpace:
+        return RuntimeSearchSpace(
+            tuple(
+                RuntimeCandidate(
+                    server_slots=parallel,
+                    concurrency=concurrency,
+                    request_batch_size=batch_size,
+                    context_per_slot=2048,
+                    logical_batch_size=2048,
+                    physical_batch_size=2048,
+                )
+                for batch_size in batch_sizes
+                for concurrency in benchmark_concurrency
+            )
+        )
+
     return ModelSpec(
         name=name,
         kind=ModelKind.EMBEDDING,
@@ -68,6 +121,11 @@ def _embedding(
         kaggle_parallel=parallel,
         kaggle_request_batch_size=batch,
         vector_dimension=dimension,
+        embedding_runtime=embedding_profile,
+        embedding_search_space=EmbeddingRuntimeSearchSpaces(
+            query=candidates(tuple(sorted({max(1, batch // 2), batch}))),
+            corpus=candidates(tuple(sorted({batch, batch * 2}))),
+        ),
     )
 
 
@@ -84,6 +142,34 @@ def _reranker(
     logical_batch_size: int = 4096,
     physical_batch_size: int = 2048,
 ) -> ModelSpec:
+    contract = (
+        qwen3_rerank_contract()
+        if protocol == "completion_logprobs"
+        else native_rerank_contract()
+    )
+    runtime = RerankRuntimeProfile(
+        server_slots_per_gpu=parallel,
+        concurrency_per_gpu=parallel,
+        context_per_slot=context_per_slot,
+        logical_batch_size=logical_batch_size,
+        physical_batch_size=physical_batch_size,
+        benchmark_concurrency=tuple(sorted({max(1, parallel // 2), parallel, parallel * 2})),
+    )
+    search_space = RuntimeSearchSpace(
+        tuple(
+            RuntimeCandidate(
+                server_slots=parallel,
+                concurrency=concurrency,
+                request_batch_size=batch,
+                context_per_slot=context_per_slot,
+                logical_batch_size=logical_batch_size,
+                physical_batch_size=physical_batch_size,
+            )
+            for concurrency in tuple(
+                sorted({max(1, parallel // 2), parallel, parallel * 2})
+            )
+        )
+    )
     return ModelSpec(
         name=name,
         kind=ModelKind.RERANKER,
@@ -97,6 +183,9 @@ def _reranker(
         kaggle_logical_batch_size=logical_batch_size,
         kaggle_physical_batch_size=physical_batch_size,
         reranker_protocol=protocol,
+        rerank_contract=contract,
+        rerank_runtime=runtime,
+        rerank_search_space=search_space,
     )
 
 

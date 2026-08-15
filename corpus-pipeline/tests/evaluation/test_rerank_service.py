@@ -92,14 +92,7 @@ def test_kaggle_dry_run_formats_resource_identity_and_does_not_register(
     )
 
     assert result.incomplete
-    assert any(
-        "create model owner/model: dataset is missing" in item
-        for item in result.actions
-    )
-    assert any(
-        "create input owner/input: dataset is missing" in item
-        for item in result.actions
-    )
+    assert "profile=benchmark-required" in result.actions
     assert load_run_record(complete_run / "run.json").rerank_variants == {}
 
 

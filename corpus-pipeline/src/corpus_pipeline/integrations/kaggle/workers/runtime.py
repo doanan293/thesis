@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -129,6 +130,7 @@ def write_artifact_manifest(
     identity: JobIdentity,
     completion: Completion,
     checkpoint_path: Path | None = None,
+    runtime_summary: dict | None = None,
 ) -> Path:
     checkpoint_path = Path(checkpoint_path) if checkpoint_path is not None else None
     manifest_path = Path(data_path).with_name("manifest.json")
@@ -148,6 +150,8 @@ def write_artifact_manifest(
     if checkpoint_path is not None:
         payload["checkpoint_filename"] = checkpoint_path.name
         payload["checkpoint_sha256"] = sha256_file(checkpoint_path)
+    if runtime_summary is not None:
+        payload["runtime"] = dict(runtime_summary)
     manifest_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -163,6 +167,7 @@ def artifact_from_output(
     total: int,
     complete: int,
     checkpoint_path: Path | None = None,
+    runtime_summary: dict | None = None,
 ) -> CloudArtifact:
     missing = max(0, total - complete)
     completion = Completion(total, complete, missing)
@@ -172,6 +177,7 @@ def artifact_from_output(
         identity=identity,
         completion=completion,
         checkpoint_path=checkpoint_path,
+        runtime_summary=runtime_summary,
     )
     return CloudArtifact(
         Path(data_path),
@@ -186,6 +192,29 @@ def artifact_from_output(
 class WorkerServer:
     base_url: str
     visible_devices: str
+
+
+class BoundedLogCollector:
+    def __init__(self, max_bytes: int = 1024 * 1024):
+        if max_bytes < 1:
+            raise ValueError("max_bytes must be positive")
+        self.max_bytes = int(max_bytes)
+        self._buffer = bytearray()
+        self._lock = threading.Lock()
+
+    def feed(self, chunk: bytes | str) -> None:
+        raw = chunk.encode("utf-8", errors="replace") if isinstance(chunk, str) else bytes(chunk)
+        with self._lock:
+            self._buffer.extend(raw)
+            if len(self._buffer) > self.max_bytes:
+                del self._buffer[: len(self._buffer) - self.max_bytes]
+
+    def write(self, path: Path) -> None:
+        with self._lock:
+            data = bytes(self._buffer)
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
 
 
 def worker_deadline(config: dict, clock=time.monotonic) -> float:
@@ -216,7 +245,11 @@ def build_server_command(
     port: int,
     visible_devices: str,
     spec: ModelSpec,
+    runtime_overrides: dict[str, int] | None = None,
 ) -> list[str]:
+    if runtime_overrides is None:
+        raise ValueError("runtime_overrides is required")
+    overrides = dict(runtime_overrides)
     command = [
         str(binary),
         "--model",
@@ -230,13 +263,16 @@ def build_server_command(
         "--n-gpu-layers",
         "99",
         "-np",
-        str(spec.kaggle_parallel),
+        str(int(overrides["server_slots"])),
         "-c",
-        str(spec.kaggle_context_per_slot * spec.kaggle_parallel),
+        str(
+            int(overrides["context_per_slot"])
+            * int(overrides["server_slots"])
+        ),
         "-b",
-        str(spec.kaggle_logical_batch_size),
+        str(int(overrides["logical_batch_size"])),
         "-ub",
-        str(spec.kaggle_physical_batch_size),
+        str(int(overrides["physical_batch_size"])),
     ]
     if spec.kind is ModelKind.EMBEDDING:
         command.append("--embedding")
@@ -267,7 +303,11 @@ def materialize_runtime(source: Path, destination: Path) -> Path:
 
 
 @contextmanager
-def managed_model_servers(config: dict) -> Generator[list[WorkerServer], None, None]:
+def managed_model_servers(
+    config: dict,
+    *,
+    telemetry: object | None = None,
+) -> Generator[list[WorkerServer], None, None]:
     """Start one local llama.cpp server per configured replica on Kaggle."""
     spec = require_model(str(config["model"]))
     input_root = Path(config.get("kaggle_input_root", "/kaggle/input"))
@@ -282,8 +322,13 @@ def managed_model_servers(config: dict) -> Generator[list[WorkerServer], None, N
     binary = runtime_root / "bin/llama-server"
     library = runtime_root / "lib"
     processes = []
+    collectors: list[BoundedLogCollector] = []
+    readers: list[threading.Thread] = []
     servers: list[WorkerServer] = []
     base_port = int(config.get("server_port", 11434))
+    runtime_overrides = config.get("runtime_overrides")
+    if not isinstance(runtime_overrides, dict):
+        raise ValueError("runtime_overrides is required")
     for index, layout in enumerate(server_layout(spec)):
         port = base_port + index
         command = build_server_command(
@@ -292,14 +337,25 @@ def managed_model_servers(config: dict) -> Generator[list[WorkerServer], None, N
             port=port,
             visible_devices=layout.visible_devices,
             spec=spec,
+            runtime_overrides=runtime_overrides,
         )
+        collector = BoundedLogCollector(int(config.get("server_log_max_bytes", 1024 * 1024)))
         process = subprocess.Popen(
             command,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=build_server_environment(os.environ, library, layout.visible_devices),
         )
         processes.append(process)
+        collectors.append(collector)
+        if process.stdout is not None:
+            reader = threading.Thread(
+                target=_drain_process_output,
+                args=(process.stdout, collector),
+                daemon=True,
+            )
+            reader.start()
+            readers.append(reader)
         servers.append(WorkerServer(f"http://127.0.0.1:{port}", layout.visible_devices))
     try:
         from corpus_pipeline.runtime.client import LlamaCppClient
@@ -326,3 +382,23 @@ def managed_model_servers(config: dict) -> Generator[list[WorkerServer], None, N
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 process.kill()
+        for reader in readers:
+            reader.join(timeout=2)
+        output_dir = Path(config.get("output_dir", "/kaggle/working/artifact"))
+        for index, collector in enumerate(collectors):
+            collector.write(output_dir / f"server-{index}.log")
+        if telemetry is not None:
+            close = getattr(telemetry, "close", None)
+            write_report = getattr(telemetry, "write_report", None)
+            if callable(close):
+                close()
+            if callable(write_report):
+                write_report()
+
+
+def _drain_process_output(stream, collector: BoundedLogCollector) -> None:
+    while True:
+        chunk = stream.readline()
+        if not chunk:
+            return
+        collector.feed(chunk)

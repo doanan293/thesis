@@ -6,6 +6,7 @@ from pathlib import Path
 
 from corpus_pipeline.integrations.kaggle.api import (
     KaggleCommandRunner,
+    kernel_list_mine_command,
     kernel_logs_command,
     kernel_output_command,
     kernel_push_command,
@@ -14,15 +15,23 @@ from corpus_pipeline.integrations.kaggle.api import (
 from corpus_pipeline.integrations.kaggle.errors import (
     ErrorDisposition,
     KaggleCommandError,
+    KaggleDetached,
+    KaggleOutputUnavailable,
     classify_command_error,
 )
 from corpus_pipeline.integrations.kaggle.log_follower import (
     ManagedLogFollower,
     retry_delay_seconds,
 )
+from corpus_pipeline.integrations.kaggle.models import (
+    KernelPresence,
+    KernelRemoteState,
+    KernelStatus,
+)
 from corpus_pipeline.integrations.kaggle.parsers import (
     format_elapsed,
     parse_kernel_log_entries,
+    parse_kernel_references,
     parse_kernel_status,
 )
 
@@ -49,16 +58,65 @@ class KernelService:
         self._emit = emit
         self._follower_factory = follower_factory
 
+    def inspect_state(self, reference: str) -> KernelRemoteState:
+        try:
+            output = self.runner.run(
+                kernel_status_command(reference), capture_output=True
+            )
+        except KaggleCommandError as error:
+            detail = f"{error.stdout}\n{error.stderr}".strip()
+            folded = detail.casefold()
+            if "404" in folded or "not found" in folded:
+                return KernelRemoteState(
+                    reference, KernelPresence.ABSENT, detail=detail
+                )
+            return KernelRemoteState(reference, KernelPresence.UNKNOWN, detail=detail)
+        try:
+            status = parse_kernel_status(output)
+        except (RuntimeError, ValueError) as error:
+            return KernelRemoteState(
+                reference, KernelPresence.UNKNOWN, detail=str(error)
+            )
+        return KernelRemoteState(reference, KernelPresence.EXISTS, status=status)
+
     def push(self, bundle: Path, *, timeout_seconds: int = 43_200) -> None:
         self.runner.run(kernel_push_command(bundle, timeout_seconds))
 
-    def download_output(self, reference: str, destination: Path) -> None:
-        self.runner.run(kernel_output_command(reference, destination))
+    def confirm_missing(self, reference: str) -> bool | None:
+        """Return whether an inaccessible reference is absent from owned kernels."""
+        try:
+            output = self.runner.run(
+                kernel_list_mine_command(reference.rsplit("/", 1)[-1]),
+                capture_output=True,
+            )
+        except KaggleCommandError:
+            return None
+        return reference not in parse_kernel_references(output)
 
-    def poll(self, reference: str, *, timeout_seconds: float = 43_200) -> None:
+    def download_output(self, reference: str, destination: Path) -> None:
+        for attempt in range(1, 6):
+            try:
+                self.runner.run(kernel_output_command(reference, destination))
+                return
+            except KaggleCommandError as error:
+                detail = f"{error.stdout}\n{error.stderr}".strip()
+                folded = detail.casefold()
+                if "404" in folded or "not found" in folded or "no output" in folded:
+                    raise KaggleOutputUnavailable(
+                        f"Kernel output is unavailable for {reference}: {detail[:500]}"
+                    ) from error
+                if classify_command_error(error) is ErrorDisposition.FATAL:
+                    raise
+                if attempt == 5:
+                    raise
+                self._sleep(retry_delay_seconds(attempt, jitter=self._jitter()))
+
+    def wait_for_terminal(
+        self, reference: str, *, timeout_seconds: float = 43_200
+    ) -> KernelStatus:
         if self.runner.dry_run:
             self.runner.run(kernel_status_command(reference), capture_output=True)
-            return
+            return KernelStatus.COMPLETE
         started = self._monotonic()
         follower = self._follower_factory(self.runner, reference)
         retry_at = started
@@ -83,13 +141,10 @@ class KernelService:
                         raise
                     self._sleep(self.poll_interval_seconds)
                     continue
-                if status == "COMPLETE":
-                    return
-                if status == "ERROR":
-                    follower.stop()
-                    raise RuntimeError(
-                        f"Kernel {reference} failed: {self._log_tail(reference)}"
-                    )
+                if status is KernelStatus.COMPLETE:
+                    return status
+                if status is KernelStatus.ERROR:
+                    return status
 
                 if status != last_status:
                     self._emit(
@@ -118,7 +173,7 @@ class KernelService:
                         degradation_reported = True
 
                 if (
-                    status == "RUNNING"
+                    status is KernelStatus.RUNNING
                     and not follower.is_running
                     and self._monotonic() >= retry_at
                 ):
@@ -136,8 +191,17 @@ class KernelService:
                             )
                             degradation_reported = True
                 self._sleep(self.poll_interval_seconds)
+        except KeyboardInterrupt as error:
+            raise KaggleDetached(reference) from error
         finally:
             follower.stop()
+
+    def poll(self, reference: str, *, timeout_seconds: float = 43_200) -> None:
+        status = self.wait_for_terminal(reference, timeout_seconds=timeout_seconds)
+        if status is KernelStatus.ERROR:
+            raise RuntimeError(
+                f"Kernel {reference} failed: {self._log_tail(reference)}"
+            )
 
     def _log_tail(self, reference: str) -> str:
         try:

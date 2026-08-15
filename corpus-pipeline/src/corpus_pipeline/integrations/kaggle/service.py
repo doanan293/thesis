@@ -26,6 +26,8 @@ from corpus_pipeline.integrations.kaggle.models import (
     StageName,
     StageRequest,
 )
+from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate
+from corpus_pipeline.runtime.runtime_profiles import canonical_sha256
 from corpus_pipeline.integrations.kaggle.orchestrator import KagglePipelineOrchestrator
 from corpus_pipeline.integrations.kaggle.parsers import parse_kaggle_username
 from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
@@ -86,6 +88,22 @@ def make_orchestrator(
     )
 
 
+def runtime_manifest_sha256(
+    runner: KaggleCommandRunner | None = None,
+    owners: OwnerConfiguration | None = None,
+) -> str:
+    """Return the fingerprint of the immutable Kaggle runtime manifest."""
+    load_kaggle_env()
+    active_runner = runner or KaggleCommandRunner()
+    active_owners = owners or owner_configuration(active_runner)
+    from corpus_pipeline.integrations.kaggle.orchestrator import runtime_dataset_reference
+
+    manifest = DatasetService(active_runner, active_owners.runtime).fetch_json(
+        runtime_dataset_reference(active_owners), "runtime_manifest.json"
+    )
+    return canonical_sha256(manifest)
+
+
 def run_kaggle_stage(
     *,
     stage: StageName,
@@ -97,6 +115,8 @@ def run_kaggle_stage(
     check_only: bool = False,
     max_runs: int = 10,
     budget_seconds: int = 21_600,
+    benchmark_items: int | None = None,
+    runtime_profile: RuntimeCandidate | None = None,
     env_file: Path = DEFAULT_ENV_PATH,
 ) -> PipelineResult:
     load_kaggle_env(env_file)
@@ -113,6 +133,8 @@ def run_kaggle_stage(
         check_only,
         max_runs,
         budget_seconds,
+        benchmark_items,
+        runtime_profile,
     )
     with unwind_on_sigterm():
         return make_orchestrator(owners, runner).run(request)

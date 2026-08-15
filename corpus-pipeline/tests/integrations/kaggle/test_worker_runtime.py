@@ -3,7 +3,12 @@ from pathlib import Path
 import pytest
 
 from corpus_pipeline.integrations.kaggle.artifacts import sha256_file
-from corpus_pipeline.integrations.kaggle.workers.runtime import resolve_input_file
+from corpus_pipeline.integrations.kaggle.workers.runtime import (
+    BoundedLogCollector,
+    build_server_command,
+    resolve_input_file,
+)
+from corpus_pipeline.runtime.catalog import require_model
 
 
 def _config(key: str, expected_path: Path, source: Path) -> dict:
@@ -84,3 +89,46 @@ def test_resolve_input_file_does_not_accept_exact_path_with_wrong_filename(tmp_p
 
     with pytest.raises(RuntimeError, match="no mounted file found"):
         resolve_input_file(config, "candidates", input_root=tmp_path / "mounted")
+
+
+def test_build_server_command_accepts_benchmark_runtime_overrides():
+    command = build_server_command(
+        binary="llama-server",
+        model="model.gguf",
+        port=11434,
+        visible_devices="0",
+        spec=require_model("qwen3-reranker:0.6b-fp16"),
+        runtime_overrides={
+            "server_slots": 8,
+            "context_per_slot": 4096,
+            "logical_batch_size": 8192,
+            "physical_batch_size": 4096,
+        },
+    )
+
+    assert command[command.index("-np") + 1] == "8"
+    assert command[command.index("-c") + 1] == "32768"
+    assert command[command.index("-b") + 1] == "8192"
+    assert command[command.index("-ub") + 1] == "4096"
+
+
+def test_build_server_command_requires_runtime_overrides():
+    with pytest.raises(ValueError, match="runtime_overrides is required"):
+        build_server_command(
+            binary="llama-server",
+            model="model.gguf",
+            port=11434,
+            visible_devices="0",
+            spec=require_model("qwen3-reranker:0.6b-fp16"),
+            runtime_overrides=None,
+        )
+
+
+def test_bounded_log_collector_keeps_only_tail(tmp_path):
+    collector = BoundedLogCollector(max_bytes=8)
+    collector.feed(b"0123456789")
+    target = tmp_path / "server-0.log"
+
+    collector.write(target)
+
+    assert target.read_bytes() == b"23456789"

@@ -4,6 +4,8 @@ import csv
 import io
 import json
 
+from corpus_pipeline.integrations.kaggle.models import KernelStatus
+
 
 def parse_gpu_quota_hours(csv_text: str) -> float:
     for row in csv.DictReader(io.StringIO(csv_text)):
@@ -12,16 +14,16 @@ def parse_gpu_quota_hours(csv_text: str) -> float:
     raise RuntimeError("Kaggle quota output did not contain a GPU row")
 
 
-def parse_kernel_status(output: str) -> str:
+def parse_kernel_status(output: str) -> KernelStatus:
     value = output.casefold()
     if "error" in value or "fail" in value:
-        return "ERROR"
+        return KernelStatus.ERROR
     if "complete" in value:
-        return "COMPLETE"
+        return KernelStatus.COMPLETE
     if "running" in value:
-        return "RUNNING"
+        return KernelStatus.RUNNING
     if "queue" in value or "pending" in value:
-        return "QUEUED"
+        return KernelStatus.QUEUED
     raise RuntimeError(f"Unrecognized Kaggle kernel status: {output.strip()}")
 
 
@@ -44,6 +46,22 @@ def parse_kernel_log_entries(output: str) -> list[str]:
                 entries.append(record["data"])
             return entries
     raise ValueError("Kaggle kernel logs did not contain a JSON list")
+
+
+def parse_kernel_references(output: str) -> set[str]:
+    rows = csv.DictReader(io.StringIO(output))
+    if not rows.fieldnames or "ref" not in {
+        field.strip().casefold() for field in rows.fieldnames
+    }:
+        return set()
+    reference_key = next(
+        field for field in rows.fieldnames if field.strip().casefold() == "ref"
+    )
+    return {
+        str(row.get(reference_key, "")).strip()
+        for row in rows
+        if str(row.get(reference_key, "")).strip()
+    }
 
 
 def format_elapsed(seconds: float) -> str:

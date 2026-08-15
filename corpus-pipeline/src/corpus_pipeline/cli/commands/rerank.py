@@ -78,5 +78,7 @@ def _result(result) -> CommandResult:
             "actions": result.actions,
             "subset_sha256": result.subset_sha256,
             "variant_sha256": result.variant_sha256,
+            "benchmark_report": getattr(result, "benchmark_report", None),
+            "benchmark_levels": getattr(result, "benchmark_levels", 0),
         },
     )

@@ -15,11 +15,16 @@ from corpus_pipeline.integrations.kaggle.dataset_service import (
 from corpus_pipeline.integrations.kaggle.errors import (
     ErrorDisposition,
     KaggleCommandError,
+    KaggleDetached,
     KagglePipelineError,
     KaggleRemoteStateError,
     classify_command_error,
 )
-from corpus_pipeline.integrations.kaggle.workspace import JobRunLock, TemporaryWorkspace
+from corpus_pipeline.integrations.kaggle.workspace import (
+    JobRunLock,
+    TemporaryWorkspace,
+    managed_staging_directory,
+)
 
 __all__ = [
     "DatasetInventory",
@@ -31,10 +36,12 @@ __all__ = [
     "KaggleCommandError",
     "KaggleCommandResult",
     "KaggleCommandRunner",
+    "KaggleDetached",
     "KagglePipelineError",
     "KaggleRemoteStateError",
     "OwnerConfiguration",
     "TemporaryWorkspace",
     "classify_command_error",
+    "managed_staging_directory",
     "resolve_owner_configuration",
 ]

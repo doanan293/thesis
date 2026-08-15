@@ -21,7 +21,8 @@ from corpus_pipeline.integrations.kaggle.workers.runtime import (
     resolve_optional_input_file,
     worker_deadline,
 )
-from corpus_pipeline.integrations.kaggle.workers.scheduling import map_batches_ordered
+from corpus_pipeline.integrations.kaggle.workers.scheduling import stream_map_ordered
+from corpus_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
 from corpus_pipeline.runtime.client import LlamaCppClient
 
 
@@ -84,6 +85,10 @@ def run_query_embed_worker(
     data_path = output_dir / "query_embeddings.jsonl"
     rows = list(iter_jsonl_objects(input_path))
     model = str(config["model"])
+    runtime_overrides = config.get("runtime_overrides")
+    if not isinstance(runtime_overrides, dict):
+        raise ValueError("runtime_overrides is required")
+    telemetry = RuntimeTelemetry("query_embed", model, output_dir)
     journal_path = output_dir / "query_embeddings.journal.jsonl"
     seed_path = resolve_optional_input_file(config, "checkpoint_filename")
     journal = AppendOnlyJournal.open(
@@ -110,7 +115,7 @@ def run_query_embed_worker(
     )
     if missing:
         deadline = worker_deadline(config, clock)
-        batch_size = max(1, int(config.get("batch_size", 32)))
+        batch_size = max(1, int(runtime_overrides["request_batch_size"]))
         next_milestone = ((len(existing) // 500) + 1) * 500
         newly_processed = 0
         last_reported_count = len(existing)
@@ -169,35 +174,41 @@ def run_query_embed_worker(
 
         def process_servers(servers) -> None:
             clients = [LlamaCppClient(server.base_url) for server in servers]
+            resources = list(enumerate(clients))
+            batches = [missing[start : start + batch_size] for start in range(0, len(missing), batch_size)]
 
-            def operation(client, indexed_rows):
-                vectors = client.embed(
-                    [str(row["query"]) for _index, row in indexed_rows],
+            async def operation(resource, _index, rows):
+                server_index, client = resource
+                operation_started = time.monotonic()
+                vectors = await asyncio.to_thread(
+                    client.embed,
+                    [str(row["query"]) for row in rows],
                     model,
                     int(config["vector_dimension"]),
                 )
-                return [
-                    (index, (row, vector))
-                    for (index, row), vector in zip(indexed_rows, vectors, strict=True)
-                ]
+                telemetry.record_operation(server_index, len(rows), sum(len(str(row["query"])) for row in rows), max(0.0, time.monotonic() - operation_started), "ok", 0)
+                return list(zip(rows, vectors, strict=True))
 
-            outer_size = batch_size * len(clients)
-            for start in range(0, len(missing), outer_size):
-                scheduled = map_batches_ordered(
-                    missing[start : start + outer_size],
-                    clients,
-                    batch_size,
+            import asyncio
+
+            scheduled = asyncio.run(
+                stream_map_ordered(
+                    batches,
+                    resources,
+                    max(1, int(runtime_overrides["concurrency"])),
                     operation,
                     deadline,
-                    clock,
+                    clock=clock,
                 )
-                commit_results(scheduled.results)
-                if scheduled.stopped_early:
-                    break
+            )
+            for result in scheduled.results:
+                commit_results(result)
 
         if embed_batch is None:
             emit("model-server starting")
-            with managed_model_servers(config) as servers:
+            server_config = dict(config)
+            server_config["runtime_overrides"] = runtime_overrides
+            with managed_model_servers(server_config) as servers:
                 emit(f"model-server ready replicas={len(servers)}")
                 process_servers(servers)
         else:
@@ -210,6 +221,9 @@ def run_query_embed_worker(
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.touch(exist_ok=True)
     journal.compact(current, data_path)
+    telemetry.close()
+    runtime_summary = telemetry.summary()
+    telemetry.write_report()
     artifact = artifact_from_output(
         data_path,
         artifact_type="query_embedding_cache",
@@ -217,6 +231,7 @@ def run_query_embed_worker(
         total=len(rows),
         complete=len(existing),
         checkpoint_path=journal_path,
+        runtime_summary=runtime_summary,
     )
     emit(
         f"artifact processed={len(existing)}/{len(rows)} "

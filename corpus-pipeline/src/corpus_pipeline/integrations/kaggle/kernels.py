@@ -10,8 +10,14 @@ from pathlib import Path
 
 from corpus_pipeline.integrations.kaggle.api import kernel_metadata
 from corpus_pipeline.integrations.kaggle.dependencies import kaggle_input_root
+from corpus_pipeline.integrations.kaggle.errors import KaggleRemoteStateError
 from corpus_pipeline.integrations.kaggle.kernel_service import KernelService
-from corpus_pipeline.integrations.kaggle.models import StageJob
+from corpus_pipeline.integrations.kaggle.models import (
+    KernelPresence,
+    KernelRemoteState,
+    KernelStatus,
+    StageJob,
+)
 
 
 class PipelineKernelService:
@@ -29,7 +35,7 @@ class PipelineKernelService:
         checkpoint_reference: str | None,
         total_budget_seconds: int,
     ) -> Path:
-        bundle = Path(root) / f"{job.stage.value}-{job.identity.sha256[:8]}"
+        bundle = Path(root) / f"{job.stage.value}-{job.identity.sha256[:16]}"
         shutil.rmtree(bundle, ignore_errors=True)
         bundle.mkdir(parents=True)
         references = list(dataset_references)
@@ -54,6 +60,7 @@ class PipelineKernelService:
         }
         if checkpoint_reference:
             checkpoint_filename = {
+                "corpus-embed": "vector_embeddings.jsonl",
                 "query-embed": "query_embeddings.journal.jsonl",
                 "rerank": "rerank_scores.journal.jsonl",
             }.get(job.stage.value)
@@ -84,8 +91,43 @@ class PipelineKernelService:
                 archive.write(path, arcname=str(path.relative_to(self.source_root)))
         return base64.b64encode(buffer.getvalue()).decode("ascii")
 
+    def references(self, job: StageJob) -> tuple[str, ...]:
+        base = f"{self.owner}/{job.stage.value}-"
+        preferred = base + job.identity.sha256[:16]
+        legacy = base + job.identity.sha256[:8]
+        return (preferred, legacy) if preferred != legacy else (preferred,)
+
     def reference(self, job: StageJob) -> str:
-        return f"{self.owner}/{job.stage.value}-{job.identity.sha256[:8]}"
+        return self.references(job)[0]
+
+    def discover(self, job: StageJob) -> KernelRemoteState:
+        for reference in self.references(job):
+            state = self.service.inspect_state(reference)
+            if state.presence is KernelPresence.UNKNOWN:
+                if (
+                    "kernels.get" in state.detail.casefold()
+                    and self.service.confirm_missing(reference)
+                ):
+                    continue
+                raise KaggleRemoteStateError(
+                    f"Cannot inspect Kaggle kernel {reference}: {state.detail}"
+                )
+            if state.presence is KernelPresence.EXISTS:
+                return state
+        return KernelRemoteState(self.reference(job), KernelPresence.ABSENT)
+
+    def push(self, bundle: Path, *, timeout_seconds: int) -> None:
+        self.service.push(bundle, timeout_seconds=timeout_seconds)
+
+    def wait_for_terminal(
+        self, reference: str, *, timeout_seconds: int
+    ) -> KernelStatus:
+        return self.service.wait_for_terminal(
+            reference, timeout_seconds=timeout_seconds
+        )
+
+    def download_output(self, reference: str, destination: Path) -> None:
+        self.service.download_output(reference, destination)
 
     def run(self, job: StageJob, bundle: Path, *, timeout_seconds: int) -> Path:
         self.service.push(bundle, timeout_seconds=timeout_seconds)

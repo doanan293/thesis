@@ -69,7 +69,11 @@ def embed_chunks_command(
         "embed chunks",
         status,
         result.cache_path,
-        {"actions": result.actions},
+        {
+            "actions": result.actions,
+            "benchmark_report": getattr(result, "benchmark_report", None),
+            "benchmark_levels": getattr(result, "benchmark_levels", 0),
+        },
     )
 
 
@@ -159,5 +163,10 @@ def _query_embedding_result(result) -> CommandResult:
         "embed queries",
         CommandStatus.INCOMPLETE if result.incomplete else CommandStatus.COMPLETE,
         result.cache_path,
-        {"actions": result.actions, "subset_sha256": result.subset_sha256},
+        {
+            "actions": result.actions,
+            "subset_sha256": result.subset_sha256,
+            "benchmark_report": getattr(result, "benchmark_report", None),
+            "benchmark_levels": getattr(result, "benchmark_levels", 0),
+        },
     )

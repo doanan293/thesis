@@ -9,6 +9,7 @@ from pathlib import Path
 
 from corpus_pipeline.artifacts.manifest import Completion
 from corpus_pipeline.integrations.kaggle.config import OwnerConfiguration
+from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
 type JSONValue = (
     None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
@@ -116,10 +117,38 @@ class StageName(StrEnum):
     CORPUS_EMBED = "corpus-embed"
     QUERY_EMBED = "query-embed"
     RERANK = "rerank"
+    RERANK_BENCHMARK = "rerank-benchmark"
+    QUERY_EMBED_BENCHMARK = "query-embed-benchmark"
+    CORPUS_EMBED_BENCHMARK = "corpus-embed-benchmark"
+
+
+class KernelPresence(StrEnum):
+    ABSENT = "absent"
+    EXISTS = "exists"
+    UNKNOWN = "unknown"
+
+
+class KernelStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETE = "complete"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class KernelRemoteState:
+    reference: str
+    presence: KernelPresence
+    status: KernelStatus | None = None
+    detail: str = ""
 
 
 class ActionVerb(StrEnum):
     REUSE = "reuse"
+    ATTACH = "attach"
+    DOWNLOAD = "download"
+    CHECKPOINT = "checkpoint"
+    FINALIZE = "finalize"
     CREATE = "create"
     UPDATE = "update"
     WAIT = "wait"
@@ -185,6 +214,8 @@ class StageRequest:
     check_only: bool = False
     max_runs: int = 10
     total_budget_seconds: int = 21_600
+    benchmark_items: int | None = None
+    runtime_profile: RuntimeCandidate | None = None
 
 
 @dataclass(frozen=True)
@@ -211,6 +242,7 @@ class CloudArtifact:
     checkpoint_path: Path | None = None
     strict_identity_match: bool = True
     producing_job_sha256: str | None = None
+    diagnostic_paths: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)

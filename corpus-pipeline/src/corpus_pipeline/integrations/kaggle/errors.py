@@ -34,6 +34,18 @@ class KaggleRemoteStateError(KagglePipelineError):
     pass
 
 
+class KaggleOutputUnavailable(KagglePipelineError):
+    pass
+
+
+class KaggleDetached(KeyboardInterrupt):
+    """Local monitoring stopped while the remote Kaggle kernel keeps running."""
+
+    def __init__(self, reference: str):
+        self.reference = reference
+        super().__init__(reference)
+
+
 class ErrorDisposition(StrEnum):
     FATAL = "fatal"
     RETRYABLE = "retryable"

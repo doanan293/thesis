@@ -23,7 +23,6 @@ from corpus_pipeline.evaluation.rerank_artifacts import (
 from corpus_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
     RerankScoreCacheError,
-    prompt_contract_hash,
 )
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
@@ -205,7 +204,11 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
                 f"Rerank variant model mismatch for {variant_sha256}"
             )
         spec = require_model(reranker)
-        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        if spec.rerank_contract is None:
+            raise RerankScoreCacheError(
+                f"Reranker {reranker} has no scoring contract"
+            )
+        contract = spec.rerank_contract.sha256
         score_cache = RerankScoreCache(
             score_bundle.data_path,
             model_sha256=spec.sha256,

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import copy
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
-from corpus_pipeline.evaluation.rerank_score_cache import prompt_contract_hash
 from corpus_pipeline.integrations.kaggle.models import (
     InputBundle,
     InputFile,
@@ -14,7 +14,9 @@ from corpus_pipeline.integrations.kaggle.models import (
     StageName,
     StageRequest,
 )
+from corpus_pipeline.runtime.benchmarking import BenchmarkLevel
 from corpus_pipeline.runtime.catalog import ModelKind, require_model
+from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
 
 def _count_jsonl(path: Path) -> int:
@@ -74,6 +76,17 @@ class StageAdapter(Protocol):
         raise NotImplementedError
 
 
+def _required_runtime_profile(request: StageRequest) -> RuntimeCandidate:
+    profile = request.runtime_profile
+    if profile is None:
+        raise ValueError("runtime profile is required for production stages")
+    if isinstance(profile, RuntimeCandidate):
+        return profile
+    if isinstance(profile, dict):
+        return RuntimeCandidate.from_dict(profile)
+    raise ValueError("runtime profile must be a RuntimeCandidate")
+
+
 @dataclass(frozen=True)
 class CorpusEmbedStage:
     name: StageName = StageName.CORPUS_EMBED
@@ -89,6 +102,7 @@ class CorpusEmbedStage:
             (InputFile.create("input", request.input_path),)
         )
         total = _count_jsonl(request.input_path)
+        profile = _required_runtime_profile(request)
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
@@ -97,7 +111,8 @@ class CorpusEmbedStage:
             input_sha256=input_bundle.sha256,
             runtime_parameters={
                 "vector_dimension": spec.vector_dimension,
-                "batch_size": spec.kaggle_request_batch_size,
+                "batch_size": profile.request_batch_size,
+                "runtime_profile": profile.to_dict(),
             },
         )
         output_dir = (
@@ -118,7 +133,8 @@ class CorpusEmbedStage:
                 "model": request.model,
                 "gguf_root": str(request.gguf_root),
                 "vector_dimension": spec.vector_dimension,
-                "batch_size": spec.kaggle_request_batch_size,
+                "batch_size": profile.request_batch_size,
+                "runtime_overrides": profile.to_dict(),
                 "job_sha256": identity.sha256,
             },
         )
@@ -139,13 +155,17 @@ class QueryEmbedStage:
             (InputFile.create("input", request.input_path),)
         )
         total = _count_jsonl(request.input_path)
+        profile = _required_runtime_profile(request)
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
             model=request.model,
             model_sha256=spec.sha256,
             input_sha256=input_bundle.sha256,
-            runtime_parameters={"batch_size": spec.kaggle_request_batch_size},
+            runtime_parameters={
+                "batch_size": profile.request_batch_size,
+                "runtime_profile": profile.to_dict(),
+            },
         )
         output_dir = (
             request.output_dir / self.name.value / spec.slug / identity.sha256[:12]
@@ -165,7 +185,8 @@ class QueryEmbedStage:
                 "model": request.model,
                 "gguf_root": str(request.gguf_root),
                 "vector_dimension": spec.vector_dimension,
-                "batch_size": spec.kaggle_request_batch_size,
+                "batch_size": profile.request_batch_size,
+                "runtime_overrides": profile.to_dict(),
                 "job_sha256": identity.sha256,
             },
         )
@@ -174,7 +195,7 @@ class QueryEmbedStage:
 @dataclass(frozen=True)
 class RerankStage:
     name: StageName = StageName.RERANK
-    contract_version: int = 2
+    contract_version: int = 3
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
@@ -196,7 +217,10 @@ class RerankStage:
             )
         )
         pair_count = _candidate_pair_count(request.input_path)
-        protocol_hash = prompt_contract_hash(protocol=spec.reranker_protocol)
+        profile = _required_runtime_profile(request)
+        if spec.rerank_contract is None:
+            raise ValueError(f"Reranker {request.model} has no scoring contract")
+        protocol_hash = spec.rerank_contract.sha256
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
@@ -205,7 +229,8 @@ class RerankStage:
             input_sha256=input_bundle.sha256,
             runtime_parameters={
                 "protocol": spec.reranker_protocol,
-                "prompt_contract_sha256": protocol_hash,
+                "request_contract_sha256": protocol_hash,
+                "runtime_profile": profile.to_dict(),
             },
         )
         output_dir = (
@@ -225,11 +250,81 @@ class RerankStage:
             {
                 "model": request.model,
                 "protocol": spec.reranker_protocol,
-                "parallelism": spec.kaggle_parallel,
+                "parallelism": profile.concurrency,
+                "runtime_overrides": profile.to_dict(),
                 "gguf_root": str(request.gguf_root),
                 "job_sha256": identity.sha256,
             },
         )
+
+
+@dataclass(frozen=True)
+class BenchmarkStage:
+    name: StageName
+    base: StageAdapter
+    contract_version: int = 1
+
+    def build_job(self, request: StageRequest) -> StageJob:
+        spec = require_model(request.model)
+        if spec.kind is ModelKind.RERANKER:
+            search_space = spec.rerank_search_space
+        else:
+            if spec.embedding_search_space is None:
+                raise ValueError("embedding model has no runtime search space")
+            search_space = (
+                spec.embedding_search_space.query
+                if self.base.name is StageName.QUERY_EMBED
+                else spec.embedding_search_space.corpus
+            )
+        if search_space is None:
+            raise ValueError("model has no runtime search space")
+        try:
+            base_request = replace(
+                request,
+                stage=self.base.name,
+                runtime_profile=search_space.candidates[0],
+            )
+        except TypeError:
+            base_request = cast(Any, copy.copy(request))
+            base_request.stage = self.base.name
+            base_request.runtime_profile = search_space.candidates[0]
+        base_job = self.base.build_job(base_request)
+        levels = tuple(
+            BenchmarkLevel(candidate.request_batch_size, candidate.concurrency)
+            for candidate in search_space.candidates
+        )
+        identity = JobIdentity.create(
+            stage=self.name,
+            contract_version=self.contract_version,
+            model=request.model,
+            model_sha256=spec.sha256,
+            input_sha256=base_job.input_bundle.sha256,
+            runtime_parameters={
+                "benchmark_items": getattr(request, "benchmark_items", None)
+                or base_job.expected_total,
+                "benchmark_levels": [
+                    {"batch_size": item.batch_size, "concurrency": item.concurrency}
+                    for item in levels
+                ],
+            },
+        )
+        output_dir = request.output_dir / self.name.value / spec.slug / identity.sha256[:12]
+        config = dict(base_job.worker_config)
+        config.update({
+            "stage": self.name.value,
+            "identity": identity.payload,
+            "job_sha256": identity.sha256,
+            "benchmark_levels": [
+                {"batch_size": item.batch_size, "concurrency": item.concurrency}
+                for item in levels
+            ],
+            "benchmark_candidates": [
+                candidate.to_dict() for candidate in search_space.candidates
+            ],
+            "benchmark_items": getattr(request, "benchmark_items", None)
+            or base_job.expected_total,
+        })
+        return replace(base_job, stage=self.name, contract_version=self.contract_version, identity=identity, output_dir=output_dir, local_cache_path=output_dir / "benchmark_results.jsonl", data_filename="benchmark_results.jsonl", worker_module="corpus_pipeline.integrations.kaggle.workers.benchmark", worker_config=config)
 
 
 _ADAPTERS: dict[StageName, StageAdapter] = {
@@ -237,6 +332,13 @@ _ADAPTERS: dict[StageName, StageAdapter] = {
     StageName.QUERY_EMBED: QueryEmbedStage(),
     StageName.RERANK: RerankStage(),
 }
+_ADAPTERS.update(
+    {
+        StageName.RERANK_BENCHMARK: BenchmarkStage(StageName.RERANK_BENCHMARK, RerankStage()),
+        StageName.QUERY_EMBED_BENCHMARK: BenchmarkStage(StageName.QUERY_EMBED_BENCHMARK, QueryEmbedStage()),
+        StageName.CORPUS_EMBED_BENCHMARK: BenchmarkStage(StageName.CORPUS_EMBED_BENCHMARK, CorpusEmbedStage()),
+    }
+)
 
 
 def get_stage_adapter(name: StageName | str) -> StageAdapter:

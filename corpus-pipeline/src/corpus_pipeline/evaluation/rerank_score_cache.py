@@ -25,14 +25,12 @@ from corpus_pipeline.evaluation.artifact_contracts import (
     write_json,
 )
 from corpus_pipeline.evaluation.query_hash import model_slug, query_hash
-from corpus_pipeline.evaluation.rerank_contract import (
-    document_hash,
-    prompt_contract_hash,
-)
+from corpus_pipeline.evaluation.rerank_contract import document_hash
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
 )
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
+from corpus_pipeline.runtime.catalog import require_model
 
 
 class RerankScoreCacheError(ArtifactContractError):
@@ -114,11 +112,12 @@ class RerankScoreCache:
         migrated = False
         for line_number, record in enumerate(records, start=1):
             try:
-                protocol = str(record.get("protocol") or "")
-                contract = str(
-                    record.get("request_contract_sha256")
-                    or (prompt_contract_hash(protocol=protocol) if protocol else "")
-                )
+                raw_contract = record.get("request_contract_sha256")
+                if not isinstance(raw_contract, str) or not raw_contract:
+                    raise RerankScoreCacheError(
+                        f"Missing request contract in {self.path}:{line_number}"
+                    )
+                contract = raw_contract
                 model_sha = str(record.get("model_sha256") or "")
                 if self.model_sha256 and model_sha not in ("", self.model_sha256):
                     raise RerankScoreCacheError(
@@ -181,7 +180,12 @@ class RerankScoreCache:
         key = self.key_for(reranker, query_row, candidate)
         contract = self.request_contract_sha256
         if not contract and protocol:
-            contract = prompt_contract_hash(protocol=str(protocol))
+            spec = require_model(reranker)
+            if spec.rerank_contract is None:
+                raise RerankScoreCacheError(
+                    f"Reranker {reranker} has no scoring contract"
+                )
+            contract = spec.rerank_contract.sha256
             key = RerankKey(
                 key.reranker,
                 key.model_sha256,

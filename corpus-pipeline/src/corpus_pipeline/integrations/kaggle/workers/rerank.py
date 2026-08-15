@@ -12,7 +12,6 @@ from corpus_pipeline.cache.jsonl_records import seal_record
 from corpus_pipeline.evaluation.query_hash import query_hash
 from corpus_pipeline.evaluation.rerank_contract import (
     document_hash,
-    prompt_contract_hash,
 )
 from corpus_pipeline.integrations.kaggle.models import CloudArtifact
 from corpus_pipeline.integrations.kaggle.parsers import format_elapsed
@@ -28,8 +27,10 @@ from corpus_pipeline.integrations.kaggle.workers.runtime import (
     worker_deadline,
 )
 from corpus_pipeline.integrations.kaggle.workers.scheduling import (
-    map_batches_ordered,
+    stream_map_ordered,
 )
+from corpus_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
+from corpus_pipeline.runtime.catalog import require_model
 
 Pair = dict[str, str]
 
@@ -138,6 +139,7 @@ def run_rerank_worker(
     existing = journal.reusable(pairs)
     missing = [pair for pair in pairs if _pair_key(pair) not in existing]
     deadline = worker_deadline(config)
+    telemetry = RuntimeTelemetry("rerank", model, output_dir)
 
     expected_by_query: dict[str, int] = {}
     for pair in pairs:
@@ -166,7 +168,10 @@ def run_rerank_worker(
         nonlocal newly_processed_pairs, next_milestone
         if not records:
             return
-        contract = prompt_contract_hash(protocol=protocol)
+        spec = require_model(model)
+        if spec.rerank_contract is None:
+            raise ValueError(f"Reranker {model} has no scoring contract")
+        contract = spec.rerank_contract.sha256
         records = [
             seal_record(
                 {
@@ -209,8 +214,10 @@ def run_rerank_worker(
         batch_size = max(1, int(config.get("batch_size", 32)))
         for start in range(0, len(missing), batch_size):
             batch = missing[start : start + batch_size]
-            commit(
-                [
+            batch_started = time.monotonic()
+            records = []
+            for pair in batch:
+                records.append(
                     _score_record(
                         pair,
                         score_pair(
@@ -219,17 +226,22 @@ def run_rerank_worker(
                             model,
                         ),
                     )
-                    for pair in batch
-                ]
-            )
+                )
+            telemetry.record_operation(0, len(batch), sum(len(details[_pair_key(p)][0]) + len(details[_pair_key(p)][1]) for p in batch), max(0.0, time.monotonic() - batch_started), "ok", 0)
+            commit(records)
     elif missing:
         from corpus_pipeline.runtime.client import LlamaCppClient
 
-        with managed_model_servers(config) as servers:
+        server_config = dict(config)
+        runtime_overrides = server_config.get("runtime_overrides")
+        if not isinstance(runtime_overrides, dict):
+            raise ValueError("runtime_overrides is required")
+        server_config["runtime_overrides"] = runtime_overrides
+        with managed_model_servers(server_config, telemetry=telemetry) as servers:
             clients = [LlamaCppClient(server.base_url) for server in servers]
-            per_client = max(1, int(config.get("parallelism", 1)))
+            resources = list(enumerate(clients))
+            per_client = max(1, int(runtime_overrides["concurrency"]))
             if protocol == "native_rerank":
-                groups: list[tuple[str, str, list[Pair]]] = []
                 grouped: dict[tuple[str, str], list[Pair]] = {}
                 for pair in missing:
                     query, _text = details[_pair_key(pair)]
@@ -239,85 +251,76 @@ def run_rerank_worker(
                     for (query_id, query), group in grouped.items()
                 ]
 
-                def native_operation(client, indexed_groups):
-                    returned = []
-                    for index, (_query_id, query, group) in indexed_groups:
-                        scores = client.rerank_native(
-                            query,
-                            [details[_pair_key(pair)][1] for pair in group],
-                            model,
-                        )
-                        if len(scores) != len(group):
-                            raise ValueError(
-                                "reranker returned an unexpected score count"
-                            )
-                        returned.append((index, (group, scores)))
-                    return returned
+                async def native_operation(resource, _index, item):
+                    server_index, client = resource
+                    query_id, query, group = item
+                    started_operation = clock()
+                    scores = await asyncio.to_thread(
+                        client.rerank_native,
+                        query,
+                        [details[_pair_key(pair)][1] for pair in group],
+                        model,
+                    )
+                    if len(scores) != len(group):
+                        raise ValueError("reranker returned an unexpected score count")
+                    telemetry.record_operation(server_index, len(group), sum(len(query) + len(details[_pair_key(pair)][1]) for pair in group), max(0.0, clock() - started_operation), "ok", 0)
+                    return (query_id, group, scores)
 
-                for start in range(0, len(groups), per_client * len(clients)):
-                    scheduled = map_batches_ordered(
-                        groups[start : start + per_client * len(clients)],
-                        clients,
+                async def run_native():
+                    return await stream_map_ordered(
+                        groups,
+                        resources,
                         per_client,
                         native_operation,
                         deadline,
+                        on_completed=lambda batch: commit(
+                            [
+                                _score_record(pair, score)
+                                for _index, value in batch
+                                for pair, score in zip(value[1], value[2], strict=True)
+                            ]
+                        ),
                     )
-                    records = []
-                    for group, scores in scheduled.results:
-                        records.extend(
-                            _score_record(pair, score)
-                            for pair, score in zip(group, scores, strict=True)
-                        )
-                    commit(records)
-                    if scheduled.stopped_early:
-                        break
+
+                scheduled = asyncio.run(run_native())
+                if scheduled.stopped_early:
+                    emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
             else:
-
-                def completion_operation(client, indexed_pairs):
-                    prompts = [
-                        f"Query: {details[_pair_key(pair)][0]}\n"
-                        f"Document: {details[_pair_key(pair)][1]}\nRelevant:"
-                        for _index, pair in indexed_pairs
-                    ]
-                    scores = asyncio.run(
-                        client.rerank_completions_async(
-                            prompts, model, concurrency=per_client
-                        )
+                contract = require_model(model).rerank_contract
+                if contract is None:
+                    raise ValueError(f"Reranker {model} has no scoring contract")
+                async def completion_operation(resource, _index, pair):
+                    server_index, client = resource
+                    query, document = details[_pair_key(pair)]
+                    started_operation = clock()
+                    scores = await client.rerank_completions_async(
+                        [contract.build_prompt(query, document)], model, concurrency=1, contract=contract
                     )
-                    if len(scores) != len(indexed_pairs):
-                        raise ValueError("reranker returned an unexpected score count")
-                    return list(
-                        zip(
-                            [index for index, _pair in indexed_pairs],
-                            scores,
-                            strict=True,
-                        )
-                    )
+                    telemetry.record_operation(server_index, 1, len(query) + len(document), max(0.0, clock() - started_operation), "ok", 0)
+                    return scores[0]
 
-                for start in range(0, len(missing), per_client * len(clients)):
-                    scheduled = map_batches_ordered(
-                        missing[start : start + per_client * len(clients)],
-                        clients,
+                async def run_completion():
+                    return await stream_map_ordered(
+                        missing,
+                        resources,
                         per_client,
                         completion_operation,
                         deadline,
+                        on_completed=lambda batch: commit(
+                            [_score_record(missing[index], score) for index, score in batch]
+                        ),
                     )
-                    commit(
-                        [
-                            _score_record(pair, score)
-                            for pair, score in zip(
-                                missing[start : start + per_client * len(clients)],
-                                scheduled.results,
-                                strict=True,
-                            )
-                        ]
-                    )
-                    if scheduled.stopped_early:
-                        break
+
+                scheduled = asyncio.run(run_completion())
+                if scheduled.stopped_early:
+                    emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
 
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.touch(exist_ok=True)
     journal.compact(pairs, data_path)
+    telemetry.close()
+    runtime_summary = telemetry.summary()
+    telemetry.write_report()
     artifact = artifact_from_output(
         data_path,
         artifact_type="rerank_scores",
@@ -325,6 +328,7 @@ def run_rerank_worker(
         total=len(pairs),
         complete=len(existing),
         checkpoint_path=journal_path,
+        runtime_summary=runtime_summary,
     )
     emit(
         f"artifact queries={completed_queries}/{len(expected_by_query)} "

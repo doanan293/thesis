@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 from corpus_pipeline.integrations.kaggle.artifacts import (
@@ -9,13 +8,17 @@ from corpus_pipeline.integrations.kaggle.artifacts import (
     promote_complete_artifact,
 )
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointState
+from corpus_pipeline.integrations.kaggle.kernel_reconciler import KernelReconciler
 from corpus_pipeline.integrations.kaggle.models import (
     ActionVerb,
+    KernelPresence,
+    KernelRemoteState,
     PipelineResult,
     ReconcileAction,
     StageRequest,
 )
 from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
+from corpus_pipeline.integrations.kaggle.workspace import managed_staging_directory
 
 RUNTIME_DATASET_SLUG = "vector-cache-llama-cpp-cuda-t4"
 
@@ -33,11 +36,13 @@ class KagglePipelineOrchestrator:
         kernels,
         *,
         temp_root: Path = Path("/tmp"),
+        reconciler: KernelReconciler | None = None,
     ):
         self.stages = stages
         self.dependencies = dependencies
         self.checkpoints = checkpoints
         self.kernels = kernels
+        self.reconciler = reconciler or KernelReconciler(kernels)
         self.temp_root = Path(temp_root)
 
     def _adapter(self, stage):
@@ -51,28 +56,67 @@ class KagglePipelineOrchestrator:
         if request.max_runs < 1:
             raise ValueError("max_runs must be at least 1")
         job = self._adapter(request.stage).build_job(request)
-        self.dependencies.require_ready(runtime_dataset_reference(request.owners))
+        benchmark = job.stage.value.endswith("-benchmark")
         local = self._inspect_local(job)
-        if local is not None and local.completion.is_complete:
+        if not request.force and local is not None and local.completion.is_complete:
             return PipelineResult(job, local.completion, (), local.data_path, 0)
-        with tempfile.TemporaryDirectory(
-            prefix="kaggle-pipeline-", dir=str(self.temp_root)
-        ) as raw:
-            workspace = Path(raw)
-            actions = tuple(
-                self.dependencies.reconcile(
-                    job,
-                    request.owners,
-                    workspace,
-                    force=request.force,
-                    check_only=request.check_only,
-                )
+
+        checkpoint = (
+            self.checkpoints.empty(job)
+            if request.force
+            else self.checkpoints.inspect(job)
+        )
+        remote = (
+            KernelRemoteState(
+                self.reconciler.kernels.reference(job), KernelPresence.ABSENT
             )
-            checkpoint = self.checkpoints.inspect(job)
-            if request.check_only:
-                return PipelineResult(job, checkpoint.completion, actions, None, 0)
+            if request.force
+            else self.reconciler.inspect(job)
+        )
+
+        if request.check_only:
+            return PipelineResult(
+                job,
+                checkpoint.completion,
+                self._check_actions(job, remote, checkpoint),
+                None,
+                0,
+            )
+
+        with managed_staging_directory(
+            self.temp_root, prefix="kaggle-pipeline-"
+        ) as workspace:
+            actions: tuple[ReconcileAction, ...] = ()
+
+            if remote.presence is KernelPresence.EXISTS:
+                resolution = self.reconciler.attach_or_recover(
+                    job,
+                    remote,
+                    workspace,
+                    timeout_seconds=request.total_budget_seconds,
+                )
+                actions += resolution.actions
+                if resolution.output_root is not None:
+                    try:
+                        artifact = self._load_downloaded_artifact(
+                            resolution.output_root, job
+                        )
+                    except ArtifactContractError as error:
+                        raise ArtifactContractError(
+                            f"{error}; kernel={resolution.remote.reference}; "
+                            f"log_tail={self.reconciler.kernels.service._log_tail(resolution.remote.reference)}"
+                        ) from error
+                    if artifact.completion.is_complete:
+                        return self._complete_result(job, artifact, actions, attempts=0)
+                    if not benchmark:
+                        checkpoint = self.checkpoints.publish_if_better(
+                            job, artifact, checkpoint
+                        )
+                        actions += (self._checkpoint_action(checkpoint),)
+
             if (
-                checkpoint.completion.is_complete
+                remote.presence is KernelPresence.ABSENT
+                and checkpoint.completion.is_complete
                 and checkpoint.artifact is not None
                 and checkpoint.artifact.strict_identity_match
             ):
@@ -82,33 +126,40 @@ class KagglePipelineOrchestrator:
                 return PipelineResult(
                     job,
                     checkpoint.completion,
-                    (
-                        *actions,
-                        ReconcileAction(
-                            "artifact",
-                            checkpoint.reference or "",
-                            ActionVerb.SYNC,
-                            "complete checkpoint",
-                        ),
-                    ),
+                    (*actions, self._finalize_action(destination, "checkpoint")),
                     destination,
                     0,
                 )
+
             return self._run_until_complete(
                 job, request, workspace, actions, checkpoint
             )
 
     def _run_until_complete(
-        self, job, request, workspace, actions, checkpoint: CheckpointState
+        self,
+        job,
+        request,
+        workspace,
+        actions: tuple[ReconcileAction, ...],
+        checkpoint: CheckpointState,
     ) -> PipelineResult:
         state = checkpoint
         for attempt in range(1, request.max_runs + 1):
-            checkpoint_reference = state.reference
+            self.dependencies.require_ready(runtime_dataset_reference(request.owners))
+            dependency_actions = tuple(
+                self.dependencies.reconcile(
+                    job,
+                    request.owners,
+                    workspace,
+                    force=request.force,
+                    check_only=request.check_only,
+                )
+            )
             dataset_references = [
                 runtime_dataset_reference(request.owners),
                 *(
                     action.reference
-                    for action in actions
+                    for action in dependency_actions
                     if action.resource_kind != "artifact"
                 ),
             ]
@@ -116,41 +167,99 @@ class KagglePipelineOrchestrator:
                 job,
                 root=workspace / str(attempt),
                 dataset_references=dataset_references,
-                checkpoint_reference=checkpoint_reference,
+                checkpoint_reference=None if job.stage.value.endswith("-benchmark") else state.reference,
                 total_budget_seconds=request.total_budget_seconds,
             )
-            output_root = self.kernels.run(
-                job, bundle, timeout_seconds=request.total_budget_seconds
+            resolution = self.reconciler.submit(
+                job,
+                bundle,
+                workspace / str(attempt),
+                timeout_seconds=request.total_budget_seconds,
             )
-            artifact = self._load_downloaded_artifact(output_root, job)
-            if artifact.completion.is_complete:
-                destination = promote_complete_artifact(artifact, job.local_cache_path)
+            if resolution.output_root is None:
                 return PipelineResult(
                     job,
-                    artifact.completion,
-                    (
-                        *actions,
-                        ReconcileAction(
-                            "kernel",
-                            self.kernels.reference(job),
-                            ActionVerb.SUBMIT,
-                            f"attempt {attempt}",
-                        ),
-                        ReconcileAction(
-                            "artifact",
-                            str(destination),
-                            ActionVerb.SYNC,
-                            "complete output",
-                        ),
-                    ),
-                    destination,
+                    state.completion,
+                    (*actions, *dependency_actions, *resolution.actions),
+                    None,
                     attempt,
                 )
-            self.checkpoints.publish(job, artifact)
-            state = CheckpointState(
-                self.checkpoints.reference(job), artifact, artifact.completion
-            )
+            try:
+                artifact = self._load_downloaded_artifact(resolution.output_root, job)
+            except ArtifactContractError as error:
+                raise ArtifactContractError(
+                    f"{error}; kernel={resolution.remote.reference}; "
+                    f"log_tail={self.reconciler.kernels.service._log_tail(resolution.remote.reference)}"
+                ) from error
+            combined_actions = (*actions, *dependency_actions, *resolution.actions)
+            if artifact.completion.is_complete:
+                return self._complete_result(
+                    job, artifact, combined_actions, attempts=attempt
+                )
+            if job.stage.value.endswith("-benchmark"):
+                actions = combined_actions
+            else:
+                state = self.checkpoints.publish_if_better(job, artifact, state)
+                actions = (*combined_actions, self._checkpoint_action(state))
         return PipelineResult(job, state.completion, actions, None, request.max_runs)
+
+    @staticmethod
+    def _complete_result(job, artifact, actions, *, attempts: int):
+        destination = promote_complete_artifact(artifact, job.local_cache_path)
+        return PipelineResult(
+            job,
+            artifact.completion,
+            (
+                *actions,
+                KagglePipelineOrchestrator._finalize_action(destination, "output"),
+            ),
+            destination,
+            attempts,
+        )
+
+    @staticmethod
+    def _checkpoint_action(checkpoint: CheckpointState) -> ReconcileAction:
+        return ReconcileAction(
+            "checkpoint",
+            checkpoint.reference or "",
+            ActionVerb.CHECKPOINT,
+            f"{checkpoint.completion.complete}/{checkpoint.completion.total}",
+        )
+
+    @staticmethod
+    def _finalize_action(destination: Path, reason: str) -> ReconcileAction:
+        return ReconcileAction(
+            "artifact", str(destination), ActionVerb.FINALIZE, reason
+        )
+
+    @staticmethod
+    def _check_actions(job, remote, checkpoint):
+        if remote.presence is KernelPresence.EXISTS:
+            return (
+                ReconcileAction(
+                    "kernel",
+                    remote.reference,
+                    ActionVerb.ATTACH,
+                    str(remote.status),
+                ),
+            )
+        if checkpoint.reference is not None:
+            return (
+                ReconcileAction(
+                    "checkpoint",
+                    checkpoint.reference,
+                    ActionVerb.REUSE,
+                    "checkpoint available",
+                ),
+            )
+        return (
+            ReconcileAction(
+                "kernel",
+                job.identity.sha256[:16],
+                ActionVerb.SUBMIT,
+                "kernel absent",
+            ),
+        )
 
     @staticmethod
     def _inspect_local(job):
@@ -165,7 +274,9 @@ class KagglePipelineOrchestrator:
             return None
 
     @staticmethod
-    def _load_downloaded_artifact(root: Path, job):
+    def _load_downloaded_artifact(root: Path | None, job):
+        if root is None:
+            raise ArtifactContractError("Kernel completed without downloadable output")
         root = Path(root)
         manifests = list(root.rglob("manifest.json"))
         if len(manifests) != 1:

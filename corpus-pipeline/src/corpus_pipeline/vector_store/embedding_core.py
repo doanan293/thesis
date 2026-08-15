@@ -691,6 +691,33 @@ def collect_or_create_embeddings(
         clock=progress_clock,
     )
 
+    pending_batches: list[tuple[list[dict], list[str]]] = []
+
+    def commit_embeddings(points_to_embed: list[dict], new_embeddings: list[list[float]]) -> None:
+        nonlocal embedded_count
+        for point, vector_embedding in zip(
+            points_to_embed, new_embeddings, strict=True
+        ):
+            cache_key = int(point["cache_key"])
+            input_text = point["embedding_text"]
+            if embedding_cache:
+                vector_embedding = embedding_cache.set(
+                    args.model,
+                    cache_key,
+                    input_text,
+                    point["payload_hash"],
+                    vector_embedding,
+                )
+            if embeddings_by_cache_key is not None:
+                embeddings_by_cache_key[cache_key] = vector_embedding
+            embedded_count += 1
+
+        progress.update(
+            cache_hits + embedded_count,
+            cache_hits,
+            embedded_count,
+        )
+
     for batch in chunked(points, args.input_batch_size):
         if runtime_budget_exhausted(getattr(args, "runtime_stop_deadline", None)):
             stopped_early = True
@@ -718,43 +745,49 @@ def collect_or_create_embeddings(
             texts_to_embed.append(input_text)
 
         if not points_to_embed:
-            new_embeddings = []
-        elif args.mock:
+            continue
+        if args.mock:
             new_embeddings = [
                 [0.01 * (int(point["cache_key"]) % 100)] * vector_dim
                 for point in points_to_embed
             ]
+            commit_embeddings(points_to_embed, new_embeddings)
         else:
-            new_embeddings = get_embeddings_from_clients(
-                texts_to_embed,
-                args.model,
-                vector_dim,
-                args.llama_clients,
-                point_contexts=points_to_embed,
-            )
+            pending_batches.append((points_to_embed, texts_to_embed))
 
-        for point, vector_embedding in zip(
-            points_to_embed, new_embeddings, strict=False
-        ):
-            cache_key = int(point["cache_key"])
-            input_text = point["embedding_text"]
-            if embedding_cache:
-                vector_embedding = embedding_cache.set(
-                    args.model,
-                    cache_key,
-                    input_text,
-                    point["payload_hash"],
-                    vector_embedding,
-                )
-            if embeddings_by_cache_key is not None:
-                embeddings_by_cache_key[cache_key] = vector_embedding
-            embedded_count += 1
+    if pending_batches and not runtime_budget_exhausted(
+        getattr(args, "runtime_stop_deadline", None)
+    ):
+        import asyncio
 
-        progress.update(
-            cache_hits + embedded_count,
-            cache_hits,
-            embedded_count,
+        from corpus_pipeline.integrations.kaggle.workers.scheduling import (
+            stream_map_ordered,
         )
+
+        async def operation(client, _index, item):
+            batch_points, batch_texts = item
+            vectors = await asyncio.to_thread(
+                client.embed, batch_texts, args.model, vector_dim
+            )
+            return batch_points, vectors
+
+        def on_completed(completed):
+            for _index, (batch_points, vectors) in completed:
+                commit_embeddings(batch_points, vectors)
+
+        scheduled = asyncio.run(
+            stream_map_ordered(
+                pending_batches,
+                args.llama_clients,
+                max(1, int(getattr(args, "embedding_concurrency", 1))),
+                operation,
+                getattr(args, "runtime_stop_deadline", float("inf")) or float("inf"),
+                on_completed=on_completed,
+            )
+        )
+        stopped_early = scheduled.stopped_early
+    elif pending_batches:
+        stopped_early = True
 
     progress.update(
         cache_hits + embedded_count,

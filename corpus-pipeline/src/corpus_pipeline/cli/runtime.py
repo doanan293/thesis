@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shlex
+import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
@@ -8,6 +10,8 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 import typer
+
+from corpus_pipeline.integrations.kaggle.errors import KaggleDetached
 
 
 class CommandStatus(StrEnum):
@@ -68,6 +72,13 @@ def fail(message: str, code: int) -> NoReturn:
 def run_handler(state: CliState, handler: Callable[[], CommandResult]) -> None:
     try:
         result = handler()
+    except KaggleDetached as exc:
+        command = shlex.join(["uv", "run", "corpus", *sys.argv[1:]])
+        fail(
+            f"detached from Kaggle kernel {exc.reference}; it is still running. "
+            f"Re-run to attach and recover: {command}",
+            130,
+        )
     except KeyboardInterrupt:
         fail("interrupted", 130)
     except ResumableIncomplete as exc:

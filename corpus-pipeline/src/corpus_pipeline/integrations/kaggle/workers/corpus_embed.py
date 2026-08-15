@@ -14,8 +14,11 @@ from corpus_pipeline.integrations.kaggle.workers.runtime import (
     identity_from_config,
     managed_model_servers,
     resolve_input_file,
+    resolve_optional_input_file,
     worker_deadline,
 )
+from corpus_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
+from corpus_pipeline.runtime.catalog import require_model
 from corpus_pipeline.runtime.client import LlamaCppClient
 from corpus_pipeline.vector_store.embedding_core import (
     ChunkEmbeddingCache,
@@ -37,6 +40,19 @@ def run_corpus_embed_worker(
     output_path = Path(
         config.get("output_path", output_dir / "vector_embeddings.jsonl")
     )
+    model_name = str(config["model"])
+    runtime_overrides = config.get("runtime_overrides")
+    if not isinstance(runtime_overrides, dict):
+        raise ValueError("runtime_overrides is required")
+    telemetry = RuntimeTelemetry("corpus_embed", model_name, output_dir)
+    checkpoint_path = resolve_optional_input_file(config, "checkpoint_filename")
+    if (
+        checkpoint_path is not None
+        and checkpoint_path.is_file()
+        and not output_path.exists()
+    ):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(checkpoint_path.read_bytes())
     if command_executor is None:
         points = read_normalized_input_points(input_path)
         vector_dimension = int(config["vector_dimension"])
@@ -47,12 +63,17 @@ def run_corpus_embed_worker(
             model_sha256=str(identity.payload.get("model_sha256") or ""),
         )
         deadline = worker_deadline(config, clock)
-        with managed_model_servers(config) as servers:
+        server_config = dict(config)
+        server_config["runtime_overrides"] = runtime_overrides
+        with managed_model_servers(server_config, telemetry=telemetry) as servers:
             args = SimpleNamespace(
-                model=str(config["model"]),
-                input_batch_size=int(config["batch_size"]),
+                model=model_name,
+                input_batch_size=int(
+                    runtime_overrides["request_batch_size"]
+                ),
                 mock=False,
                 llama_clients=[LlamaCppClient(server.base_url) for server in servers],
+                embedding_concurrency=int(runtime_overrides["concurrency"]),
                 runtime_stop_deadline=deadline,
             )
             collect_or_create_embeddings(
@@ -67,6 +88,9 @@ def run_corpus_embed_worker(
         return_code = command_executor(config)
     if return_code != 0 or not output_path.is_file():
         raise RuntimeError(f"Corpus embedding worker did not produce {output_path}")
+    telemetry.close()
+    runtime_summary = telemetry.summary()
+    telemetry.write_report()
     total = sum(1 for _ in iter_jsonl_objects(input_path))
     complete = sum(1 for _ in iter_jsonl_objects(output_path))
     return artifact_from_output(
@@ -75,6 +99,7 @@ def run_corpus_embed_worker(
         identity=identity,
         total=total,
         complete=complete,
+        runtime_summary=runtime_summary,
     )
 
 

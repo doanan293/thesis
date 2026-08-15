@@ -41,3 +41,20 @@ def test_rerank_warns_and_uses_canonical_artifact(monkeypatch):
     assert "deprecated" in result.stderr
     assert captured["request"].model == "qwen3-reranker:0.6b-fp16"
     assert "variant_sha256=variant" in result.stdout
+
+
+def test_rerank_benchmark_rejects_local_backend():
+    result = runner.invoke(
+        app,
+        [
+            "rerank",
+            "--run",
+            "experiment",
+            "--backend",
+            "local",
+            "--benchmark",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert result.exit_code == 2

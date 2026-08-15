@@ -3,10 +3,8 @@ from pathlib import Path
 import pytest
 
 from corpus_pipeline.evaluation.artifact_contracts import sha256_file
-from corpus_pipeline.evaluation.rerank_score_cache import (
-    RerankScoreCache,
-    prompt_contract_hash,
-)
+from corpus_pipeline.evaluation.rerank_contract import prompt_contract_hash
+from corpus_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
     build_candidate_artifact,

@@ -15,7 +15,6 @@ from corpus_pipeline.evaluation.rerank_artifacts import (
 )
 from corpus_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
-    prompt_contract_hash,
 )
 from corpus_pipeline.evaluation.rerankers import LlamaCppReranker, Reranker
 from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
@@ -41,6 +40,8 @@ class RerankRequest:
     dry_run: bool
     budget_seconds: int
     request_timeout_seconds: float
+    benchmark: bool = False
+    benchmark_pairs: int = 512
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,8 @@ class RerankStageResult:
     subset_sha256: str | None
     actions: tuple[str, ...]
     incomplete: bool = False
+    benchmark_report: Path | None = None
+    benchmark_levels: int = 0
 
 
 def rerank_checkpoint_path(output_dir: Path, candidate_sha256: str, model: str) -> Path:
@@ -59,8 +62,8 @@ def rerank_checkpoint_path(output_dir: Path, candidate_sha256: str, model: str) 
         "reranker": model,
         "model_sha256": spec.sha256,
         "protocol": spec.reranker_protocol,
-        "request_contract_sha256": prompt_contract_hash(
-            protocol=spec.reranker_protocol or ""
+        "request_contract_sha256": (
+            spec.rerank_contract.sha256 if spec.rerank_contract is not None else ""
         ),
     }
     return Path(output_dir) / ".checkpoints" / f"{canonical_sha256(identity)}.jsonl"
@@ -83,6 +86,8 @@ class LocalRerankBackend:
         spec = require_model(request.model)
         if spec.kind is not ModelKind.RERANKER:
             raise ValueError("--model must select a reranker model")
+        if request.benchmark:
+            raise ValueError("benchmark requires --backend kaggle")
         workspace = RunWorkspace.open_or_create(
             request.run_root, _identity(request), force=request.force
         )
@@ -125,7 +130,9 @@ class LocalRerankBackend:
                 None,
                 (f"target rerank variant {identity.sha256}", "dry-run"),
             )
-        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        if spec.rerank_contract is None:
+            raise ValueError(f"Reranker {request.model} has no scoring contract")
+        contract = spec.rerank_contract.sha256
         cache_path = rerank_score_cache_path(request.model, spec.sha256, contract)
         cache = RerankScoreCache(
             cache_path,
@@ -254,7 +261,23 @@ class KaggleRerankBackend:
                     bundle.manifest.data_sha256,
                     ("reuse=migrated legacy variant",),
                 )
-        contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+        from corpus_pipeline.integrations.kaggle.auto_profile import ensure_runtime_profile
+
+        resolution = ensure_runtime_profile(
+            workload="rerank",
+            benchmark_stage=StageName.RERANK_BENCHMARK.value,
+            model=request.model,
+            input_path=candidate_bundle.data_path,
+            gguf_root=DEFAULT_GGUF_ROOT,
+            budget_seconds=request.budget_seconds,
+            dry_run=request.dry_run,
+            force=request.force,
+        )
+        if resolution.profile is None:
+            return RerankStageResult(None, identity.sha256, None, (f"profile={resolution.action}",), incomplete=True)
+        if spec.rerank_contract is None:
+            raise ValueError(f"Reranker {request.model} has no scoring contract")
+        contract = spec.rerank_contract.sha256
         cache_path = rerank_score_cache_path(request.model, spec.sha256, contract)
         remote_dir = WORK_DIR / "kaggle-rerank-scores" / spec.slug
         result = run_kaggle_stage(
@@ -266,6 +289,7 @@ class KaggleRerankBackend:
             force=request.force,
             check_only=request.dry_run,
             budget_seconds=request.budget_seconds,
+            runtime_profile=resolution.profile.selected,
         )
         actions = tuple(
             f"{action.verb.value} {action.resource_kind} {action.reference}: {action.reason}"

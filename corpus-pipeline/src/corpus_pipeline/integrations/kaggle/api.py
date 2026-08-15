@@ -146,6 +146,20 @@ def kernel_status_command(reference: str) -> list[str]:
     return ["kaggle", "kernels", "status", reference]
 
 
+def kernel_list_mine_command(search: str) -> list[str]:
+    return [
+        "kaggle",
+        "kernels",
+        "list",
+        "--mine",
+        "--search",
+        search,
+        "--csv",
+        "--page-size",
+        "100",
+    ]
+
+
 def kernel_logs_command(reference: str) -> list[str]:
     return ["kaggle", "kernels", "logs", reference]
 
@@ -164,7 +178,7 @@ def kernel_output_command(reference: str, path: Path) -> list[str]:
         str(path),
         "-o",
         "--file-pattern",
-        ".*(jsonl|json|zip)$",
+        ".*(jsonl|json|zip|md|log)$",
     ]
 
 

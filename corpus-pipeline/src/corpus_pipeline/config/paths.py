@@ -64,6 +64,7 @@ RERANK_SCORE_CACHE_DIR = DATA_CACHE_DIR / "rerank_scores"
 VECTOR_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "vector_embeddings"
 
 WORK_DIR = DATA_DIR / ".work"
+RUNTIME_PROFILE_DIR = DATA_DIR / "runtime_profiles"
 RAG_FINAL_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
 RAG_FINAL_CHUNKS_PATH = RAG_FINAL_DIR / "chunks.jsonl"
 RAG_FINAL_MANIFEST_PATH = RAG_FINAL_DIR / "manifest.json"

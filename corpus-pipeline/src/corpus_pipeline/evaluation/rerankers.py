@@ -8,15 +8,16 @@ from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from corpus_pipeline.evaluation.retrievers import candidate_document_text
 from corpus_pipeline.runtime.catalog import ModelSpec
 from corpus_pipeline.runtime.client import LlamaCppClient
+from corpus_pipeline.runtime.model_profiles import (
+    DEFAULT_RERANK_INSTRUCTION,
+    QWEN3_SYSTEM_PROMPT,
+    build_qwen3_yes_no_prompt,
+)
 
 DEFAULT_RERANK_MAX_RETRIES = 3
 DEFAULT_RERANK_RETRY_SLEEP_SECONDS = 5.0
 RERANK_TRANSIENT_HTTP_STATUS_CODES = {408, 429, 500, 502, 503, 504}
-QWEN_RERANK_SYSTEM_PROMPT = (
-    "Judge whether the Document meets the requirements based on the Query and the Instruct provided. "
-    'Note that the answer can only be "yes" or "no".'
-)
-DEFAULT_RERANK_INSTRUCTION = "Given a Vietnamese medical retrieval query, retrieve relevant passages that answer the query"
+QWEN_RERANK_SYSTEM_PROMPT = QWEN3_SYSTEM_PROMPT
 
 
 class Reranker(Protocol):
@@ -53,14 +54,7 @@ def build_qwen_rerank_prompt(
     document: str,
     instruction: str = DEFAULT_RERANK_INSTRUCTION,
 ) -> str:
-    return (
-        f"<|im_start|>system\n{QWEN_RERANK_SYSTEM_PROMPT}<|im_end|>\n"
-        "<|im_start|>user\n"
-        f"<Instruct>: {instruction}\n"
-        f"<Query>: {query}\n"
-        f"<Document>: {document}<|im_end|>\n"
-        "<|im_start|>assistant\n<think>\n\n</think>\n\n"
-    )
+    return build_qwen3_yes_no_prompt(query, document, instruction)
 
 
 def _exception_chain(exc: BaseException):
