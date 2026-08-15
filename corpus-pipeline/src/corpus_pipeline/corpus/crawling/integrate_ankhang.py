@@ -8,7 +8,7 @@ from corpus_pipeline.config.chunking import DEFAULT_CHUNK_MAX_CHARS
 from corpus_pipeline.config.paths import (
     ANKHANG_MARKDOWN_INTERIM_DIR,
     RAG_FINAL_DIR,
-    RAW_DIR,
+    RESOURCES_DIR,
 )
 from corpus_pipeline.corpus.metadata.payload_layers import compact_colloquial_mapping
 
@@ -16,7 +16,7 @@ SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
 CHUNKS_PATH = RAG_FINAL_DIR / "chunks.jsonl"
 AUDIT_PATH = RAG_FINAL_DIR / "audit.json"
 MANIFEST_PATH = RAG_FINAL_DIR / "manifest.json"
-MAPPINGS_PATH = RAW_DIR / "colloquial_mappings.json"
+MAPPINGS_PATH = RESOURCES_DIR / "colloquial_mappings.json"
 MARKDOWN_DIR = ANKHANG_MARKDOWN_INTERIM_DIR
 
 FULL_SECTION_MAX_CHARS = 16000

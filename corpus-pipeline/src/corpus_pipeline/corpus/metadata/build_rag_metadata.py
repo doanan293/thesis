@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from corpus_pipeline.config.paths import RAG_FINAL_DIR, RAW_DIR
+from corpus_pipeline.config.paths import RAG_FINAL_DIR, RESOURCES_DIR
 from corpus_pipeline.corpus.metadata.payload_layers import (
     clean_context_header,
     compact_colloquial_mapping,
@@ -26,7 +26,7 @@ from corpus_pipeline.corpus.metadata.term_enrichment import (
 SECTIONS_PATH = str(RAG_FINAL_DIR / "sections.jsonl")
 CHUNKS_PATH = str(RAG_FINAL_DIR / "chunks.jsonl")
 OUTPUT_METADATA_CHUNKS_PATH = str(RAG_FINAL_DIR / "chunks.jsonl")
-TERM_GLOSSARY_PATH = RAW_DIR / "term_glossary.json"
+TERM_GLOSSARY_PATH = RESOURCES_DIR / "term_glossary.json"
 TERM_ENRICHMENT_AUDIT_PATH = RAG_FINAL_DIR / "term_enrichment_audit.json"
 
 DEFAULT_CORPUS_VERSION = "rag-final-2026-07-05"

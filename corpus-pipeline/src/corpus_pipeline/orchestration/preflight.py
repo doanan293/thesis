@@ -6,7 +6,12 @@ from pathlib import Path
 
 from corpus_pipeline.config.enums import Backend
 from corpus_pipeline.config.environment import PROJECT_ENV_FILE, parse_env_file
-from corpus_pipeline.config.paths import PROJECT_ROOT
+from corpus_pipeline.config.paths import (
+    HEAVY_RAW_DIR,
+    MANIFESTS_DIR,
+    PROJECT_ROOT,
+    RESOURCES_DIR,
+)
 
 DEFAULT_ENV_PATH = PROJECT_ENV_FILE
 EMBEDDING_MODEL_FILENAME = "qwen3-embedding-0.6b-fp16.gguf"
@@ -31,17 +36,25 @@ class PreflightReport:
 
 def _missing_files(project_root: Path) -> list[str]:
     required = [
-        project_root / "data/raw/duoc-thu-quoc-gia-viet-nam.pdf",
-        project_root / "data/raw/curation/docling_tables.jsonl",
-        project_root / "data/raw/curation/table_duplicate_overrides.json",
-        project_root / "data/raw/colloquial_mappings.json",
-        project_root / "data/raw/term_glossary.json",
-        project_root / "data/raw/vietnamese_valid_syllables.json",
+        project_root / HEAVY_RAW_DIR.relative_to(PROJECT_ROOT) / "duoc-thu-quoc-gia-viet-nam.pdf",
+        project_root / RESOURCES_DIR.relative_to(PROJECT_ROOT) / "curation/docling_tables.jsonl",
+        project_root / RESOURCES_DIR.relative_to(PROJECT_ROOT) / "curation/table_duplicate_overrides.json",
+        project_root / RESOURCES_DIR.relative_to(PROJECT_ROOT) / "colloquial_mappings.json",
+        project_root / RESOURCES_DIR.relative_to(PROJECT_ROOT) / "term_glossary.json",
+        project_root / RESOURCES_DIR.relative_to(PROJECT_ROOT) / "vietnamese_valid_syllables.json",
     ]
     missing = [str(path) for path in required if not path.is_file()]
-    snapshots = project_root.glob("data/raw/ankhang/snapshots/*.manifest.json")
+    snapshots = (
+        project_root / MANIFESTS_DIR.relative_to(PROJECT_ROOT)
+    ).glob("source/*.manifest.json")
     if not any(snapshots):
-        missing.append(str(project_root / "data/raw/ankhang/snapshots/*.manifest.json"))
+        missing.append(
+            str(
+                project_root
+                / MANIFESTS_DIR.relative_to(PROJECT_ROOT)
+                / "source/*.manifest.json"
+            )
+        )
     return missing
 
 
@@ -52,7 +65,7 @@ def _check_raw_inputs(project_root: Path) -> list[PreflightIssue]:
     return [
         PreflightIssue(
             "raw-inputs",
-            f"Missing {len(missing)} required raw input(s)",
+            f"Missing {len(missing)} required raw input(s); restore data/heavy archive and tracked resources",
             ", ".join(missing),
         )
     ]

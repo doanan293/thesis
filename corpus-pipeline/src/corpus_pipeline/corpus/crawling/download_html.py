@@ -4,10 +4,10 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-from corpus_pipeline.config.paths import RAW_ANKHANG_DIR, RAW_ANKHANG_HTML_DIR
+from corpus_pipeline.config.paths import RAW_ANKHANG_HTML_DIR, RESOURCES_ANKHANG_DIR
 
 DEFAULT_BASE_DIR = RAW_ANKHANG_HTML_DIR
-DEFAULT_URLS_FILE = RAW_ANKHANG_DIR / "drug_urls.txt"
+DEFAULT_URLS_FILE = RESOURCES_ANKHANG_DIR / "drug_urls.txt"
 
 
 def download_page(url, base_dir=DEFAULT_BASE_DIR):

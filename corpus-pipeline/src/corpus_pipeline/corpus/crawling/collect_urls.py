@@ -3,10 +3,10 @@ import re
 import urllib.request
 from urllib.parse import urlparse
 
-from corpus_pipeline.config.paths import RAW_ANKHANG_DIR
+from corpus_pipeline.config.paths import RESOURCES_ANKHANG_DIR
 
-ALL_URLS_PATH = RAW_ANKHANG_DIR / "all_urls.txt"
-DRUG_URLS_PATH = RAW_ANKHANG_DIR / "drug_urls.txt"
+ALL_URLS_PATH = RESOURCES_ANKHANG_DIR / "all_urls.txt"
+DRUG_URLS_PATH = RESOURCES_ANKHANG_DIR / "drug_urls.txt"
 
 
 def fetch_url(url):
@@ -66,7 +66,7 @@ def collect_drug_urls() -> None:
     # We can filter URLs by looking at the path segment.
     # Let's write out all URLs first, and also create a filtered list.
 
-    RAW_ANKHANG_DIR.mkdir(parents=True, exist_ok=True)
+    RESOURCES_ANKHANG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Write all URLs
     all_urls_list = sorted(all_urls)

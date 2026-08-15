@@ -4,11 +4,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from corpus_pipeline.config.paths import RAW_DIR, TEXT_INTERIM_DIR
+from corpus_pipeline.config.paths import RESOURCES_DIR, TEXT_INTERIM_DIR
 
 DEFAULT_INPUT = TEXT_INTERIM_DIR / "full.md"
 DEFAULT_OUTPUT = TEXT_INTERIM_DIR / "full.cleaned.md"
-DEFAULT_SYLLABLES = RAW_DIR / "vietnamese_valid_syllables.json"
+DEFAULT_SYLLABLES = RESOURCES_DIR / "vietnamese_valid_syllables.json"
 
 
 # Load Vietnamese syllables database for spacing corpus_pipeline.corpus.validation

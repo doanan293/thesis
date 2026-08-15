@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,10 +22,12 @@ from corpus_pipeline.artifacts.publisher import publish_contract
 from corpus_pipeline.artifacts.snapshot import extract_snapshot, verify_snapshot
 from corpus_pipeline.config.chunking import DEFAULT_CHUNK_MAX_CHARS
 from corpus_pipeline.config.paths import (
+    MANIFESTS_DIR,
     RAG_FINAL_DIR,
     RAW_ANKHANG_SNAPSHOTS_DIR,
     RAW_CURATION_DIR,
     RAW_DIR,
+    RESOURCES_DIR,
     WORK_DIR,
 )
 from corpus_pipeline.corpus.canonical.build_canonical_rag import process_canonical_rag
@@ -62,6 +65,7 @@ class BuildConfig:
     work_root: Path = WORK_DIR
     final_dir: Path = RAG_FINAL_DIR
     max_chars: int = DEFAULT_CHUNK_MAX_CHARS
+    manifest_dir: Path = MANIFESTS_DIR / "corpus"
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,18 @@ class BuildHooks:
     build_candidate: Callable[[BuildConfig, ArtifactPaths], None]
 
 
+def publish_corpus_metadata(final_dir: Path, manifest_dir: Path) -> None:
+    final_dir = Path(final_dir)
+    manifest_dir = Path(manifest_dir)
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("manifest.json", "validation_report.json"):
+        source = final_dir / name
+        destination = manifest_dir / name
+        temporary = manifest_dir / f".{name}.tmp"
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+
+
 def _digest_payload(config: BuildConfig) -> dict[str, Any]:
     return {
         "pdf": sha256_file(config.pdf_path),
@@ -84,7 +100,7 @@ def _digest_payload(config: BuildConfig) -> dict[str, Any]:
         "table_overrides": sha256_file(config.table_overrides_path),
         "mappings": sha256_file(config.mappings_path),
         "glossary": sha256_file(config.glossary_path),
-        "valid_syllables": sha256_file(RAW_DIR / "vietnamese_valid_syllables.json"),
+        "valid_syllables": sha256_file(RESOURCES_DIR / "vietnamese_valid_syllables.json"),
         "max_chars": config.max_chars,
         "schema_version": "rag-final-v2",
     }
@@ -133,7 +149,7 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         config.table_overrides_path,
         config.mappings_path,
         config.glossary_path,
-        RAW_DIR / "vietnamese_valid_syllables.json",
+        RESOURCES_DIR / "vietnamese_valid_syllables.json",
     ):
         require_materialized_file(input_path)
     snapshot_manifest = verify_snapshot(
@@ -254,6 +270,7 @@ def run_build(
         except Exception:
             manifest = None
         if manifest is not None and manifest.get("build_id") == build_id:
+            publish_corpus_metadata(config.final_dir, config.manifest_dir)
             return BuildResult(build_id, config.final_dir)
     paths = ArtifactPaths.create(config.work_root, build_id=build_id)
     _write_state(paths, build_id=build_id, stage="created")
@@ -261,6 +278,7 @@ def run_build(
         hooks.build_candidate(config, paths)
         _write_state(paths, stage="candidate-ready")
         publish_contract(paths.candidate_final_dir, config.final_dir)
+        publish_corpus_metadata(config.final_dir, config.manifest_dir)
         _write_state(paths, stage="published")
         paths.cleanup()
     except BaseException as exc:
@@ -270,25 +288,32 @@ def run_build(
     return BuildResult(build_id=build_id, final_dir=config.final_dir)
 
 
-def latest_snapshot_pair(snapshot_dir: Path) -> tuple[Path, Path]:
-    manifests = sorted(Path(snapshot_dir).glob("*.manifest.json"))
+def latest_snapshot_pair(
+    snapshot_dir: Path, manifest_dir: Path | None = None
+) -> tuple[Path, Path]:
+    snapshot_dir = Path(snapshot_dir)
+    manifest_dir = Path(manifest_dir or snapshot_dir)
+    manifests = sorted(manifest_dir.glob("*.manifest.json"))
     if not manifests:
         raise FileNotFoundError(f"No snapshot manifests found in {snapshot_dir}")
     manifest_path = manifests[-1]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    archive_path = manifest_path.parent / str(manifest["archive_name"])
+    archive_path = snapshot_dir / str(manifest["archive_name"])
     verify_snapshot(archive_path, manifest_path)
     return archive_path, manifest_path
 
 
 def default_config() -> BuildConfig:
-    archive, manifest = latest_snapshot_pair(RAW_ANKHANG_SNAPSHOTS_DIR)
+    archive, manifest = latest_snapshot_pair(
+        RAW_ANKHANG_SNAPSHOTS_DIR,
+        MANIFESTS_DIR / "source",
+    )
     return BuildConfig(
         pdf_path=RAW_DIR / "duoc-thu-quoc-gia-viet-nam.pdf",
         snapshot_archive=archive,
         snapshot_manifest=manifest,
         curated_tables_path=RAW_CURATION_DIR / "docling_tables.jsonl",
         table_overrides_path=RAW_CURATION_DIR / "table_duplicate_overrides.json",
-        mappings_path=RAW_DIR / "colloquial_mappings.json",
-        glossary_path=RAW_DIR / "term_glossary.json",
+        mappings_path=RESOURCES_DIR / "colloquial_mappings.json",
+        glossary_path=RESOURCES_DIR / "term_glossary.json",
     )
