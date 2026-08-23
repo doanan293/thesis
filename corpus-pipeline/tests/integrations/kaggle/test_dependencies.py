@@ -74,3 +74,29 @@ def test_input_dataset_materializes_every_bundle_file_and_manifest(
     }
     assert (staged / "candidates.jsonl").read_bytes() == candidates.read_bytes()
     assert (staged / "manifest.json").read_bytes() == manifest.read_bytes()
+
+
+def test_desired_datasets_multi_owner_resolution(tmp_path, monkeypatch):
+    job, _, _ = _job(tmp_path)
+    monkeypatch.setattr(
+        dependencies,
+        "resolve_publishable_artifact",
+        lambda *_args: SimpleNamespace(
+            dataset_slug="model-slug",
+            sha256="model-sha",
+        ),
+    )
+    owners = SimpleNamespace(
+        execution="worker-acc",
+        runtime="runtime-acc",
+        corpus="corpus-acc",
+        checkpoint="worker-acc",
+    )
+    desired = dependencies.default_desired_datasets(job, owners, tmp_path)
+    by_kind = {item.resource_kind: item for item in desired}
+
+    assert by_kind["model"].reference == "runtime-acc/model-slug"
+    assert by_kind["model"].public is True
+    assert by_kind["input"].reference.startswith("worker-acc/pipeline-input-")
+    assert by_kind["input"].public is True
+

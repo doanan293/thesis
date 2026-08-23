@@ -38,6 +38,23 @@ Ví dụ, run `dense-qwen06b-k30` là tên thí nghiệm, còn `--retriever dens
 là lựa chọn thuật toán. Xem [CLI reference](docs/guides/cli-reference.md) để biết
 run identity và quy ước đặt tên đầy đủ.
 
+### Re-judge metrics trên artifacts hiện có
+
+Khi chỉ sửa judgment mà không đổi query text, có thể chạy lại evaluation mà
+không embed, retrieve hoặc rerank lại. Lệnh dưới đây mặc định là dry-run:
+
+```bash
+uv run corpus evaluation rejudge-current \
+  --dense-run dense-qwen4b-k30 \
+  --hybrid-run hybrid-qwen4b-p50-k30-rrf2
+```
+
+Để áp dụng, dùng `--apply`. Lệnh sẽ thay evaluation dataset hiện tại, cập nhật
+evaluation hashes, xóa metrics reports cũ của hai run trên và tạo lại baseline
+cùng các rerank reports từ candidates/rerank scores đang có. Candidates,
+query embeddings và rerank scores được giữ nguyên; nếu metrics thất bại,
+evaluation, manifests và reports cũ được khôi phục.
+
 ## Prerequisites chung
 
 - Python environment được quản lý bằng `uv`.

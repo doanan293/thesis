@@ -5,7 +5,7 @@
     "collection_name": "thesis_chunks_embeddinggemma_300m",
     "embedding_model": "embeddinggemma:300m",
     "evaluation_path": "/home/andv/personal/thesis/corpus-pipeline/data/processed/evaluation/section_retrieval_eval.jsonl",
-    "evaluation_sha256": "f648bbd5740c2e5b6ca4498b6fa6e9d49319a033679d6a923fb050a37378cdfe",
+    "evaluation_sha256": "b26d9fd71a6dd28a65b571449b612c13510b7e1568bddbcfdb5156e21ac8b1a0",
     "limit": null,
     "prefetch_k": null,
     "query_embeddings_sha256": "926ba26b501a652a4d5f668b6bc9d4c6cec94bb5ad2b50765a26855f3681ee8b",

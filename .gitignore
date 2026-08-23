@@ -6,12 +6,7 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
-superpowers/
 .worktrees/
-# Data pipeline intermediate/debug outputs & heavy data files
-corpus-pipeline/data/cache/
-corpus-pipeline/data/runs/
-data-processing/data/
 
 # Environment files
 .env

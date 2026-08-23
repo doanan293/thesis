@@ -193,7 +193,7 @@ class RunWorkspace:
         if record_path.exists():
             current = load_run_record(record_path)
             if current.identity == identity:
-                return cls(root, identity)
+                return cls(root, identity, artifact_root)
             if current.identity != identity and not force:
                 raise RunConflictError(
                     "Run identity changed; use another --run name or --force"

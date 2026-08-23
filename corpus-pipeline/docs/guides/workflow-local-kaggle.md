@@ -6,11 +6,26 @@ candidate bundle trước rồi Kaggle chỉ chấm reranker trên 30 candidates
 
 ## 1. Kiểm tra môi trường
 
-Khai báo Kaggle credentials/owners trong `.env`, sau đó chạy:
+Khai báo các profile Kaggle trong `.env`:
+
+```dotenv
+KAGGLE_ACCOUNT_DEFAULT=acc1
+KAGGLE_SHARED_OWNER=account_goc
+KAGGLE_ACC1_USERNAME=account_goc
+KAGGLE_ACC1_API_TOKEN=token_acc1
+KAGGLE_ACC2_USERNAME=account_phu_2
+KAGGLE_ACC2_API_TOKEN=token_acc2
+```
+
+Thêm account mới bằng cặp biến `KAGGLE_ACC3_USERNAME` và
+`KAGGLE_ACC3_API_TOKEN`. Runtime, model và corpus dùng chung từ
+`KAGGLE_SHARED_OWNER`; kernel, input và checkpoint thuộc account được chọn.
+Kiểm tra từng account trước khi chạy:
 
 ```bash
 uv sync
-uv run corpus doctor --backend kaggle
+uv run corpus doctor --backend kaggle --kaggle-account acc1
+uv run corpus doctor --backend kaggle --kaggle-account acc2
 docker compose -f ../docker-compose.yml up -d qdrant
 ```
 
@@ -87,7 +102,7 @@ Pipeline chuẩn cho rerank là:
 
 ```text
 dense top 50 + BM25 top 50
-  -> RRF (rrf-k=60), giữ top 30
+  -> RRF (rrf-k=2), giữ top 30
   -> candidate bundle hoàn chỉnh ở local
   -> Kaggle reranker inference trên 30 candidates/query
   -> metrics baseline và reranked ở local
@@ -97,15 +112,15 @@ Chạy retrieval và baseline metrics:
 
 ```bash
 uv run corpus retrieve \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --retriever hybrid \
   --model qwen3-embedding:4b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
-  --rrf-k 60
+  --rrf-k 2
 
 uv run corpus metrics \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --top-k 30
 ```
 
@@ -118,9 +133,10 @@ Kiểm tra dependency/checkpoint trước khi submit:
 
 ```bash
 uv run corpus rerank \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --backend kaggle \
   --model qwen3-reranker:0.6b-fp16 \
+  --kaggle-account acc2 \
   --dry-run
 ```
 
@@ -128,10 +144,14 @@ Chạy thật:
 
 ```bash
 uv run corpus rerank \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --backend kaggle \
-  --model qwen3-reranker:0.6b-fp16
+  --model qwen3-reranker:0.6b-fp16 \
+  --kaggle-account acc2
 ```
+
+Các terminal khác có thể chạy job/run khác đồng thời bằng `--kaggle-account
+acc1`, `acc2`, `acc3`, ...; không chạy cùng một logical target ở hai terminal.
 
 Rerank stage chỉ nhận candidate JSONL cùng manifest. Chạy lại cùng command để
 resume các pair còn thiếu; global cache được version theo model SHA/prompt
@@ -152,10 +172,10 @@ mới. Contract mới tạo lineage/variant mới; không trộn score từ cont
 ## 7. Runtime profiling trên Kaggle
 
 Lệnh production tự benchmark workload tương ứng khi profile chưa tồn tại, sau
-đó lưu profile vào `data/runtime_kaggle_profiles/`. Các lần chạy sau dùng lại profile.
+đó lưu profile vào `data/heavy/runtime_kaggle_profiles/`. Các lần chạy sau dùng lại profile.
 
 ```bash
-uv run corpus rerank --run hybrid-qwen4b-p50-k30-rrf60 --backend kaggle --model qwen3-reranker:0.6b-fp16
+uv run corpus rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend kaggle --model qwen3-reranker:0.6b-fp16
 ```
 
 Nếu benchmark không tạo được artifact hoàn chỉnh, lệnh production dừng với
@@ -167,7 +187,7 @@ Sau khi score file đã merge về local:
 
 ```bash
 uv run corpus metrics \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --top-k 30
 ```
 

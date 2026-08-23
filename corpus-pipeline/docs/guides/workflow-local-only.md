@@ -85,20 +85,20 @@ model `qwen3-embedding:4b-fp16`.
 
 ### Hybrid
 
-Hybrid lấy dense top 50 và BM25 top 50, sau đó Qdrant dùng RRF với constant 60
+Hybrid lấy dense top 50 và BM25 top 50, sau đó Qdrant dùng RRF với constant 2
 và chỉ giữ top 30 trong candidate artifact:
 
 ```bash
 uv run corpus retrieve \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --retriever hybrid \
   --model qwen3-embedding:4b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
-  --rrf-k 60
+  --rrf-k 2
 
 uv run corpus metrics \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --top-k 30
 ```
 
@@ -113,11 +113,11 @@ Không chạy hybrid retrieval lần thứ hai. Run `hybrid` đã có candidate 
 
 ```bash
 uv run corpus rerank \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --backend local \
   --model qwen3-reranker:0.6b-fp16
 uv run corpus metrics \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --top-k 30
 ```
 
@@ -128,12 +128,12 @@ directory:
 
 ```bash
 uv run corpus rerank \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --backend local \
   --model bge-reranker-v2-m3:f16
 
 uv run corpus metrics \
-  --run hybrid-qwen4b-p50-k30-rrf60 \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
   --model bge-reranker-v2-m3:f16 \
   --top-k 30
 ```
@@ -144,8 +144,8 @@ ghi đè khi chạy model khác.
 ## 5. Smoke test và resume
 
 Thêm `--limit 50` vào từng lệnh `retrieve` để kiểm tra nhanh trước khi bỏ giới
-hạn. Ví dụ, dùng `hybrid-qwen4b-p50-k30-rrf60-smoke50` cho smoke run và
-`hybrid-qwen4b-p50-k30-rrf60` cho benchmark đầy đủ; bỏ `--limit` làm thay đổi
+hạn. Ví dụ, dùng `hybrid-qwen4b-p50-k30-rrf2-smoke50` cho smoke run và
+`hybrid-qwen4b-p50-k30-rrf2` cho benchmark đầy đủ; bỏ `--limit` làm thay đổi
 run identity. Không trộn candidates, query bundle hoặc model giữa các run; nếu
 identity thay đổi, chọn tên run mới hoặc dùng `--force` có chủ đích.
 

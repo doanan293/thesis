@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import shutil
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,10 @@ from corpus_pipeline.evaluation.retrieval_candidate_artifact import (
 )
 from corpus_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from corpus_pipeline.evaluation.run_workspace import RunWorkspace
+from corpus_pipeline.integrations.kaggle.job_lock import (
+    kaggle_cache_lock,
+    kaggle_job_lock,
+)
 from corpus_pipeline.runtime.catalog import ModelKind, require_model
 from corpus_pipeline.runtime.client import LlamaCppClient
 from corpus_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
@@ -43,6 +48,7 @@ class RerankRequest:
     benchmark: bool = False
     benchmark_pairs: int = 512
     artifact_root: Path | None = None
+    kaggle_account: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,53 @@ def rerank_checkpoint_path(output_dir: Path, candidate_sha256: str, model: str) 
         ),
     }
     return Path(output_dir) / ".checkpoints" / f"{canonical_sha256(identity)}.jsonl"
+
+
+def _cleanup_completed_stage_artifact(
+    artifact_path: Path, staging_root: Path
+) -> None:
+    root = Path(staging_root).resolve()
+    artifact_dir = Path(artifact_path).resolve().parent
+    if artifact_dir == root or not artifact_dir.is_relative_to(root):
+        raise ValueError(
+            f"completed artifact is outside Kaggle rerank staging root: "
+            f"{artifact_dir}"
+        )
+    shutil.rmtree(artifact_dir)
+
+
+def _rerank_record_key(record: Mapping[str, object]) -> tuple[str, ...]:
+    return (
+        str(record["reranker"]),
+        str(record.get("model_sha256") or ""),
+        str(record.get("request_contract_sha256") or ""),
+        str(record["query_id"]),
+        str(record["query_hash"]),
+        str(record["chunk_id"]),
+        str(record["document_hash"]),
+    )
+
+
+def _merge_remote_rerank_scores(
+    cache_path: Path,
+    remote: RerankScoreCache,
+    *,
+    model_sha256: str,
+    request_contract_sha256: str,
+) -> None:
+    """Make a completed Kaggle job authoritative for keys it produced."""
+    local = RerankScoreCache(
+        cache_path,
+        model_sha256=model_sha256,
+        request_contract_sha256=request_contract_sha256,
+    )
+    local.replace_keys(set(remote.record_metadata))
+    merge_records(
+        cache_path,
+        remote.record_metadata.values(),
+        key=_rerank_record_key,
+        equivalent=lambda left, right: left["score"] == right["score"],
+    )
 
 
 class LocalRerankBackend:
@@ -179,12 +232,15 @@ class LocalRerankBackend:
                 (f"scored={processed}",),
                 incomplete=True,
             )
-        bundle = finalize_run_rerank_bundle(
-            workspace=workspace,
-            candidate_bundle=candidate_bundle,
-            cache_path=cache_path,
-            identity=identity,
-        )
+        # Different model jobs may finish concurrently; serialize the
+        # read-modify-write of the shared run registry while publishing.
+        with kaggle_cache_lock(request.run_root / "run.json"):
+            bundle = finalize_run_rerank_bundle(
+                workspace=workspace,
+                candidate_bundle=candidate_bundle,
+                cache_path=cache_path,
+                identity=identity,
+            )
         return RerankStageResult(
             bundle.root,
             identity.sha256,
@@ -222,6 +278,16 @@ class KaggleRerankBackend:
 
     @staticmethod
     def _run_kaggle(request: RerankRequest) -> RerankStageResult:
+        spec = require_model(request.model)
+        # Kaggle staging/runtime resources are model-scoped under WORK_DIR,
+        # so serialize the same model across runs while allowing variants
+        # for different models to proceed concurrently.
+        lock_target = WORK_DIR / "kaggle-rerank-jobs" / spec.slug
+        with kaggle_job_lock(lock_target):
+            return KaggleRerankBackend._run_kaggle_unlocked(request)
+
+    @staticmethod
+    def _run_kaggle_unlocked(request: RerankRequest) -> RerankStageResult:
         from corpus_pipeline.integrations.kaggle.models import StageName
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
 
@@ -255,7 +321,8 @@ class KaggleRerankBackend:
                 ("reuse=complete variant",),
             )
         try:
-            migrated = migrate_legacy_rerank(workspace, candidate_bundle)
+            with kaggle_cache_lock(request.run_root / "run.json"):
+                migrated = migrate_legacy_rerank(workspace, candidate_bundle)
         except (OSError, RuntimeError, ValueError):
             migrated = None
         if migrated is not None:
@@ -281,6 +348,7 @@ class KaggleRerankBackend:
             budget_seconds=request.budget_seconds,
             dry_run=request.dry_run,
             force=request.force,
+            kaggle_account=request.kaggle_account,
         )
         if resolution.profile is None:
             return RerankStageResult(None, identity.sha256, None, (f"profile={resolution.action}",), incomplete=True)
@@ -299,6 +367,7 @@ class KaggleRerankBackend:
             check_only=request.dry_run,
             budget_seconds=request.budget_seconds,
             runtime_profile=resolution.profile.selected,
+            kaggle_account=request.kaggle_account,
         )
         actions = tuple(
             f"{action.verb.value} {action.resource_kind} {action.reference}: {action.reason}"
@@ -317,26 +386,19 @@ class KaggleRerankBackend:
             model_sha256=spec.sha256,
             request_contract_sha256=contract,
         )
-        merge_records(
-            cache_path,
-            remote.record_metadata.values(),
-            key=lambda record: (
-                str(record["reranker"]),
-                str(record.get("model_sha256") or ""),
-                str(record.get("request_contract_sha256") or ""),
-                str(record["query_id"]),
-                str(record["query_hash"]),
-                str(record["chunk_id"]),
-                str(record["document_hash"]),
-            ),
-            equivalent=lambda left, right: left["score"] == right["score"],
-        )
-        local = RerankScoreCache(
-            cache_path,
-            model_sha256=spec.sha256,
-            request_contract_sha256=contract,
-        )
-        subset = local.validate_subset(candidate_bundle.data_path, request.model)
+        with kaggle_cache_lock(cache_path):
+            _merge_remote_rerank_scores(
+                cache_path,
+                remote,
+                model_sha256=spec.sha256,
+                request_contract_sha256=contract,
+            )
+            local = RerankScoreCache(
+                cache_path,
+                model_sha256=spec.sha256,
+                request_contract_sha256=contract,
+            )
+            subset = local.validate_subset(candidate_bundle.data_path, request.model)
         if not subset.is_complete:
             return RerankStageResult(
                 None,
@@ -345,12 +407,14 @@ class KaggleRerankBackend:
                 actions,
                 incomplete=True,
             )
-        bundle = finalize_run_rerank_bundle(
-            workspace=workspace,
-            candidate_bundle=candidate_bundle,
-            cache_path=cache_path,
-            identity=identity,
-        )
+        with kaggle_cache_lock(request.run_root / "run.json"):
+            bundle = finalize_run_rerank_bundle(
+                workspace=workspace,
+                candidate_bundle=candidate_bundle,
+                cache_path=cache_path,
+                identity=identity,
+            )
+        _cleanup_completed_stage_artifact(result.artifact_path, remote_dir)
         return RerankStageResult(
             bundle.root,
             identity.sha256,

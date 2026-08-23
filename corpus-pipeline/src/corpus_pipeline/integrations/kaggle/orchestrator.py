@@ -13,6 +13,7 @@ from corpus_pipeline.integrations.kaggle.models import (
     ActionVerb,
     KernelPresence,
     KernelRemoteState,
+    KernelStatus,
     PipelineResult,
     ReconcileAction,
     StageRequest,
@@ -63,7 +64,7 @@ class KagglePipelineOrchestrator:
 
         checkpoint = (
             self.checkpoints.empty(job)
-            if request.force
+            if request.force or benchmark
             else self.checkpoints.inspect(job)
         )
         remote = (
@@ -97,22 +98,28 @@ class KagglePipelineOrchestrator:
                 )
                 actions += resolution.actions
                 if resolution.output_root is not None:
+                    artifact = None
                     try:
                         artifact = self._load_downloaded_artifact(
                             resolution.output_root, job
                         )
                     except ArtifactContractError as error:
-                        raise ArtifactContractError(
-                            f"{error}; kernel={resolution.remote.reference}; "
-                            f"log_tail={self.reconciler.kernels.service._log_tail(resolution.remote.reference)}"
-                        ) from error
-                    if artifact.completion.is_complete:
-                        return self._complete_result(job, artifact, actions, attempts=0)
-                    if not benchmark:
-                        checkpoint = self.checkpoints.publish_if_better(
-                            job, artifact, checkpoint
-                        )
-                        actions += (self._checkpoint_action(checkpoint),)
+                        if (
+                            resolution.remote.status is not KernelStatus.ERROR
+                            or resolution.submitted
+                        ):
+                            raise ArtifactContractError(
+                                f"{error}; kernel={resolution.remote.reference}; "
+                                f"log_tail={self.reconciler.kernels.service._log_tail(resolution.remote.reference)}"
+                            ) from error
+                    if artifact is not None:
+                        if artifact.completion.is_complete:
+                            return self._complete_result(job, artifact, actions, attempts=0)
+                        if not benchmark:
+                            checkpoint = self.checkpoints.publish_if_better(
+                                job, artifact, checkpoint
+                            )
+                            actions += (self._checkpoint_action(checkpoint),)
 
             if (
                 remote.presence is KernelPresence.ABSENT

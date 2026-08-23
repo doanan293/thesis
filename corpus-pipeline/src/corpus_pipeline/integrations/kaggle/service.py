@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from corpus_pipeline.config.environment import PROJECT_ENV_FILE, load_project_env
@@ -11,7 +12,11 @@ from corpus_pipeline.integrations.kaggle.api import (
 )
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointService
 from corpus_pipeline.integrations.kaggle.config import (
+    KaggleAccountProfile,
     OwnerConfiguration,
+    profile_owner_configuration,
+    profile_runner_environment,
+    resolve_account_profile,
     resolve_owner_configuration,
 )
 from corpus_pipeline.integrations.kaggle.dataset_service import DatasetService
@@ -37,8 +42,32 @@ DEFAULT_ENV_PATH = PROJECT_ENV_FILE
 DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 
 
+@dataclass(frozen=True)
+class KaggleExecutionContext:
+    profile: KaggleAccountProfile | None
+    owners: OwnerConfiguration
+    runner: KaggleCommandRunner
+
+
 def load_kaggle_env(path: Path = DEFAULT_ENV_PATH) -> None:
     load_project_env(path)
+
+
+def resolve_execution_context(
+    kaggle_account: str | None,
+    *,
+    env_file: Path = DEFAULT_ENV_PATH,
+) -> KaggleExecutionContext:
+    load_kaggle_env(env_file)
+    profile = resolve_account_profile(kaggle_account, os.environ)
+    if profile is None:
+        runner = KaggleCommandRunner()
+        return KaggleExecutionContext(None, owner_configuration(runner), runner)
+    runner = KaggleCommandRunner(
+        environment=profile_runner_environment(profile, os.environ)
+    )
+    owners = profile_owner_configuration(profile, os.environ)
+    return KaggleExecutionContext(profile, owners, runner)
 
 
 def owner_configuration(
@@ -91,11 +120,17 @@ def make_orchestrator(
 def runtime_manifest_sha256(
     runner: KaggleCommandRunner | None = None,
     owners: OwnerConfiguration | None = None,
+    *,
+    kaggle_account: str | None = None,
 ) -> str:
     """Return the fingerprint of the immutable Kaggle runtime manifest."""
-    load_kaggle_env()
-    active_runner = runner or KaggleCommandRunner()
-    active_owners = owners or owner_configuration(active_runner)
+    if runner is None or owners is None:
+        context = resolve_execution_context(kaggle_account)
+        active_runner = runner or context.runner
+        active_owners = owners or context.owners
+    else:
+        active_runner = runner
+        active_owners = owners
     from corpus_pipeline.integrations.kaggle.orchestrator import runtime_dataset_reference
 
     manifest = DatasetService(active_runner, active_owners.runtime).fetch_json(
@@ -118,10 +153,11 @@ def run_kaggle_stage(
     benchmark_items: int | None = None,
     runtime_profile: RuntimeCandidate | None = None,
     env_file: Path = DEFAULT_ENV_PATH,
+    kaggle_account: str | None = None,
 ) -> PipelineResult:
-    load_kaggle_env(env_file)
-    runner = KaggleCommandRunner()
-    owners = owner_configuration(runner)
+    context = resolve_execution_context(kaggle_account, env_file=env_file)
+    runner = context.runner
+    owners = context.owners
     request = StageRequest(
         stage,
         model,

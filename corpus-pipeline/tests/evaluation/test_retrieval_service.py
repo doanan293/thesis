@@ -31,7 +31,7 @@ def test_build_retriever_accepts_alias_backed_collection(monkeypatch):
         qdrant_url="http://localhost:6333",
         retriever="bm25",
         candidate_k=30,
-        rrf_k=60,
+        rrf_k=2,
         limit=None,
         force=False,
     )

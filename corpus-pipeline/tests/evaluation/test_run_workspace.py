@@ -18,7 +18,7 @@ def identity() -> RunIdentity:
         query_embeddings_sha256="queries",
         retriever="hybrid",
         candidate_k=30,
-        rrf_k=60,
+        rrf_k=2,
         limit=None,
         prefetch_k=50,
     )
@@ -94,3 +94,16 @@ def test_split_workspace_keeps_registry_and_manifest_outside_heavy_root(tmp_path
     assert (metadata / "candidates-manifest.json").read_bytes() == artifact.manifest_path.read_bytes()
     assert workspace.candidates_dir == heavy / "candidates"
     assert load_run_record(metadata / "run.json").candidates_dir == "candidates"
+
+
+def test_reopen_split_workspace_preserves_heavy_artifact_root(tmp_path):
+    metadata = tmp_path / "retrieval_eval" / "run-a"
+    heavy = tmp_path / "heavy" / "retrieval_eval" / "run-a"
+    RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
+
+    reopened = RunWorkspace.open_or_create(
+        metadata, identity(), artifact_root=heavy
+    )
+
+    assert reopened.artifact_base == heavy
+    assert reopened.candidates_dir == heavy / "candidates"

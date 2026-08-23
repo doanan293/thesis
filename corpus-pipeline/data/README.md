@@ -21,5 +21,6 @@ Tracked data is intentionally small:
   summaries. Large run payloads with the same run name are under
   `heavy/retrieval_eval/`.
 
-`runtime_kaggle_profiles/` is generated for a particular runtime and ignored;
-it can be regenerated when the profile is missing or invalid.
+`heavy/runtime_kaggle_profiles/` is generated for a particular runtime and is
+included in the heavy archive; it can be regenerated when the profile is
+missing or invalid.

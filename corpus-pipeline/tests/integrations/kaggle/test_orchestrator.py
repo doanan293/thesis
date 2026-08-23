@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,7 +17,10 @@ from corpus_pipeline.integrations.kaggle.models import (
 from corpus_pipeline.integrations.kaggle.orchestrator import (
     KagglePipelineOrchestrator,
 )
-from corpus_pipeline.integrations.kaggle.stages import RerankStage
+from corpus_pipeline.integrations.kaggle.stages import (
+    RerankStage,
+    get_stage_adapter,
+)
 from corpus_pipeline.integrations.kaggle.workers.runtime import artifact_from_output
 from corpus_pipeline.runtime.catalog import require_model
 
@@ -36,11 +40,18 @@ class FakeDependencies:
 
 class FakeCheckpoints:
     def __init__(self, total):
-        self.empty = CheckpointState(None, None, Completion(total, 0, total))
+        self.empty_state = CheckpointState(None, None, Completion(total, 0, total))
+        self.inspected = []
+        self.emptied = []
         self.published = []
 
-    def inspect(self, _job):
-        return self.empty
+    def empty(self, job):
+        self.emptied.append(job)
+        return self.empty_state
+
+    def inspect(self, job):
+        self.inspected.append(job)
+        return self.empty_state
 
     def publish_if_better(self, _job, artifact, current):
         self.published.append(artifact.completion)
@@ -62,9 +73,10 @@ class FakeKernels:
 
 
 class FakeReconciler:
-    def __init__(self, resolution):
+    def __init__(self, resolution, submission_resolution=None):
         self.remote = resolution.remote
         self.resolution = resolution
+        self.submission_resolution = submission_resolution or resolution
         self.attached = []
         self.submissions = []
 
@@ -77,7 +89,7 @@ class FakeReconciler:
 
     def submit(self, job, bundle, staging_root, *, timeout_seconds):
         self.submissions.append((job, bundle, staging_root, timeout_seconds))
-        return self.resolution
+        return self.submission_resolution
 
 
 def _request(tmp_path):
@@ -156,3 +168,60 @@ def test_running_remote_is_attached_before_dependency_reconciliation(tmp_path):
     assert reconciler.submissions == []
     assert dependencies.reconciles == 0
     assert result.completion.is_complete
+
+
+def test_failed_remote_with_invalid_output_starts_fresh_attempt(tmp_path):
+    request = _request(tmp_path)
+    failed_output = tmp_path / "failed-output"
+    failed_output.mkdir()
+    failed_remote = KernelRemoteState(
+        "secondary-owner/rerank-failed",
+        KernelPresence.EXISTS,
+        KernelStatus.ERROR,
+    )
+    failed_resolution = KernelResolution(failed_remote, failed_output, ())
+    queued_remote = KernelRemoteState(
+        "secondary-owner/rerank-retry",
+        KernelPresence.EXISTS,
+        KernelStatus.QUEUED,
+    )
+    detached_retry = KernelResolution(queued_remote, None, (), submitted=True)
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        FakeCheckpoints(1),
+        FakeKernels(),
+        reconciler=FakeReconciler(failed_resolution, detached_retry),
+    )
+
+    result = orchestrator.run(request)
+
+    assert result.run_count == 1
+    assert result.artifact_path is None
+
+
+def test_benchmark_does_not_inspect_or_publish_checkpoint(tmp_path):
+    request = replace(
+        _request(tmp_path),
+        stage=StageName.RERANK_BENCHMARK,
+        check_only=True,
+    )
+    remote = KernelRemoteState(
+        "owner/rerank-benchmark-12345678",
+        KernelPresence.ABSENT,
+    )
+    resolution = KernelResolution(remote, None, ())
+    checkpoints = FakeCheckpoints(1)
+    orchestrator = KagglePipelineOrchestrator(
+        {StageName.RERANK_BENCHMARK: get_stage_adapter(StageName.RERANK_BENCHMARK)},
+        FakeDependencies(),
+        checkpoints,
+        FakeKernels(),
+        reconciler=FakeReconciler(resolution),
+    )
+
+    orchestrator.run(request)
+
+    assert len(checkpoints.emptied) == 1
+    assert checkpoints.inspected == []
+    assert checkpoints.published == []

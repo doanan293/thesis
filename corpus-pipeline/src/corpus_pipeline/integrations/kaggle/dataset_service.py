@@ -14,6 +14,7 @@ from corpus_pipeline.integrations.kaggle.api import (
     config_view_command,
     dataset_create_command,
     dataset_file_download_command,
+    dataset_files_command,
     dataset_list_mine_command,
     dataset_metadata,
     dataset_status_command,
@@ -82,6 +83,25 @@ class DatasetService:
         except (subprocess.CalledProcessError, KaggleCommandError) as exc:
             detail = _command_detail(exc)
             folded = detail.casefold()
+            reference_owner, separator, _ = reference.partition("/")
+            is_foreign = (
+                bool(separator)
+                and active_owner is not None
+                and reference_owner.casefold() != active_owner.casefold()
+            )
+            if is_foreign and ("404" in folded or "not found" in folded or "403" in folded):
+                try:
+                    files_output = self.runner.run(
+                        dataset_files_command(reference), capture_output=True
+                    )
+                    if files_output.strip() and "name," in files_output.casefold():
+                        return DatasetRemoteState(
+                            DatasetPresence.EXISTS,
+                            status="READY",
+                            detail="foreign public dataset accessible",
+                        )
+                except (subprocess.CalledProcessError, KaggleCommandError):
+                    pass
             if "not found" in folded or "404" in folded:
                 return DatasetRemoteState(DatasetPresence.ABSENT, detail=detail)
             if "403" in folded and active_owner is not None:
@@ -222,9 +242,20 @@ class DatasetService:
             encoding="utf-8",
         )
         if state.presence is DatasetPresence.ABSENT:
-            self.runner.run(dataset_create_command(Path(path), public=public))
+            print(
+                f"Uploading Kaggle dataset {reference} (create)...", flush=True
+            )
+            self.runner.run(
+                dataset_create_command(Path(path), public=public),
+                live_output=True,
+            )
+            print(f"Uploaded Kaggle dataset {reference}.", flush=True)
             return PreparedDataset(reference, True, 1)
-        self.runner.run(dataset_version_command(Path(path), message=title))
+        print(f"Uploading Kaggle dataset {reference} (version)...", flush=True)
+        self.runner.run(
+            dataset_version_command(Path(path), message=title), live_output=True
+        )
+        print(f"Uploaded Kaggle dataset {reference}.", flush=True)
         expected_version = (
             state.current_version + 1 if state.current_version is not None else None
         )

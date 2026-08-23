@@ -21,6 +21,10 @@ from corpus_pipeline.evaluation.query_embedding_cache import (
 from corpus_pipeline.runtime.catalog import ModelKind, require_model
 from corpus_pipeline.runtime.client import LlamaCppClient
 from corpus_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
+from corpus_pipeline.integrations.kaggle.job_lock import (
+    kaggle_cache_lock,
+    kaggle_job_lock,
+)
 from corpus_pipeline.vector_store.ingest_vectors import (
     DEFAULT_COMPOSE_FILE,
     DEFAULT_GGUF_ROOT,
@@ -38,6 +42,7 @@ class QueryEmbeddingRequest:
     request_timeout_seconds: float
     benchmark: bool = False
     benchmark_items: int = 512
+    kaggle_account: str | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +160,13 @@ class KaggleQueryEmbeddingBackend:
     def _run_kaggle_orchestrator(
         request: QueryEmbeddingRequest,
     ) -> QueryEmbeddingStageResult:
+        with kaggle_job_lock(request.output_dir):
+            return KaggleQueryEmbeddingBackend._run_kaggle_unlocked(request)
+
+    @staticmethod
+    def _run_kaggle_unlocked(
+        request: QueryEmbeddingRequest,
+    ) -> QueryEmbeddingStageResult:
         from corpus_pipeline.integrations.kaggle.models import StageName
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
 
@@ -170,6 +182,7 @@ class KaggleQueryEmbeddingBackend:
             budget_seconds=request.budget_seconds,
             dry_run=request.dry_run,
             force=request.force,
+            kaggle_account=request.kaggle_account,
         )
         if resolution.profile is None:
             return QueryEmbeddingStageResult(None, None, (f"profile={resolution.action}",), incomplete=True)
@@ -186,6 +199,7 @@ class KaggleQueryEmbeddingBackend:
             check_only=request.dry_run,
             budget_seconds=request.budget_seconds,
             runtime_profile=resolution.profile.selected,
+            kaggle_account=request.kaggle_account,
         )
         if result.artifact_path is None:
             return QueryEmbeddingStageResult(
@@ -200,16 +214,17 @@ class KaggleQueryEmbeddingBackend:
             vector_dim=spec.vector_dimension,
             model_sha256=spec.sha256,
         )
-        merge_records(
-            request.output_dir,
-            remote.record_metadata.values(),
-            key=lambda record: (
-                str(record["model"]),
-                str(record["query_id"]),
-                str(record["query_hash"]),
-            ),
-            equivalent=lambda left, right: left["embedding"] == right["embedding"],
-        )
+        with kaggle_cache_lock(request.output_dir):
+            merge_records(
+                request.output_dir,
+                remote.record_metadata.values(),
+                key=lambda record: (
+                    str(record["model"]),
+                    str(record["query_id"]),
+                    str(record["query_hash"]),
+                ),
+                equivalent=lambda left, right: left["embedding"] == right["embedding"],
+            )
         local = QueryEmbeddingCache(
             request.output_dir,
             vector_dim=spec.vector_dimension,

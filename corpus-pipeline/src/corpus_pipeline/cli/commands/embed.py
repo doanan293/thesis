@@ -45,6 +45,7 @@ def embed_chunks_command(
     dry_run: bool = False,
     budget_seconds: int = 21_600,
     request_timeout_seconds: float = 900.0,
+    kaggle_account: str | None = None,
 ) -> CommandResult:
     require_model(model)
     resolved_output = output or default_embedding_cache_path(model)
@@ -62,6 +63,7 @@ def embed_chunks_command(
             dry_run=dry_run,
             budget_seconds=budget_seconds,
             request_timeout_seconds=request_timeout_seconds,
+            kaggle_account=kaggle_account,
         )
     )
     status = CommandStatus.INCOMPLETE if result.incomplete else CommandStatus.COMPLETE
@@ -99,6 +101,7 @@ def embed_chunks(
     request_timeout_seconds: Annotated[
         float, typer.Option("--request-timeout-seconds")
     ] = 900.0,
+    kaggle_account: Annotated[str | None, typer.Option("--kaggle-account")] = None,
 ) -> None:
     run_handler(
         state_from_context(ctx),
@@ -111,6 +114,7 @@ def embed_chunks(
             dry_run=dry_run,
             budget_seconds=budget_seconds,
             request_timeout_seconds=request_timeout_seconds,
+            kaggle_account=kaggle_account,
         ),
     )
 
@@ -129,6 +133,7 @@ def embed_queries(
     request_timeout_seconds: Annotated[
         float, typer.Option("--request-timeout-seconds")
     ] = 900.0,
+    kaggle_account: Annotated[str | None, typer.Option("--kaggle-account")] = None,
 ) -> None:
     require_model(model)
     resolved_output = output_dir or query_embedding_cache_path(model)
@@ -144,6 +149,7 @@ def embed_queries(
                     dry_run=dry_run,
                     budget_seconds=budget_seconds,
                     request_timeout_seconds=request_timeout_seconds,
+                    kaggle_account=kaggle_account,
                 )
             )
         ),

@@ -44,7 +44,7 @@ def complete_run(tmp_path: Path) -> Path:
         query_embeddings_sha256="query-cache",
         retriever="hybrid",
         candidate_k=1,
-        rrf_k=60,
+        rrf_k=2,
         limit=None,
         prefetch_k=1,
     )

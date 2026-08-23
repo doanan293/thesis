@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -60,3 +61,35 @@ def test_rerank_benchmark_rejects_local_backend():
 
     assert result.exit_code != 0
     assert result.exit_code == 2
+
+
+def test_rerank_passes_kaggle_account_to_request(monkeypatch):
+    captured = {}
+
+    class FakeBackend:
+        def run(self, request):
+            captured["request"] = request
+            return SimpleNamespace(
+                artifact_dir=None,
+                variant_sha256="variant",
+                subset_sha256=None,
+                actions=(),
+                incomplete=True,
+            )
+
+    monkeypatch.setattr(rerank_command, "KaggleRerankBackend", FakeBackend)
+    result = runner.invoke(
+        app,
+        [
+            "rerank",
+            "--run",
+            "experiment",
+            "--backend",
+            "kaggle",
+            "--kaggle-account",
+            "acc2",
+        ],
+    )
+
+    assert result.exit_code == 3
+    assert captured["request"].kaggle_account == "acc2"

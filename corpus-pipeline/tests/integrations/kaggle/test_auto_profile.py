@@ -83,6 +83,34 @@ def test_cache_miss_benchmarks_and_persists_selected_profile(tmp_path):
     assert len(calls) == 1
 
 
+def test_runtime_lookup_and_benchmark_use_selected_account(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        "corpus_pipeline.integrations.kaggle.service.runtime_manifest_sha256",
+        lambda *, kaggle_account: seen.append(("runtime", kaggle_account)) or "b" * 64,
+    )
+    monkeypatch.setattr(
+        "corpus_pipeline.integrations.kaggle.service.run_kaggle_stage",
+        lambda **kwargs: seen.append(("benchmark", kwargs["kaggle_account"]))
+        or _benchmark_result(tmp_path),
+    )
+
+    ensure_runtime_profile(
+        workload="rerank",
+        benchmark_stage="rerank-benchmark",
+        model=MODEL,
+        input_path=tmp_path / "candidates.jsonl",
+        gguf_root=tmp_path / "gguf",
+        budget_seconds=60,
+        dry_run=False,
+        force=False,
+        profile_root=tmp_path / "profiles",
+        kaggle_account="acc2",
+    )
+
+    assert seen == [("runtime", "acc2"), ("benchmark", "acc2")]
+
+
 def test_cache_hit_skips_benchmark(tmp_path):
     first = ensure_runtime_profile(
         workload="rerank",
@@ -138,3 +166,30 @@ def test_dry_run_cache_miss_does_not_benchmark_or_write(tmp_path):
     assert result.action == "benchmark-required"
     assert result.profile is None
     assert not list((tmp_path / "profiles").rglob("*.json"))
+
+
+def test_benchmark_cleans_up_work_directory(tmp_path, monkeypatch):
+    work_dir = tmp_path / "work"
+    monkeypatch.setattr("corpus_pipeline.integrations.kaggle.auto_profile.WORK_DIR", work_dir)
+    spec = require_model(MODEL)
+    benchmark_dir = work_dir / "kaggle-runtime-benchmarks" / spec.slug
+    benchmark_dir.mkdir(parents=True, exist_ok=True)
+    (benchmark_dir / "temp.log").write_text("log content", encoding="utf-8")
+
+    result = ensure_runtime_profile(
+        workload="rerank",
+        benchmark_stage="rerank-benchmark",
+        model=MODEL,
+        input_path=tmp_path / "candidates.jsonl",
+        gguf_root=tmp_path / "gguf",
+        budget_seconds=60,
+        dry_run=False,
+        force=False,
+        profile_root=tmp_path / "profiles",
+        runtime_sha256="b" * 64,
+        benchmark_runner=lambda **kwargs: _benchmark_result(tmp_path),
+    )
+
+    assert result.action == "created"
+    assert not benchmark_dir.exists()
+    assert not (work_dir / "kaggle-runtime-benchmarks").exists()

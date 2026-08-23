@@ -33,7 +33,18 @@ class CheckpointService:
         model_slug = "".join(
             char if char.isalnum() else "-" for char in job.model.casefold()
         ).strip("-")
-        return f"{self.owner}/re-eval-{job.stage.value}-{model_slug[:24]}-{job.identity.reuse_sha256[:8]}-checkpoint"
+        prefix = f"re-eval-{job.stage.value}-"
+        suffix = f"-{job.identity.reuse_sha256[:8]}-checkpoint"
+        model_budget = 50 - len(prefix) - len(suffix)
+        if model_budget < 1:
+            raise ValueError(
+                f"checkpoint slug invariant exceeds Kaggle's 50-character limit: "
+                f"stage={job.stage.value!r}"
+            )
+        model_component = model_slug[:model_budget].rstrip("-")
+        if not model_component:
+            raise ValueError(f"invalid checkpoint model slug: {job.model!r}")
+        return f"{self.owner}/{prefix}{model_component}{suffix}"
 
     def empty(self, job: StageJob) -> CheckpointState:
         return CheckpointState(

@@ -40,6 +40,7 @@ def rerank(
     request_timeout_seconds: Annotated[
         float, typer.Option("--request-timeout-seconds")
     ] = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    kaggle_account: Annotated[str | None, typer.Option("--kaggle-account")] = None,
 ) -> None:
     run_root, artifact_root = retrieval_run_roots(run)
     if output_dir is not None:
@@ -63,6 +64,7 @@ def rerank(
                     budget_seconds=budget_seconds,
                     request_timeout_seconds=request_timeout_seconds,
                     artifact_root=artifact_root,
+                    kaggle_account=kaggle_account,
                 )
             )
         ),

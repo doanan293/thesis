@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -112,16 +113,23 @@ def ensure_runtime_profile(
     budget_seconds: int,
     dry_run: bool,
     force: bool,
+    kaggle_account: str | None = None,
     profile_root: Path = RUNTIME_PROFILE_DIR,
     runtime_sha256: str | None = None,
     benchmark_runner: Callable[..., Any] | None = None,
 ) -> ProfileResolution:
     del force
     spec = require_model(model)
+    if dry_run and runtime_sha256 is None:
+        return ProfileResolution(
+            None,
+            Path(profile_root) / workload / spec.slug / "dry-run.json",
+            "benchmark-required",
+        )
     if runtime_sha256 is None:
         from corpus_pipeline.integrations.kaggle.service import runtime_manifest_sha256
 
-        runtime_sha256 = runtime_manifest_sha256()
+        runtime_sha256 = runtime_manifest_sha256(kaggle_account=kaggle_account)
     space = _search_space(model, workload)
     identity = RuntimeProfileIdentity.create(
         workload=workload,
@@ -139,6 +147,7 @@ def ensure_runtime_profile(
         return ProfileResolution(existing, path, "reuse")
     if dry_run:
         return ProfileResolution(None, path, "benchmark-required")
+    benchmark_output_dir = WORK_DIR / "kaggle-runtime-benchmarks" / spec.slug
     if benchmark_runner is None:
         from corpus_pipeline.integrations.kaggle.models import StageName
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
@@ -148,12 +157,13 @@ def ensure_runtime_profile(
                 stage=StageName(benchmark_stage),
                 model=model,
                 input_path=Path(kwargs["input_path"]),
-                output_dir=WORK_DIR / "kaggle-runtime-benchmarks" / spec.slug,
+                output_dir=benchmark_output_dir,
                 gguf_root=Path(kwargs["gguf_root"]),
                 force=False,
                 check_only=False,
                 budget_seconds=budget_seconds,
                 benchmark_items=512,
+                kaggle_account=kaggle_account,
             )
 
     result = benchmark_runner(
@@ -177,4 +187,12 @@ def ensure_runtime_profile(
     reloaded = store.load(identity, model_slug=spec.slug)
     if reloaded is None:
         raise RuntimeError(f"runtime profile failed validation after save: {saved}")
+    if benchmark_output_dir.exists():
+        shutil.rmtree(benchmark_output_dir, ignore_errors=True)
+    benchmarks_root = benchmark_output_dir.parent
+    if benchmarks_root.exists() and not any(benchmarks_root.iterdir()):
+        try:
+            benchmarks_root.rmdir()
+        except OSError:
+            pass
     return ProfileResolution(reloaded, saved, "created")

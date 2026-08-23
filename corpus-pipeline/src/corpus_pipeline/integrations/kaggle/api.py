@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import io
 import os
 import subprocess
+import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from corpus_pipeline.integrations.kaggle.errors import KaggleCommandError
 
@@ -245,30 +249,76 @@ class KaggleCommandRunner:
         return _redact(value, environment)
 
     def run_result(
-        self, args: list[str], *, operation: str = "command", target: str | None = None
+        self,
+        args: list[str],
+        *,
+        operation: str = "command",
+        target: str | None = None,
+        live_output: bool = False,
     ) -> KaggleCommandResult:
         self._validate(args)
         command = [self.executable, *args[1:]]
         if self.dry_run:
             print("DRY RUN: " + " ".join(command), flush=True)
             return KaggleCommandResult(tuple(command), 0, "", "")
-        completed = subprocess.run(
-            command, env=self.environment, text=True, capture_output=True
-        )
-        stdout, stderr = completed.stdout or "", completed.stderr or ""
-        if completed.returncode or "error:" in stdout.casefold():
+        if live_output:
+            completed = subprocess.Popen(
+                command,
+                env=self.environment,
+                bufsize=0,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout_parts: list[str] = []
+            stderr_parts: list[str] = []
+            assert completed.stdout is not None
+            assert completed.stderr is not None
+            stdout_stream = io.TextIOWrapper(
+                completed.stdout, encoding="utf-8", errors="replace", newline=""
+            )
+            stderr_stream = io.TextIOWrapper(
+                completed.stderr, encoding="utf-8", errors="replace", newline=""
+            )
+            stdout_thread = threading.Thread(
+                target=_drain_and_tee,
+                args=(stdout_stream, sys.stdout, stdout_parts),
+            )
+            stderr_thread = threading.Thread(
+                target=_drain_and_tee,
+                args=(stderr_stream, sys.stderr, stderr_parts),
+            )
+            stdout_thread.start()
+            stderr_thread.start()
+            stdout_thread.join()
+            stderr_thread.join()
+            returncode = completed.wait()
+            stdout = "".join(stdout_parts)
+            stderr = "".join(stderr_parts)
+        else:
+            completed = subprocess.run(
+                command, env=self.environment, text=True, capture_output=True
+            )
+            returncode = completed.returncode
+            stdout, stderr = completed.stdout or "", completed.stderr or ""
+        if returncode or "error:" in stdout.casefold():
             raise KaggleCommandError(
                 operation=operation,
                 target=target,
-                returncode=completed.returncode or 1,
+                returncode=returncode or 1,
                 stdout=self.redact(stdout),
                 stderr=self.redact(stderr),
             )
-        return KaggleCommandResult(tuple(command), completed.returncode, stdout, stderr)
+        return KaggleCommandResult(tuple(command), returncode, stdout, stderr)
 
-    def run(self, args: list[str], capture_output: bool = False) -> str:
+    def run(
+        self,
+        args: list[str],
+        capture_output: bool = False,
+        *,
+        live_output: bool = False,
+    ) -> str:
         del capture_output
-        return self.run_result(args).stdout
+        return self.run_result(args, live_output=live_output).stdout
 
     @staticmethod
     def _validate(args: list[str]) -> None:
@@ -282,6 +332,13 @@ class KaggleCommandResult:
     returncode: int
     stdout: str
     stderr: str
+
+
+def _drain_and_tee(stream: TextIO, target: TextIO, parts: list[str]) -> None:
+    while chunk := stream.read(1):
+        parts.append(chunk)
+        target.write(chunk)
+        target.flush()
 
 
 def _redact(value: str, environment: dict[str, str] | None) -> str:

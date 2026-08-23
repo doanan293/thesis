@@ -10,7 +10,9 @@ def test_data_layout_has_one_heavy_root_and_split_retrieval_roots():
     assert paths.DATA_CACHE_DIR == paths.HEAVY_DATA_DIR / "cache"
     assert paths.WORK_DIR == paths.HEAVY_DATA_DIR / ".work"
     assert paths.INTERIM_DIR == paths.WORK_DIR / "manual"
-    assert paths.RUNTIME_PROFILE_DIR == paths.DATA_DIR / "runtime_kaggle_profiles"
+    assert paths.RUNTIME_PROFILE_DIR == (
+        paths.HEAVY_DATA_DIR / "runtime_kaggle_profiles"
+    )
     assert paths.retrieval_run_roots("trial") == (
         paths.DATA_DIR / "retrieval_eval" / "trial",
         paths.HEAVY_DATA_DIR / "retrieval_eval" / "trial",

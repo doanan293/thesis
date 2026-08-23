@@ -6,6 +6,7 @@ from corpus_pipeline.artifacts.bundle import load_bundle
 from corpus_pipeline.evaluation.artifact_contracts import ArtifactContractError
 from corpus_pipeline.evaluation.rerank_artifacts import (
     finalize_run_rerank_bundle,
+    load_registered_rerank_bundle,
     migrate_legacy_rerank,
     variant_artifact_dir,
 )
@@ -139,4 +140,32 @@ def test_incomplete_legacy_cache_does_not_write_registry(
         )
 
     assert load_run_record(run_path).schema_version == 1
+    assert not (complete_run / "rerank").exists()
+
+
+def test_split_workspace_finalizes_and_reuses_variant_under_artifact_root(
+    complete_run, candidate_bundle, complete_rerank_cache, tmp_path
+):
+    current = load_run_record(complete_run / "run.json")
+    heavy = tmp_path / "heavy" / "retrieval_eval" / "run"
+    workspace = RunWorkspace(complete_run, current.identity, artifact_root=heavy)
+    identity = RerankVariantIdentity.create(
+        candidate_bundle.manifest.data_sha256,
+        "qwen3-reranker:0.6b-fp16",
+    )
+
+    first = finalize_run_rerank_bundle(
+        workspace=workspace,
+        candidate_bundle=candidate_bundle,
+        cache_path=complete_rerank_cache.path,
+        identity=identity,
+    )
+    record = load_run_record(complete_run / "run.json").rerank_variants[
+        identity.sha256
+    ]
+    second = load_registered_rerank_bundle(workspace, identity.sha256, record)
+
+    assert first.root.is_relative_to(heavy / "rerank")
+    assert second.root == first.root
+    assert record.artifact_dir == first.root.relative_to(heavy).as_posix()
     assert not (complete_run / "rerank").exists()

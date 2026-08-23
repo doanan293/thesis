@@ -26,21 +26,5 @@ temp/
 .kaggle/
 corpus-pipeline-kaggle-*/
 
-# Local data outputs
+# Archiveable generated and large data boundary
 data/heavy/
-data/runtime_kaggle_profiles/
-data/**/__pycache__/
-data/**/*.pyc
-
-# New generated scratch outputs. Existing tracked data artifacts stay tracked.
-data/**/.tmp/
-data/**/*.tmp
-data/**/*.bak
-data/**/scratch/
-
-# Transactional corpus work and unpacked source material
-data/interim/
-
-# Optional debug previews
-data/**/preview/
-data/**/*_preview.md

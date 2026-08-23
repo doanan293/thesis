@@ -24,8 +24,15 @@ def doctor_command(
     env_file: Path,
     json_output: bool,
     debug: bool,
+    kaggle_account: str | None = None,
 ) -> CommandResult:
-    report = run_preflight(backend, project_root=PROJECT_ROOT, env_file=env_file)
+    del json_output, debug
+    report = run_preflight(
+        backend,
+        project_root=PROJECT_ROOT,
+        env_file=env_file,
+        kaggle_account=kaggle_account,
+    )
     return CommandResult(
         command="doctor",
         status=CommandStatus.COMPLETE if report.ok else CommandStatus.FAILED,
@@ -48,8 +55,9 @@ def doctor(
     ctx: typer.Context,
     backend: Annotated[Backend, typer.Option("--backend")] = Backend.LOCAL,
     env_file: Annotated[Path, typer.Option("--env-file")] = DEFAULT_ENV_FILE,
+    kaggle_account: Annotated[str | None, typer.Option("--kaggle-account")] = None,
 ) -> None:
     run_handler(
         state_from_context(ctx),
-        lambda: doctor_command(backend, env_file, False, False),
+        lambda: doctor_command(backend, env_file, False, False, kaggle_account),
     )

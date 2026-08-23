@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import threading
 import time
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -203,7 +204,11 @@ class BoundedLogCollector:
         self._lock = threading.Lock()
 
     def feed(self, chunk: bytes | str) -> None:
-        raw = chunk.encode("utf-8", errors="replace") if isinstance(chunk, str) else bytes(chunk)
+        raw = (
+            chunk.encode("utf-8", errors="replace")
+            if isinstance(chunk, str)
+            else bytes(chunk)
+        )
         with self._lock:
             self._buffer.extend(raw)
             if len(self._buffer) > self.max_bytes:
@@ -216,6 +221,11 @@ class BoundedLogCollector:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
 
+    def tail_text(self, max_bytes: int = 16 * 1024) -> str:
+        with self._lock:
+            data = bytes(self._buffer[-max_bytes:])
+        return data.decode("utf-8", errors="replace").strip()
+
 
 def worker_deadline(config: dict, clock=time.monotonic) -> float:
     """Return a safety-margin deadline for bounded worker execution."""
@@ -226,14 +236,82 @@ def worker_deadline(config: dict, clock=time.monotonic) -> float:
     return clock() + max(0.0, budget - margin)
 
 
+def _discover_cuda_library_paths() -> list[str]:
+    discovered: set[str] = set()
+    for path in (
+        "/usr/local/cuda/lib64",
+        "/usr/local/cuda/targets/x86_64-linux/lib",
+        "/usr/local/cuda-12/lib64",
+        "/usr/local/cuda-12.2/lib64",
+        "/usr/local/cuda-12.1/lib64",
+        "/usr/local/nvidia/lib64",
+        "/usr/local/nvidia/lib",
+        "/usr/lib/x86_64-linux-gnu",
+    ):
+        if os.path.isdir(path):
+            discovered.add(path)
+    try:
+        import site
+        import sys
+
+        roots = set(sys.path)
+        if hasattr(site, "getsitepackages"):
+            roots.update(site.getsitepackages())
+        for root in roots:
+            p = Path(root)
+            if not p.is_dir():
+                continue
+            for n_lib in (p / "nvidia").glob("*/lib"):
+                if n_lib.is_dir():
+                    discovered.add(str(n_lib))
+            torch_lib = p / "torch" / "lib"
+            if torch_lib.is_dir():
+                discovered.add(str(torch_lib))
+    except Exception:
+        pass
+    for root in ("/usr/local", "/opt/conda"):
+        if not os.path.isdir(root):
+            continue
+        try:
+            for match in Path(root).rglob("libcudart.so*"):
+                if match.is_file() or match.is_symlink():
+                    discovered.add(str(match.parent))
+        except OSError:
+            pass
+    return sorted(discovered)
+
+
+def _link_cuda_dependencies(runtime_lib_dir: Path) -> None:
+    target_dir = Path(runtime_lib_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    cuda_dirs = _discover_cuda_library_paths()
+    for directory in cuda_dirs:
+        try:
+            for so_file in Path(directory).glob("*.so*"):
+                if so_file.is_file() or so_file.is_symlink():
+                    dest = target_dir / so_file.name
+                    if not dest.exists():
+                        with suppress(OSError):
+                            dest.symlink_to(so_file.resolve())
+        except OSError:
+            pass
+
+
 def build_server_environment(
     base: dict[str, str], library: Path, visible_devices: str
 ) -> dict[str, str]:
     environment = dict(base)
     existing = environment.get("LD_LIBRARY_PATH", "").strip()
-    environment["LD_LIBRARY_PATH"] = os.pathsep.join(
-        part for part in (str(library), existing) if part
-    )
+    paths = [str(library), *_discover_cuda_library_paths()]
+    if existing:
+        paths.append(existing)
+    seen = set()
+    unique_paths = []
+    for p in paths:
+        if p and p not in seen:
+            seen.add(p)
+            unique_paths.append(p)
+    environment["LD_LIBRARY_PATH"] = os.pathsep.join(unique_paths)
     environment["CUDA_VISIBLE_DEVICES"] = visible_devices
     return environment
 
@@ -265,10 +343,7 @@ def build_server_command(
         "-np",
         str(int(overrides["server_slots"])),
         "-c",
-        str(
-            int(overrides["context_per_slot"])
-            * int(overrides["server_slots"])
-        ),
+        str(int(overrides["context_per_slot"]) * int(overrides["server_slots"])),
         "-b",
         str(int(overrides["logical_batch_size"])),
         "-ub",
@@ -299,6 +374,7 @@ def materialize_runtime(source: Path, destination: Path) -> Path:
         shutil.copy2(source_file, destination_file)
         if logical == "bin/llama-server":
             destination_file.chmod(0o755)
+    _link_cuda_dependencies(target / "lib")
     return target
 
 
@@ -322,6 +398,7 @@ def managed_model_servers(
     binary = runtime_root / "bin/llama-server"
     library = runtime_root / "lib"
     processes = []
+    commands: list[list[str]] = []
     collectors: list[BoundedLogCollector] = []
     readers: list[threading.Thread] = []
     servers: list[WorkerServer] = []
@@ -339,7 +416,10 @@ def managed_model_servers(
             spec=spec,
             runtime_overrides=runtime_overrides,
         )
-        collector = BoundedLogCollector(int(config.get("server_log_max_bytes", 1024 * 1024)))
+        commands.append(command)
+        collector = BoundedLogCollector(
+            int(config.get("server_log_max_bytes", 1024 * 1024))
+        )
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -368,10 +448,34 @@ def managed_model_servers(
                     client.health()
                     break
                 except Exception:
+                    failed = [
+                        index
+                        for index, process in enumerate(processes)
+                        if process.poll() is not None
+                    ]
+                    if failed:
+                        for index in failed:
+                            readers[index].join(timeout=2)
+                        replicas = ",".join(str(index) for index in failed)
+                        raise RuntimeError(
+                            _server_startup_diagnostic(
+                                f"replica(s) {replicas} exited before becoming healthy",
+                                servers,
+                                processes,
+                                collectors,
+                                commands,
+                            )
+                        ) from None
                     if time.monotonic() >= deadline:
                         raise RuntimeError(
-                            f"llama.cpp server did not start: {server.base_url}"
-                        )
+                            _server_startup_diagnostic(
+                                "health check timed out",
+                                servers,
+                                processes,
+                                collectors,
+                                commands,
+                            )
+                        ) from None
                     time.sleep(1)
         yield servers
     finally:
@@ -402,3 +506,24 @@ def _drain_process_output(stream, collector: BoundedLogCollector) -> None:
         if not chunk:
             return
         collector.feed(chunk)
+
+
+def _server_startup_diagnostic(
+    reason: str,
+    servers: list[WorkerServer],
+    processes: list[subprocess.Popen],
+    collectors: list[BoundedLogCollector],
+    commands: list[list[str]],
+) -> str:
+    lines = [f"llama.cpp server startup failed: {reason}"]
+    for index, (server, process, collector, command) in enumerate(
+        zip(servers, processes, collectors, commands, strict=True)
+    ):
+        lines.append(
+            f"replica={index} url={server.base_url} "
+            f"devices={server.visible_devices} exit_code={process.poll()}"
+        )
+        lines.append(f"command={shlex.join(command)}")
+        log_tail = collector.tail_text()
+        lines.append(f"log_tail:\n{log_tail or '<empty>'}")
+    return "\n".join(lines)

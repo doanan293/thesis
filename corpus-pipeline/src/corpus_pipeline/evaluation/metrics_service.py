@@ -4,11 +4,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from corpus_pipeline.artifacts.bundle import load_bundle
+from corpus_pipeline.artifacts.bundle import ArtifactBundle, load_bundle
 from corpus_pipeline.artifacts.jsonl import iter_jsonl_objects
 from corpus_pipeline.config.defaults import DEFAULT_TOP_K
+from corpus_pipeline.config.paths import PROCESSED_EVALUATION_DIR
 from corpus_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
+    load_manifest,
     sha256_file,
 )
 from corpus_pipeline.evaluation.metrics_artifacts import (
@@ -165,22 +167,60 @@ class MetricInputs:
     run_root: Path
 
 
+def _load_metrics_candidate_bundle(
+    workspace: RunWorkspace, recorded_dir: str | None
+) -> ArtifactBundle:
+    recorded = (
+        workspace.resolve_relative_path(recorded_dir)
+        if recorded_dir
+        else workspace.candidates_dir
+    )
+    if recorded.exists():
+        return load_bundle(
+            recorded,
+            expected_type="retrieval_candidates",
+            require_complete=True,
+        )
+
+    candidate_bundle = load_bundle(
+        workspace.candidates_dir,
+        expected_type="retrieval_candidates",
+        require_complete=True,
+    )
+    snapshot = load_manifest(workspace.root / "candidates-manifest.json")
+    if snapshot.data_sha256 != candidate_bundle.manifest.data_sha256:
+        raise ArtifactContractError("candidate snapshot mismatch")
+    return candidate_bundle
+
+
+def _resolve_metrics_evaluation_path(
+    recorded_path: str, expected_sha256: str
+) -> Path:
+    recorded = Path(recorded_path)
+    evaluation = (
+        recorded
+        if recorded.is_file()
+        else PROCESSED_EVALUATION_DIR / recorded.name
+    )
+    if sha256_file(evaluation) != expected_sha256:
+        raise ArtifactContractError(
+            "Run evaluation input changed after retrieval; create a new --run"
+        )
+    return evaluation
+
+
 def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
     run_path = request.run_root / "run.json"
     record = load_run_record(run_path)
     validate_metrics_cutoff(request.top_k, record.identity.candidate_k)
     workspace = RunWorkspace(request.run_root, record.identity, request.artifact_root)
-    candidates_dir = workspace.candidates_dir
-    if record.candidates_dir:
-        candidates_dir = workspace.resolve_relative_path(record.candidates_dir)
-    candidate_bundle = load_bundle(
-        candidates_dir, expected_type="retrieval_candidates", require_complete=True
+    candidate_bundle = _load_metrics_candidate_bundle(
+        workspace, record.candidates_dir
     )
-    evaluation = Path(record.identity.evaluation_path)
-    if sha256_file(evaluation) != record.identity.evaluation_sha256:
-        raise ArtifactContractError(
-            "Run evaluation input changed after retrieval; create a new --run"
-        )
+    evaluation = _resolve_metrics_evaluation_path(
+        record.identity.evaluation_path,
+        record.identity.evaluation_sha256,
+    )
     rows = {}
     for row in iter_jsonl_objects(evaluation):
         rows[str(row["query_id"])] = row

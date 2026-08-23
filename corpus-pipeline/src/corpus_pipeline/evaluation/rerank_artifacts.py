@@ -32,7 +32,7 @@ def variant_artifact_dir(
     model_slug: str,
     variant_sha256: str,
 ) -> Path:
-    parent = workspace.root / "rerank" / model_slug
+    parent = workspace.artifact_base / "rerank" / model_slug
     for length in range(12, 65, 4):
         candidate = parent / variant_sha256[:length]
         if not candidate.exists():
@@ -105,7 +105,7 @@ def finalize_run_rerank_bundle(
             identity.sha256,
             RerankVariantRecord(
                 model,
-                target.relative_to(workspace.root).as_posix(),
+                target.relative_to(workspace.artifact_base).as_posix(),
             ),
         )
         return bundle
@@ -144,7 +144,7 @@ def finalize_run_rerank_bundle(
             identity.sha256,
             RerankVariantRecord(
                 model,
-                target.relative_to(workspace.root).as_posix(),
+                target.relative_to(workspace.artifact_base).as_posix(),
             ),
         )
         del bundle, data_sha256

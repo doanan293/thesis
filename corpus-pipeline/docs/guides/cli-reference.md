@@ -43,7 +43,7 @@ reranker model, không phải embedding model. `corpus metrics` chỉ đọc art
 | --- | --- | --- |
 | `bm25-qwen06b-k30` | `bm25` | embedding collection `qwen06b`, `candidate-k=30` |
 | `dense-qwen06b-k30` | `dense` | embedding `qwen06b`, `candidate-k=30` |
-| `hybrid-qwen06b-p50-k30-rrf60` | `hybrid` | embedding `qwen06b`, `prefetch-k=50`, `candidate-k=30`, `rrf-k=60` |
+| `hybrid-qwen06b-p50-k30-rrf2` | `hybrid` | embedding `qwen06b`, `prefetch-k=50`, `candidate-k=30`, `rrf-k=2` |
 
 Run identity còn đóng băng evaluation path/checksum, collection, query-embedding
 digest, limit và các K parameters. Khi một identity field thay đổi, nên dùng
@@ -73,19 +73,19 @@ và vector dimension trước khi query.
   chỉ hợp lệ với `--retriever hybrid`.
 - `--candidate-k`: số candidates cuối được ghi vào retrieval artifact. Với dense
   và BM25 đây là retrieval limit; với hybrid đây là output limit sau RRF.
-- `--rrf-k`: constant trong công thức RRF, mặc định `60`; không phải số
+- `--rrf-k`: constant trong công thức RRF, mặc định `2`; không phải số
   candidates giữ lại.
 
 Benchmark hybrid chuẩn:
 
 ```bash
 uv run corpus retrieve \
-  --run hybrid-qwen06b-p50-k30-rrf60 \
+  --run hybrid-qwen06b-p50-k30-rrf2 \
   --retriever hybrid \
   --model qwen3-embedding:0.6b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
-  --rrf-k 60
+  --rrf-k 2
 ```
 
 Nếu hybrid bỏ qua `--prefetch-k`, effective value bằng `candidate-k`. Value này
@@ -101,12 +101,12 @@ lại retrieval và không tạo một retrieval run thứ hai.
 
 ```bash
 uv run corpus rerank \
-  --run hybrid-qwen06b-p50-k30-rrf60 \
+  --run hybrid-qwen06b-p50-k30-rrf2 \
   --backend local \
   --model qwen3-reranker:0.6b-fp16
 
 uv run corpus metrics \
-  --run hybrid-qwen06b-p50-k30-rrf60 \
+  --run hybrid-qwen06b-p50-k30-rrf2 \
   --top-k 30
 ```
 
@@ -118,10 +118,10 @@ Metrics mặc định tạo/reuse baseline và report cho tất cả reranker va
 hoàn tất. Có thể lọc theo model hoặc đúng variant:
 
 ```bash
-uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf60 --top-k 30
-uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf60 \
+uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf2 --top-k 30
+uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf2 \
   --model qwen3-reranker:0.6b-fp16 --top-k 30
-uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf60 \
+uv run corpus metrics --run hybrid-qwen06b-p50-k30-rrf2 \
   --variant VARIANT_SHA256_PREFIX --top-k 30
 ```
 
@@ -139,7 +139,7 @@ luôn do run tự sinh. Metrics gồm:
 ### Runtime profiling
 
 Khi chạy Kaggle production, hệ thống tự benchmark workload tương ứng đúng một
-lần nếu chưa có profile hợp lệ. Profile được lưu dưới `data/runtime_kaggle_profiles/`
+lần nếu chưa có profile hợp lệ. Profile được lưu dưới `data/heavy/runtime_kaggle_profiles/`
 và các lần sau sẽ tái sử dụng; profile bị vô hiệu khi model, runtime, topology
 hoặc search space thay đổi. Benchmark luôn dùng 512 mẫu và lỗi benchmark sẽ
 dừng pipeline, không rơi về profile mặc định.

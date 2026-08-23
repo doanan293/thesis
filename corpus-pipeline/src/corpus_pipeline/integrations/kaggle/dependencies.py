@@ -72,14 +72,16 @@ class DependencyService:
         )
         actions: list[ReconcileAction] = []
         for item in desired:
-            action = plan_dataset(item, inventory.get(item.reference), force=force)
+            owner, _, slug = item.reference.partition("/")
+            item_force = force and (owner == self.datasets.owner)
+            action = plan_dataset(item, inventory.get(item.reference), force=item_force)
             if action.verb is ActionVerb.WAIT and not check_only:
                 self.datasets.wait_for_dataset_ready(item.reference)
                 refreshed = self.datasets.inspect_state(
                     item.reference, active_owner=owners.execution
                 )
                 inventory.remember(item.reference, refreshed)
-                action = plan_dataset(item, refreshed, force=force)
+                action = plan_dataset(item, refreshed, force=item_force)
             if action.verb in {ActionVerb.CREATE, ActionVerb.UPDATE} and not check_only:
                 with tempfile.TemporaryDirectory(
                     prefix=f"dependency-{item.resource_kind}-"
@@ -118,14 +120,20 @@ def default_desired_datasets(
     if not isinstance(gguf_root_value, str) or not gguf_root_value:
         raise ValueError("stage job is missing gguf_root for model reconciliation")
     model = resolve_publishable_artifact(Path(gguf_root_value), job.model)
-    model_ref = f"{owners.execution}/{model.dataset_slug}"
+    model_owner = owners.runtime or owners.execution
+    model_ref = f"{model_owner}/{model.dataset_slug}"
 
     def materialize_model(root: Path) -> Path:
-        return stage_model_dataset(model, root, owners.execution)
+        return stage_model_dataset(model, root, model_owner)
 
     input_digest = job.input_bundle.sha256
     input_slug = input_dataset_slug(job)
-    input_ref = f"{owners.execution}/{input_slug}"
+    input_owner = (
+        (owners.corpus or owners.runtime or owners.execution)
+        if input_slug == CORPUS_INPUT_DATASET_SLUG
+        else owners.execution
+    )
+    input_ref = f"{input_owner}/{input_slug}"
 
     def materialize_input(root: Path) -> Path:
         target = Path(root)
@@ -171,7 +179,7 @@ def default_desired_datasets(
             f"Kaggle Pipeline Input {job.stage.value}"[:50],
             input_digest,
             "dependency_manifest.json",
-            False,
+            True,
             materialize_input,
         ),
     )

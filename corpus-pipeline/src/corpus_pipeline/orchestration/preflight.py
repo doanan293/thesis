@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 
 from corpus_pipeline.config.enums import Backend
@@ -85,9 +86,86 @@ def _check_local_models(project_root: Path) -> list[PreflightIssue]:
     return [PreflightIssue("local-models", "Embedding GGUF is missing", str(model))]
 
 
-def _check_kaggle_credentials(env_file: Path) -> list[PreflightIssue]:
+def _check_kaggle_credentials(
+    env_file: Path,
+    *,
+    kaggle_account: str | None = None,
+    runner_factory: Callable[[dict[str, str]], object] | None = None,
+) -> list[PreflightIssue]:
     values = dict(parse_env_file(env_file))
     values.update({key: value for key, value in os.environ.items() if value})
+    from corpus_pipeline.integrations.kaggle.config import (
+        profile_owner_configuration,
+        profile_runner_environment,
+        resolve_account_profile,
+    )
+
+    try:
+        profile = resolve_account_profile(kaggle_account, values)
+    except ValueError as exc:
+        return [PreflightIssue("kaggle-credentials", str(exc))]
+    if profile is not None:
+        from corpus_pipeline.integrations.kaggle.api import (
+            KaggleCommandRunner,
+            config_view_command,
+            dataset_files_command,
+        )
+        from corpus_pipeline.integrations.kaggle.orchestrator import (
+            runtime_dataset_reference,
+        )
+        from corpus_pipeline.integrations.kaggle.parsers import parse_kaggle_username
+
+        environment = profile_runner_environment(profile, values)
+        runner = (
+            runner_factory(environment)
+            if runner_factory is not None
+            else KaggleCommandRunner(environment=environment)
+        )
+        issues: list[PreflightIssue] = []
+        try:
+            authenticated = parse_kaggle_username(
+                runner.run(config_view_command(), capture_output=True)
+            )
+        except Exception:
+            issues.append(
+                PreflightIssue(
+                    "kaggle-authentication",
+                    f"Kaggle profile {profile.name} could not authenticate",
+                )
+            )
+        else:
+            if authenticated.casefold() != profile.username.casefold():
+                issues.append(
+                    PreflightIssue(
+                        "kaggle-authentication",
+                        f"Kaggle profile {profile.name} authenticated as {authenticated!r}, "
+                        f"expected {profile.username!r}",
+                    )
+                )
+        owners = profile_owner_configuration(profile, values)
+        reference = runtime_dataset_reference(owners)
+        try:
+            output = runner.run(
+                dataset_files_command(reference), capture_output=True
+            )
+        except Exception:
+            issues.append(
+                PreflightIssue(
+                    "kaggle-shared-runtime",
+                    f"Kaggle shared runtime dataset is not accessible: {reference}",
+                    reference,
+                )
+            )
+        else:
+            if not output.strip():
+                issues.append(
+                    PreflightIssue(
+                        "kaggle-shared-runtime",
+                        f"Kaggle shared runtime dataset returned no files: {reference}",
+                        reference,
+                    )
+                )
+        return issues
     token = values.get("KAGGLE_API_TOKEN") or values.get("KAGGLE_KEY")
     username = values.get("KAGGLE_USERNAME")
     missing = []
@@ -111,6 +189,8 @@ def run_preflight(
     *,
     project_root: Path = PROJECT_ROOT,
     env_file: Path = DEFAULT_ENV_PATH,
+    kaggle_account: str | None = None,
+    runner_factory: Callable[[dict[str, str]], object] | None = None,
 ) -> PreflightReport:
     issues = [
         *_check_raw_inputs(Path(project_root)),
@@ -118,5 +198,11 @@ def run_preflight(
         *_check_local_models(Path(project_root)),
     ]
     if backend is Backend.KAGGLE:
-        issues.extend(_check_kaggle_credentials(Path(env_file)))
+        issues.extend(
+            _check_kaggle_credentials(
+                Path(env_file),
+                kaggle_account=kaggle_account,
+                runner_factory=runner_factory,
+            )
+        )
     return PreflightReport(backend, tuple(issues))

@@ -13,6 +13,15 @@ def expected_section_ids(row: dict) -> list[str]:
     return []
 
 
+def expected_chunk_ids(row: dict) -> list[str]:
+    raw = row.get("expected_chunk_ids")
+    values = [str(value) for value in raw if value] if isinstance(raw, list) else []
+    legacy = str(row.get("expected_chunk_id") or "")
+    if legacy and legacy not in values:
+        values.insert(0, legacy)
+    return values
+
+
 def is_hit(retrieved_payload: dict, expected: dict, window_size: int = 3) -> bool:
     granularity = expected.get("retrieval_granularity", "section")
     answer_mode = expected.get("answer_mode", "single")
@@ -25,6 +34,12 @@ def is_hit(retrieved_payload: dict, expected: dict, window_size: int = 3) -> boo
 
     if answer_mode == "any_acceptable":
         return retrieved_section_id in expected_sections
+
+    if granularity == "chunk_exact":
+        retrieved_chunk_id = retrieved_payload.get("chunk_id") or str(
+            retrieved_payload.get("chunk_key") or ""
+        )
+        return retrieved_chunk_id in expected_chunk_ids(expected)
 
     if retrieved_section_id != expected_section_id:
         return False
@@ -43,12 +58,6 @@ def is_hit(retrieved_payload: dict, expected: dict, window_size: int = 3) -> boo
         if expected_idx == -1:
             return False
         return abs(retrieved_idx - expected_idx) <= window_size // 2
-
-    if granularity == "chunk_exact":
-        retrieved_chunk_id = retrieved_payload.get("chunk_id") or str(
-            retrieved_payload.get("chunk_key") or ""
-        )
-        return retrieved_chunk_id == expected.get("expected_chunk_id", "")
 
     return False
 
