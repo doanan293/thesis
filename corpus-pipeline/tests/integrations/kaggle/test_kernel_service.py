@@ -62,6 +62,20 @@ def test_inspect_state_returns_running():
     assert state.reference == "owner/job"
 
 
+@pytest.mark.parametrize(
+    "status",
+    ["CANCEL_ACKNOWLEDGED", "CANCELED", "CANCELLED"],
+)
+def test_inspect_state_maps_cancelled_terminal_status_to_error(status):
+    state = KernelService(
+        FakeRunner([f'owner/job has status "KernelWorkerStatus.{status}"']),
+        "owner",
+    ).inspect_state("owner/job")
+
+    assert state.presence is KernelPresence.EXISTS
+    assert state.status is KernelStatus.ERROR
+
+
 def test_inspect_state_maps_not_found_to_absent():
     state = KernelService(
         FakeRunner([command_error("404 not found")]), "owner"
@@ -89,9 +103,7 @@ def test_confirm_missing_kernel_uses_owned_kernel_listing():
 
 
 def test_confirm_missing_kernel_returns_false_when_owned():
-    service = KernelService(
-        FakeRunner(["ref,title\nowner/missing,missing\n"]), "owner"
-    )
+    service = KernelService(FakeRunner(["ref,title\nowner/missing,missing\n"]), "owner")
 
     assert service.confirm_missing("owner/missing") is False
 
@@ -99,11 +111,13 @@ def test_confirm_missing_kernel_returns_false_when_owned():
 def test_wait_for_terminal_returns_complete_and_stops_follower():
     follower = FakeFollower()
     service = KernelService(
-        FakeRunner([
-            'owner/job has status "KernelWorkerStatus.QUEUED"',
-            'owner/job has status "KernelWorkerStatus.RUNNING"',
-            'owner/job has status "KernelWorkerStatus.COMPLETE"',
-        ]),
+        FakeRunner(
+            [
+                'owner/job has status "KernelWorkerStatus.QUEUED"',
+                'owner/job has status "KernelWorkerStatus.RUNNING"',
+                'owner/job has status "KernelWorkerStatus.COMPLETE"',
+            ]
+        ),
         "owner",
         follower_factory=lambda *_args: follower,
         poll_interval_seconds=0.01,

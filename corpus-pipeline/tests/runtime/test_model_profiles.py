@@ -28,16 +28,41 @@ def test_qwen_contract_hash_changes_for_semantic_fields():
     contract = spec.rerank_contract
 
     assert isinstance(contract, RerankContract)
-    assert replace(contract, instruction=contract.instruction + " changed").sha256 != contract.sha256
-    assert replace(
-        contract,
-        scoring=replace(contract.scoring, n_predict=2),
-    ).sha256 != contract.sha256
+    assert (
+        replace(contract, instruction=contract.instruction + " changed").sha256
+        != contract.sha256
+    )
+    assert (
+        replace(
+            contract,
+            scoring=replace(contract.scoring, n_predict=2),
+        ).sha256
+        != contract.sha256
+    )
+
+
+def test_bge_gemma_contract_builds_decoder_rerank_prompt():
+    spec = require_model("bge-reranker-v2-gemma:f16")
+    contract = spec.rerank_contract
+
+    assert isinstance(contract, RerankContract)
+    assert contract.protocol == "completion_logprobs"
+    assert contract.scoring is not None
+    assert contract.scoring.positive_token == "Yes"
+    assert contract.scoring.negative_token == "No"
+    assert contract.build_prompt("thuốc gì", "tài liệu") == (
+        "<bos>A: thuốc gì\n"
+        "B: tài liệu\n"
+        "Given a query A and a passage B, determine whether the passage contains "
+        "an answer to the query by providing a prediction of either 'Yes' or 'No'."
+    )
 
 
 def test_runtime_changes_do_not_change_rerank_contract_hash():
     spec = require_model("qwen3-reranker:0.6b-fp16")
-    tuned = replace(spec, rerank_runtime=replace(spec.rerank_runtime, concurrency_per_gpu=2))
+    tuned = replace(
+        spec, rerank_runtime=replace(spec.rerank_runtime, concurrency_per_gpu=2)
+    )
 
     assert tuned.rerank_runtime != spec.rerank_runtime
     assert tuned.rerank_contract.sha256 == spec.rerank_contract.sha256

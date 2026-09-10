@@ -20,6 +20,11 @@ KAGGLE_ACC2_API_TOKEN=token_acc2
 Thêm account mới bằng cặp biến `KAGGLE_ACC3_USERNAME` và
 `KAGGLE_ACC3_API_TOKEN`. Runtime, model và corpus dùng chung từ
 `KAGGLE_SHARED_OWNER`; kernel, input và checkpoint thuộc account được chọn.
+Khi chạy ở profile mode, production stage tự quét mọi profile `accN` đã cấu
+hình và tìm checkpoint tương thích có nhiều record hoàn tất nhất. Nếu source
+tiến bộ hơn target, pipeline mirror checkpoint sang owner target, chờ trạng
+thái `READY`, validate lại rồi mới submit kernel; dataset source không bị sửa
+hoặc xóa.
 Kiểm tra từng account trước khi chạy:
 
 ```bash
@@ -85,8 +90,21 @@ Progress log có các nhóm `reusable`, `changed_or_new`, `deleted`, cùng
 `recent_rate` và `average_rate`. Nếu kernel bị ngắt hoặc hết budget, lần chạy
 lại đúng command sẽ tiếp tục từ các record đã commit trong checkpoint.
 
+Model server Kaggle dùng policy theo workload. `--cache-ram 0` và
+`--no-cache-idle-slots` chỉ tắt snapshot prompt cross-slot trên host (nguồn
+phình RAM của rerank dài); chúng không tắt journal/cache kết quả của pipeline.
+Với Qwen completion rerank, worker luôn gửi `cache_prompt=true` để llama.cpp
+giữ prefix trong slot đang sống. Thay đổi policy sẽ làm runtime profile cũ mất
+hiệu lực và benchmark lại. Worker giám sát toàn bộ vòng đời
+server, ghi `server-<n>.log`, và phân biệt lỗi server recoverable với lỗi dữ
+liệu/model fatal. Với lỗi recoverable, artifact partial cùng journal được seal
+và checkpoint tự động; lần chạy sau chỉ xử lý phần còn thiếu. Nếu checkpoint
+không tăng số record hoàn thành, orchestrator dừng với lỗi rõ ràng thay vì lặp
+vô hạn.
+
 Worker cũng ghi diagnostic files cạnh artifact: `telemetry.json` chứa GPU
-utilization, memory, latency và retry counters; `server-<n>.log` chỉ giữ phần
+utilization, process RSS peak theo replica, latency và retry counters;
+`server-<n>.log` chỉ giữ phần
 đuôi log trong giới hạn kích thước. Các file này không được merge vào cache
 embedding hoặc score.
 
@@ -149,6 +167,21 @@ uv run corpus rerank \
   --model qwen3-reranker:0.6b-fp16 \
   --kaggle-account acc2
 ```
+
+Ví dụ chuyển quota sang account thứ ba:
+
+```bash
+uv run corpus rerank \
+  --run hybrid-qwen4b-p50-k30-rrf2 \
+  --backend kaggle \
+  --model qwen3-reranker:8b-fp16 \
+  --kaggle-account acc3
+```
+
+Không cần flag resume riêng. `--dry-run` báo source và mirror dự kiến nhưng
+không publish dataset hoặc submit kernel; `--force` bỏ qua cả checkpoint local,
+target và cross-account inheritance. Không chạy cùng một logical target ở hai
+terminal; job lock local chỉ cho phép một handoff/submission tại một thời điểm.
 
 Các terminal khác có thể chạy job/run khác đồng thời bằng `--kaggle-account
 acc1`, `acc2`, `acc3`, ...; không chạy cùng một logical target ở hai terminal.

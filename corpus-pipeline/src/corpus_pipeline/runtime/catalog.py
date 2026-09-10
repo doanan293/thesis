@@ -8,6 +8,7 @@ from corpus_pipeline.runtime.model_profiles import (
     EmbeddingWorkloadProfile,
     RerankContract,
     RerankRuntimeProfile,
+    bge_gemma_rerank_contract,
     native_rerank_contract,
     qwen3_rerank_contract,
 )
@@ -77,7 +78,9 @@ def _embedding(
     parallel: int,
     batch: int,
 ) -> ModelSpec:
-    benchmark_concurrency = (1, 2) if topology is ModelTopology.SHARDED_1X2 else (1, 2, 4)
+    benchmark_concurrency = (
+        (1, 2) if topology is ModelTopology.SHARDED_1X2 else (1, 2, 4)
+    )
     embedding_profile = EmbeddingRuntimeProfile(
         query=EmbeddingWorkloadProfile(
             production_batch_size=batch,
@@ -95,6 +98,7 @@ def _embedding(
         logical_batch_size=2048,
         physical_batch_size=2048,
     )
+
     def candidates(batch_sizes: tuple[int, ...]) -> RuntimeSearchSpace:
         return RuntimeSearchSpace(
             tuple(
@@ -141,19 +145,25 @@ def _reranker(
     context_per_slot: int = 4096,
     logical_batch_size: int = 4096,
     physical_batch_size: int = 2048,
+    contract: RerankContract | None = None,
 ) -> ModelSpec:
-    contract = (
-        qwen3_rerank_contract()
-        if protocol == "completion_logprobs"
-        else native_rerank_contract()
-    )
+    if contract is None:
+        contract = (
+            qwen3_rerank_contract()
+            if protocol == "completion_logprobs"
+            else native_rerank_contract()
+        )
+    if contract.protocol != protocol:
+        raise ValueError("reranker protocol must match its request contract")
     runtime = RerankRuntimeProfile(
         server_slots_per_gpu=parallel,
         concurrency_per_gpu=parallel,
         context_per_slot=context_per_slot,
         logical_batch_size=logical_batch_size,
         physical_batch_size=physical_batch_size,
-        benchmark_concurrency=tuple(sorted({max(1, parallel // 2), parallel, parallel * 2})),
+        benchmark_concurrency=tuple(
+            sorted({max(1, parallel // 2), parallel, parallel * 2})
+        ),
     )
     search_space = RuntimeSearchSpace(
         tuple(
@@ -290,9 +300,10 @@ RERANKER_MODELS = {
         5_018_535_968,
         "640562faf67b49777bd06869a9a915906067a330ffe382825844f226bbf1939c",
         ModelTopology.REPLICATED_2X1,
-        "native_rerank",
+        "completion_logprobs",
         parallel=2,
         batch=8,
+        contract=bge_gemma_rerank_contract(),
     ),
 }
 

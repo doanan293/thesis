@@ -10,10 +10,15 @@ from corpus_pipeline.integrations.kaggle.api import (
     KaggleCommandRunner,
     config_view_command,
 )
+from corpus_pipeline.integrations.kaggle.checkpoint_inheritance import (
+    CheckpointInheritanceService,
+    ProfileCheckpointService,
+)
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointService
 from corpus_pipeline.integrations.kaggle.config import (
     KaggleAccountProfile,
     OwnerConfiguration,
+    discover_account_profiles,
     profile_owner_configuration,
     profile_runner_environment,
     resolve_account_profile,
@@ -31,12 +36,11 @@ from corpus_pipeline.integrations.kaggle.models import (
     StageName,
     StageRequest,
 )
-from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate
-from corpus_pipeline.runtime.runtime_profiles import canonical_sha256
 from corpus_pipeline.integrations.kaggle.orchestrator import KagglePipelineOrchestrator
 from corpus_pipeline.integrations.kaggle.parsers import parse_kaggle_username
 from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
 from corpus_pipeline.integrations.kaggle.workspace import unwind_on_sigterm
+from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate, canonical_sha256
 
 DEFAULT_ENV_PATH = PROJECT_ENV_FILE
 DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
@@ -70,6 +74,27 @@ def resolve_execution_context(
     return KaggleExecutionContext(profile, owners, runner)
 
 
+def resolve_profile_execution_contexts(
+    *, env_file: Path = DEFAULT_ENV_PATH
+) -> tuple[KaggleExecutionContext, ...]:
+    load_kaggle_env(env_file)
+    contexts: list[KaggleExecutionContext] = []
+    for name in discover_account_profiles(os.environ):
+        profile = resolve_account_profile(name, os.environ)
+        assert profile is not None
+        runner = KaggleCommandRunner(
+            environment=profile_runner_environment(profile, os.environ)
+        )
+        contexts.append(
+            KaggleExecutionContext(
+                profile,
+                profile_owner_configuration(profile, os.environ),
+                runner,
+            )
+        )
+    return tuple(contexts)
+
+
 def owner_configuration(
     runner: KaggleCommandRunner,
     *,
@@ -100,7 +125,12 @@ def owner_configuration(
 
 
 def make_orchestrator(
-    owners: OwnerConfiguration, runner: KaggleCommandRunner
+    owners: OwnerConfiguration,
+    runner: KaggleCommandRunner,
+    *,
+    target_profile: str | None = None,
+    checkpoint_contexts: tuple[KaggleExecutionContext, ...] = (),
+    temp_root: Path = Path("/tmp"),
 ) -> KagglePipelineOrchestrator:
     datasets = DatasetService(runner, owners.checkpoint)
     kernels = PipelineKernelService(
@@ -109,11 +139,40 @@ def make_orchestrator(
         source_root=PROJECT_ROOT / "src",
     )
     checkpoints = CheckpointService(datasets, owners.checkpoint)
+    inheritance = None
+    if target_profile is not None:
+        candidates = []
+        target_checkpoint = checkpoints
+        for context in checkpoint_contexts:
+            if context.profile is None:
+                continue
+            if context.profile.name == target_profile:
+                target_checkpoint = checkpoints
+                candidate_checkpoint = checkpoints
+            else:
+                candidate_checkpoint = CheckpointService(
+                    DatasetService(context.runner, context.owners.checkpoint),
+                    context.owners.checkpoint,
+                )
+            candidates.append(
+                ProfileCheckpointService(context.profile.name, candidate_checkpoint)
+            )
+        inheritance = CheckpointInheritanceService(
+            target_profile=target_profile,
+            target=target_checkpoint,
+            candidates=tuple(candidates),
+            temp_root=temp_root,
+        )
     dependencies = DependencyService(
         DatasetService(runner, owners.execution), default_desired_datasets
     )
     return KagglePipelineOrchestrator(
-        get_stage_adapter, dependencies, checkpoints, kernels
+        get_stage_adapter,
+        dependencies,
+        checkpoints,
+        kernels,
+        temp_root=temp_root,
+        checkpoint_inheritance=inheritance,
     )
 
 
@@ -131,7 +190,9 @@ def runtime_manifest_sha256(
     else:
         active_runner = runner
         active_owners = owners
-    from corpus_pipeline.integrations.kaggle.orchestrator import runtime_dataset_reference
+    from corpus_pipeline.integrations.kaggle.orchestrator import (
+        runtime_dataset_reference,
+    )
 
     manifest = DatasetService(active_runner, active_owners.runtime).fetch_json(
         runtime_dataset_reference(active_owners), "runtime_manifest.json"
@@ -172,5 +233,15 @@ def run_kaggle_stage(
         benchmark_items,
         runtime_profile,
     )
+    contexts = (
+        resolve_profile_execution_contexts(env_file=env_file)
+        if context.profile is not None
+        else ()
+    )
     with unwind_on_sigterm():
-        return make_orchestrator(owners, runner).run(request)
+        return make_orchestrator(
+            owners,
+            runner,
+            target_profile=context.profile.name if context.profile else None,
+            checkpoint_contexts=contexts,
+        ).run(request)

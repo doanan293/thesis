@@ -7,6 +7,9 @@ from corpus_pipeline.integrations.kaggle.artifacts import (
     load_cloud_artifact,
     promote_complete_artifact,
 )
+from corpus_pipeline.integrations.kaggle.checkpoint_inheritance import (
+    CheckpointInheritanceService,
+)
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointState
 from corpus_pipeline.integrations.kaggle.kernel_reconciler import KernelReconciler
 from corpus_pipeline.integrations.kaggle.models import (
@@ -38,6 +41,7 @@ class KagglePipelineOrchestrator:
         *,
         temp_root: Path = Path("/tmp"),
         reconciler: KernelReconciler | None = None,
+        checkpoint_inheritance: CheckpointInheritanceService | None = None,
     ):
         self.stages = stages
         self.dependencies = dependencies
@@ -45,6 +49,7 @@ class KagglePipelineOrchestrator:
         self.kernels = kernels
         self.reconciler = reconciler or KernelReconciler(kernels)
         self.temp_root = Path(temp_root)
+        self.checkpoint_inheritance = checkpoint_inheritance
 
     def _adapter(self, stage):
         if hasattr(self.stages, "build_job"):
@@ -62,11 +67,17 @@ class KagglePipelineOrchestrator:
         if not request.force and local is not None and local.completion.is_complete:
             return PipelineResult(job, local.completion, (), local.data_path, 0)
 
-        checkpoint = (
-            self.checkpoints.empty(job)
-            if request.force or benchmark
-            else self.checkpoints.inspect(job)
-        )
+        checkpoint_actions: tuple[ReconcileAction, ...] = ()
+        if request.force or benchmark:
+            checkpoint = self.checkpoints.empty(job)
+        else:
+            checkpoint = self.checkpoints.inspect(job)
+            if self.checkpoint_inheritance is not None:
+                inheritance = self.checkpoint_inheritance.resolve(
+                    job, checkpoint, check_only=request.check_only
+                )
+                checkpoint = inheritance.state
+                checkpoint_actions = inheritance.actions
         remote = (
             KernelRemoteState(
                 self.reconciler.kernels.reference(job), KernelPresence.ABSENT
@@ -79,7 +90,7 @@ class KagglePipelineOrchestrator:
             return PipelineResult(
                 job,
                 checkpoint.completion,
-                self._check_actions(job, remote, checkpoint),
+                (*checkpoint_actions, *self._check_actions(job, remote, checkpoint)),
                 None,
                 0,
             )
@@ -87,7 +98,7 @@ class KagglePipelineOrchestrator:
         with managed_staging_directory(
             self.temp_root, prefix="kaggle-pipeline-"
         ) as workspace:
-            actions: tuple[ReconcileAction, ...] = ()
+            actions: tuple[ReconcileAction, ...] = checkpoint_actions
 
             if remote.presence is KernelPresence.EXISTS:
                 resolution = self.reconciler.attach_or_recover(
@@ -114,9 +125,11 @@ class KagglePipelineOrchestrator:
                             ) from error
                     if artifact is not None:
                         if artifact.completion.is_complete:
-                            return self._complete_result(job, artifact, actions, attempts=0)
+                            return self._complete_result(
+                                job, artifact, actions, attempts=0
+                            )
                         if not benchmark:
-                            checkpoint = self.checkpoints.publish_if_better(
+                            checkpoint = self._publish_checkpoint(
                                 job, artifact, checkpoint
                             )
                             actions += (self._checkpoint_action(checkpoint),)
@@ -174,7 +187,9 @@ class KagglePipelineOrchestrator:
                 job,
                 root=workspace / str(attempt),
                 dataset_references=dataset_references,
-                checkpoint_reference=None if job.stage.value.endswith("-benchmark") else state.reference,
+                checkpoint_reference=None
+                if job.stage.value.endswith("-benchmark")
+                else state.reference,
                 total_budget_seconds=request.total_budget_seconds,
             )
             resolution = self.reconciler.submit(
@@ -206,9 +221,21 @@ class KagglePipelineOrchestrator:
             if job.stage.value.endswith("-benchmark"):
                 actions = combined_actions
             else:
-                state = self.checkpoints.publish_if_better(job, artifact, state)
+                state = self._publish_checkpoint(job, artifact, state)
                 actions = (*combined_actions, self._checkpoint_action(state))
         return PipelineResult(job, state.completion, actions, None, request.max_runs)
+
+    def _publish_checkpoint(
+        self, job, artifact, current: CheckpointState
+    ) -> CheckpointState:
+        checkpoint = self.checkpoints.publish_if_better(job, artifact, current)
+        if checkpoint.completion.complete <= current.completion.complete:
+            raise RuntimeError(
+                "checkpoint publication made no progress: "
+                f"complete={current.completion.complete}/"
+                f"{current.completion.total}"
+            )
+        return checkpoint
 
     @staticmethod
     def _complete_result(job, artifact, actions, *, attempts: int):

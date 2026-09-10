@@ -1,8 +1,18 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from corpus_pipeline.integrations.kaggle.artifacts import sha256_file
 from corpus_pipeline.integrations.kaggle.workers.rerank import run_rerank_worker
+from corpus_pipeline.runtime.client import (
+    CompletionPromptTiming,
+    CompletionRerankResult,
+    LlamaCppRequestError,
+    LlamaCppResponseError,
+)
 
 
 def _write_candidates(
@@ -154,7 +164,130 @@ def test_rerank_worker_emits_artifact_for_fully_reusable_checkpoint(tmp_path):
     )
 
     assert messages[0] == (
-        "input queries total=2 reusable=2 missing=0 "
-        "pairs total=2 reusable=2 missing=0"
+        "input queries total=2 reusable=2 missing=0 pairs total=2 reusable=2 missing=0"
     )
     assert messages[-1] == "artifact queries=2/2 pairs=2/2 complete=true"
+
+
+@contextmanager
+def _fake_server_manager(_config, **_kwargs):
+    yield [SimpleNamespace(base_url="http://127.0.0.1:11434")]
+
+
+class _SucceedOnceThenDisconnect:
+    def __init__(self):
+        self.calls = 0
+
+    def rerank_native(self, _query, documents, _model):
+        self.calls += 1
+        if self.calls == 1:
+            return [0.75 for _document in documents]
+        raise LlamaCppRequestError("connection refused", retryable=True)
+
+
+def test_rerank_worker_seals_partial_artifact_after_server_failure(tmp_path):
+    config = _config(tmp_path, query_count=2, candidates_per_query=1)
+    config["model"] = "bge-reranker-v2-m3:f16"
+    config["protocol"] = "native_rerank"
+    config["runtime_overrides"] = {
+        "server_slots": 1,
+        "concurrency": 1,
+        "request_batch_size": 1,
+        "context_per_slot": 4096,
+        "logical_batch_size": 4096,
+        "physical_batch_size": 2048,
+    }
+    client = _SucceedOnceThenDisconnect()
+
+    artifact = run_rerank_worker(
+        config,
+        server_manager=_fake_server_manager,
+        client_factory=lambda _url: client,
+        emit=lambda _message: None,
+        clock=lambda: 0.0,
+    )
+
+    manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    assert artifact.completion.complete == 1
+    assert artifact.completion.missing == 1
+    assert artifact.checkpoint_path is not None
+    assert manifest["runtime"]["termination"]["recoverable"] is True
+    assert manifest["runtime"]["termination"]["category"] == (
+        "model_server_unavailable"
+    )
+
+
+class _AlwaysInvalidClient:
+    def rerank_native(self, _query, _documents, _model):
+        raise LlamaCppResponseError("bad scores")
+
+
+def test_rerank_worker_keeps_response_errors_fatal(tmp_path):
+    config = _config(tmp_path, query_count=1, candidates_per_query=1)
+    config["model"] = "bge-reranker-v2-m3:f16"
+    config["protocol"] = "native_rerank"
+    config["runtime_overrides"] = {
+        "server_slots": 1,
+        "concurrency": 1,
+        "request_batch_size": 1,
+        "context_per_slot": 4096,
+        "logical_batch_size": 4096,
+        "physical_batch_size": 2048,
+    }
+
+    with pytest.raises(LlamaCppResponseError, match="bad scores"):
+        run_rerank_worker(
+            config,
+            server_manager=_fake_server_manager,
+            client_factory=lambda _url: _AlwaysInvalidClient(),
+        )
+
+    assert not (Path(config["output_dir"]) / "manifest.json").exists()
+
+
+class _QwenCacheAwareClient:
+    def __init__(self):
+        self.calls: list[tuple[str, bool]] = []
+
+    async def rerank_completion_results_async(
+        self, prompts, _model, *, concurrency, contract, cache_prompt
+    ):
+        assert concurrency == 1
+        assert contract is not None
+        self.calls.extend((prompt, cache_prompt) for prompt in prompts)
+        return [
+            CompletionRerankResult(
+                score=0.5,
+                timing=CompletionPromptTiming(cached_tokens=12, evaluated_tokens=3),
+            )
+            for _prompt in prompts
+        ]
+
+
+def test_completion_worker_enables_slot_prompt_cache_and_records_timings(tmp_path):
+    config = _config(tmp_path, query_count=2, candidates_per_query=2)
+    config["runtime_overrides"] = {
+        "server_slots": 1,
+        "concurrency": 1,
+        "request_batch_size": 1,
+        "context_per_slot": 4096,
+        "logical_batch_size": 4096,
+        "physical_batch_size": 2048,
+    }
+    client = _QwenCacheAwareClient()
+
+    artifact = run_rerank_worker(
+        config,
+        server_manager=_fake_server_manager,
+        client_factory=lambda _url: client,
+        emit=lambda _message: None,
+        clock=lambda: 0.0,
+    )
+
+    assert len(client.calls) == 4
+    assert all(cache_prompt is True for _prompt, cache_prompt in client.calls)
+    manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    operation = manifest["runtime"]["operations"]
+    assert operation["prompt_tokens_cached"] == 48
+    assert operation["prompt_tokens_evaluated"] == 12
+    assert operation["prompt_cache_hit_ratio"] == pytest.approx(0.8)

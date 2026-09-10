@@ -1,11 +1,15 @@
 import os
 from pathlib import Path
 
+import pytest
+
 from corpus_pipeline.integrations.kaggle import service as kaggle_service
 from corpus_pipeline.integrations.kaggle.models import StageName
-from corpus_pipeline.integrations.kaggle.service import resolve_execution_context
+from corpus_pipeline.integrations.kaggle.service import (
+    resolve_execution_context,
+    resolve_profile_execution_contexts,
+)
 from corpus_pipeline.runtime.catalog import require_model
-
 
 MODEL = "qwen3-reranker:0.6b-fp16"
 
@@ -61,6 +65,47 @@ def test_legacy_context_keeps_generic_credential_path(tmp_path, monkeypatch):
     assert context.runner.environment is None
 
 
+def test_profile_contexts_are_numeric_and_account_isolated(tmp_path, monkeypatch):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+
+    contexts = resolve_profile_execution_contexts(env_file=env_file)
+
+    assert [item.profile.name for item in contexts] == ["acc1", "acc2"]
+    assert contexts[0].runner.environment["KAGGLE_USERNAME"] == "primary-user"
+    assert contexts[1].runner.environment["KAGGLE_USERNAME"] == "secondary-user"
+    assert not any(
+        key.startswith("KAGGLE_ACC")
+        for context in contexts
+        for key in context.runner.environment
+    )
+    assert "primary-token" not in contexts[1].runner.environment.values()
+    assert "secondary-token" not in contexts[0].runner.environment.values()
+
+
+def test_profile_contexts_fail_before_runner_commands_for_incomplete_profile(
+    tmp_path, monkeypatch
+):
+    env_file = _write_profiles(tmp_path)
+    env_file.write_text(
+        env_file.read_text(encoding="utf-8").replace(
+            "KAGGLE_ACC2_API_TOKEN=secondary-token\n", ""
+        ),
+        encoding="utf-8",
+    )
+    _clear_kaggle_environment(monkeypatch)
+    called = []
+
+    def fail_run(*args, **kwargs):
+        called.append((args, kwargs))
+        raise AssertionError("runner command must not run")
+
+    monkeypatch.setattr(kaggle_service.KaggleCommandRunner, "run", fail_run)
+    with pytest.raises(ValueError, match="KAGGLE_ACC2_API_TOKEN"):
+        resolve_profile_execution_contexts(env_file=env_file)
+    assert called == []
+
+
 def test_run_stage_uses_one_account_bound_context(tmp_path, monkeypatch):
     env_file = _write_profiles(tmp_path)
     _clear_kaggle_environment(monkeypatch)
@@ -72,9 +117,10 @@ def test_run_stage_uses_one_account_bound_context(tmp_path, monkeypatch):
             captured["request"] = request
             return sentinel
 
-    def fake_make_orchestrator(owners, runner):
+    def fake_make_orchestrator(owners, runner, **kwargs):
         captured["owners"] = owners
         captured["runner"] = runner
+        captured["kwargs"] = kwargs
         return FakeOrchestrator()
 
     monkeypatch.setattr(kaggle_service, "make_orchestrator", fake_make_orchestrator)
@@ -92,3 +138,37 @@ def test_run_stage_uses_one_account_bound_context(tmp_path, monkeypatch):
     assert captured["owners"].execution == "secondary-user"
     assert captured["runner"].environment["KAGGLE_USERNAME"] == "secondary-user"
     assert captured["request"].owners == captured["owners"]
+    assert captured["kwargs"]["target_profile"] == "acc2"
+    assert [
+        context.profile.name for context in captured["kwargs"]["checkpoint_contexts"]
+    ] == [
+        "acc1",
+        "acc2",
+    ]
+
+
+def test_make_orchestrator_binds_each_checkpoint_service_to_its_profile_runner(
+    tmp_path, monkeypatch
+):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+    contexts = resolve_profile_execution_contexts(env_file=env_file)
+    target = contexts[1]
+    orchestrator = kaggle_service.make_orchestrator(
+        target.owners,
+        target.runner,
+        target_profile="acc2",
+        checkpoint_contexts=contexts,
+        temp_root=tmp_path / "tmp",
+    )
+
+    inheritance = orchestrator.checkpoint_inheritance
+    assert inheritance is not None
+    assert inheritance.target is orchestrator.checkpoints
+    assert [item.profile_name for item in inheritance.candidates] == ["acc1", "acc2"]
+    for item in inheritance.candidates:
+        environment = item.checkpoints.datasets.runner.environment
+        assert environment["KAGGLE_USERNAME"] in {"primary-user", "secondary-user"}
+        assert not any(key.startswith("KAGGLE_ACC") for key in environment)
+        token = "primary-token" if item.profile_name == "acc1" else "secondary-token"
+        assert token not in item.checkpoints.datasets.runner.redact(token)

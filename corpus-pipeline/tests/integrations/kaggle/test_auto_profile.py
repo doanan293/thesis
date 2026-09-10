@@ -3,12 +3,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from corpus_pipeline.artifacts.manifest import Completion
-from corpus_pipeline.runtime.catalog import require_model
-from corpus_pipeline.runtime.runtime_profiles import RuntimeProfileStore
 from corpus_pipeline.integrations.kaggle.auto_profile import (
     ensure_runtime_profile,
 )
-
+from corpus_pipeline.runtime.catalog import require_model
+from corpus_pipeline.runtime.server_policy import (
+    InferenceCachePolicy,
+)
 
 MODEL = "qwen3-reranker:0.6b-fp16"
 
@@ -91,8 +92,10 @@ def test_runtime_lookup_and_benchmark_use_selected_account(tmp_path, monkeypatch
     )
     monkeypatch.setattr(
         "corpus_pipeline.integrations.kaggle.service.run_kaggle_stage",
-        lambda **kwargs: seen.append(("benchmark", kwargs["kaggle_account"]))
-        or _benchmark_result(tmp_path),
+        lambda **kwargs: (
+            seen.append(("benchmark", kwargs["kaggle_account"]))
+            or _benchmark_result(tmp_path)
+        ),
     )
 
     ensure_runtime_profile(
@@ -146,6 +149,52 @@ def test_cache_hit_skips_benchmark(tmp_path):
     assert result.profile == first.profile
 
 
+def test_inference_cache_policy_change_invalidates_cached_profile(
+    tmp_path, monkeypatch
+):
+    import corpus_pipeline.integrations.kaggle.auto_profile as auto_profile
+
+    profile_root = tmp_path / "profiles"
+    common = {
+        "workload": "rerank",
+        "benchmark_stage": "rerank-benchmark",
+        "model": MODEL,
+        "input_path": tmp_path / "candidates.jsonl",
+        "gguf_root": tmp_path / "gguf",
+        "budget_seconds": 60,
+        "dry_run": False,
+        "force": False,
+        "profile_root": profile_root,
+        "runtime_sha256": "b" * 64,
+    }
+    original = auto_profile.inference_cache_policy
+    monkeypatch.setattr(
+        auto_profile,
+        "inference_cache_policy",
+        lambda _spec: InferenceCachePolicy(8192, True, True, 0.1, "query-adjacent-v1"),
+    )
+    ensure_runtime_profile(
+        **common,
+        benchmark_runner=lambda **_kwargs: _benchmark_result(tmp_path),
+    )
+    calls = []
+    monkeypatch.setattr(auto_profile, "inference_cache_policy", original)
+
+    result = ensure_runtime_profile(
+        **common,
+        benchmark_runner=lambda **kwargs: (
+            calls.append(kwargs) or _benchmark_result(tmp_path)
+        ),
+    )
+
+    assert len(calls) == 1
+    assert result.action == "created"
+    assert result.profile is not None
+    assert result.profile.identity.payload["inference_cache_policy_sha256"] == (
+        original(require_model(MODEL)).sha256
+    )
+
+
 def test_dry_run_cache_miss_does_not_benchmark_or_write(tmp_path):
     result = ensure_runtime_profile(
         workload="rerank",
@@ -170,7 +219,9 @@ def test_dry_run_cache_miss_does_not_benchmark_or_write(tmp_path):
 
 def test_benchmark_cleans_up_work_directory(tmp_path, monkeypatch):
     work_dir = tmp_path / "work"
-    monkeypatch.setattr("corpus_pipeline.integrations.kaggle.auto_profile.WORK_DIR", work_dir)
+    monkeypatch.setattr(
+        "corpus_pipeline.integrations.kaggle.auto_profile.WORK_DIR", work_dir
+    )
     spec = require_model(MODEL)
     benchmark_dir = work_dir / "kaggle-runtime-benchmarks" / spec.slug
     benchmark_dir.mkdir(parents=True, exist_ok=True)

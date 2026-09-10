@@ -118,22 +118,25 @@ class LlamaCppReranker:
                 lambda: self.client.rerank_native(query, documents, self.spec.name)
             )
         elif self.spec.reranker_protocol == "completion_logprobs":
-            prompts = [
-                build_qwen_rerank_prompt(query, document) for document in documents
-            ]
+            contract = self.spec.rerank_contract
+            if contract is None:
+                raise ValueError(f"Reranker {self.spec.name} has no scoring contract")
+            prompts = [contract.build_prompt(query, document) for document in documents]
             if hasattr(self.client, "rerank_completions_async"):
                 import asyncio
 
                 scores = self._call(
                     lambda: asyncio.run(
-                        self.client.rerank_completions_async(prompts, self.spec.name)
+                        self.client.rerank_completions_async(
+                            prompts, self.spec.name, contract=contract
+                        )
                     )
                 )
             else:
                 scores = [
                     self._call(
                         lambda prompt=prompt: self.client.rerank_completion(
-                            prompt, self.spec.name
+                            prompt, self.spec.name, contract=contract
                         )
                     )
                     for prompt in prompts

@@ -16,6 +16,10 @@ def parse_gpu_quota_hours(csv_text: str) -> float:
 
 def parse_kernel_status(output: str) -> KernelStatus:
     value = output.casefold()
+    if any(
+        status in value for status in ("cancel_acknowledged", "canceled", "cancelled")
+    ):
+        return KernelStatus.ERROR
     if "error" in value or "fail" in value:
         return KernelStatus.ERROR
     if "complete" in value:

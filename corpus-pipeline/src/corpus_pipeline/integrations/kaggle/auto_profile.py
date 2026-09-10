@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from corpus_pipeline.config.paths import RUNTIME_PROFILE_DIR, WORK_DIR
 from corpus_pipeline.runtime.catalog import require_model
@@ -15,6 +17,7 @@ from corpus_pipeline.runtime.runtime_profiles import (
     RuntimeProfileStore,
     RuntimeSearchSpace,
 )
+from corpus_pipeline.runtime.server_policy import inference_cache_policy
 
 
 @dataclass(frozen=True)
@@ -29,9 +32,13 @@ def _search_space(model: str, workload: str) -> RuntimeSearchSpace:
     if workload == "rerank":
         space = spec.rerank_search_space
     elif workload == "query-embed":
-        space = spec.embedding_search_space.query if spec.embedding_search_space else None
+        space = (
+            spec.embedding_search_space.query if spec.embedding_search_space else None
+        )
     elif workload == "corpus-embed":
-        space = spec.embedding_search_space.corpus if spec.embedding_search_space else None
+        space = (
+            spec.embedding_search_space.corpus if spec.embedding_search_space else None
+        )
     else:
         raise ValueError(f"unsupported runtime profile workload: {workload}")
     if space is None:
@@ -53,7 +60,12 @@ def _load_benchmark_selection(
         ]
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"invalid benchmark artifact: {data_path}") from exc
-    recommendation = ((manifest.get("runtime") or {}).get("recommendation"))
+    recommendation = (manifest.get("runtime") or {}).get("recommendation")
+    comparison = (manifest.get("runtime") or {}).get("cache_comparison")
+    if comparison is not None and (
+        not isinstance(comparison, dict) or comparison.get("accepted") is not True
+    ):
+        raise RuntimeError("benchmark cache comparison did not pass acceptance gates")
     if not isinstance(recommendation, dict):
         raise RuntimeError("benchmark has no runtime recommendation")
     try:
@@ -98,7 +110,9 @@ def _load_benchmark_selection(
     ):
         raise RuntimeError("benchmark recommendation has no successful measurement")
     identity = manifest.get("identity")
-    if not isinstance(identity, dict) or not isinstance(identity.get("job_sha256"), str):
+    if not isinstance(identity, dict) or not isinstance(
+        identity.get("job_sha256"), str
+    ):
         raise RuntimeError("benchmark manifest is missing job identity")
     return selected, tuple(measurements), str(identity["job_sha256"])
 
@@ -136,6 +150,7 @@ def ensure_runtime_profile(
         model=model,
         model_sha256=spec.sha256,
         runtime_sha256=runtime_sha256,
+        inference_cache_policy_sha256=inference_cache_policy(spec).sha256,
         machine_shape="NvidiaTeslaT4",
         topology=spec.topology.value,
         search_space=space,
@@ -191,8 +206,6 @@ def ensure_runtime_profile(
         shutil.rmtree(benchmark_output_dir, ignore_errors=True)
     benchmarks_root = benchmark_output_dir.parent
     if benchmarks_root.exists() and not any(benchmarks_root.iterdir()):
-        try:
+        with suppress(OSError):
             benchmarks_root.rmdir()
-        except OSError:
-            pass
     return ProfileResolution(reloaded, saved, "created")

@@ -18,6 +18,9 @@ from corpus_pipeline.integrations.kaggle.parsers import format_elapsed
 from corpus_pipeline.integrations.kaggle.workers.checkpointing import (
     AppendOnlyJournal,
 )
+from corpus_pipeline.integrations.kaggle.workers.recovery import (
+    recoverable_termination,
+)
 from corpus_pipeline.integrations.kaggle.workers.runtime import (
     artifact_from_output,
     identity_from_config,
@@ -31,6 +34,7 @@ from corpus_pipeline.integrations.kaggle.workers.scheduling import (
 )
 from corpus_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
 from corpus_pipeline.runtime.catalog import require_model
+from corpus_pipeline.runtime.server_policy import inference_cache_policy
 
 Pair = dict[str, str]
 
@@ -115,6 +119,8 @@ def run_rerank_worker(
     score_pair: Callable[[str, str, str], float] | None = None,
     emit: Callable[[str], None] = _emit_progress,
     clock: Callable[[], float] = time.monotonic,
+    server_manager=managed_model_servers,
+    client_factory=None,
 ) -> CloudArtifact:
     started = clock()
     identity = identity_from_config(config)
@@ -148,9 +154,7 @@ def run_rerank_worker(
     remaining_by_query = dict(expected_by_query)
     for record in existing.values():
         remaining_by_query[record["query_id"]] -= 1
-    completed_queries = sum(
-        remaining == 0 for remaining in remaining_by_query.values()
-    )
+    completed_queries = sum(remaining == 0 for remaining in remaining_by_query.values())
     next_milestone = ((completed_queries // 500) + 1) * 500
     last_reported_pairs = len(existing)
     last_reported_at = started
@@ -227,99 +231,163 @@ def run_rerank_worker(
                         ),
                     )
                 )
-            telemetry.record_operation(0, len(batch), sum(len(details[_pair_key(p)][0]) + len(details[_pair_key(p)][1]) for p in batch), max(0.0, time.monotonic() - batch_started), "ok", 0)
+            telemetry.record_operation(
+                0,
+                len(batch),
+                sum(
+                    len(details[_pair_key(p)][0]) + len(details[_pair_key(p)][1])
+                    for p in batch
+                ),
+                max(0.0, time.monotonic() - batch_started),
+                "ok",
+                0,
+            )
             commit(records)
-    elif missing:
-        from corpus_pipeline.runtime.client import LlamaCppClient
-
+    termination = None
+    if score_pair is None and missing:
         server_config = dict(config)
         runtime_overrides = server_config.get("runtime_overrides")
         if not isinstance(runtime_overrides, dict):
             raise ValueError("runtime_overrides is required")
         server_config["runtime_overrides"] = runtime_overrides
-        with managed_model_servers(server_config, telemetry=telemetry) as servers:
-            clients = [LlamaCppClient(server.base_url) for server in servers]
-            resources = list(enumerate(clients))
-            per_client = max(1, int(runtime_overrides["concurrency"]))
-            if protocol == "native_rerank":
-                grouped: dict[tuple[str, str], list[Pair]] = {}
-                for pair in missing:
-                    query, _text = details[_pair_key(pair)]
-                    grouped.setdefault((pair["query_id"], query), []).append(pair)
-                groups = [
-                    (query_id, query, group)
-                    for (query_id, query), group in grouped.items()
-                ]
+        try:
+            if client_factory is None:
+                from corpus_pipeline.runtime.client import LlamaCppClient
 
-                async def native_operation(resource, _index, item):
-                    server_index, client = resource
-                    query_id, query, group = item
-                    started_operation = clock()
-                    scores = await asyncio.to_thread(
-                        client.rerank_native,
-                        query,
-                        [details[_pair_key(pair)][1] for pair in group],
-                        model,
-                    )
-                    if len(scores) != len(group):
-                        raise ValueError("reranker returned an unexpected score count")
-                    telemetry.record_operation(server_index, len(group), sum(len(query) + len(details[_pair_key(pair)][1]) for pair in group), max(0.0, clock() - started_operation), "ok", 0)
-                    return (query_id, group, scores)
+                client_factory = LlamaCppClient
+            with server_manager(server_config, telemetry=telemetry) as servers:
+                clients = [client_factory(server.base_url) for server in servers]
+                resources = list(enumerate(clients))
+                per_client = max(1, int(runtime_overrides["concurrency"]))
+                if protocol == "native_rerank":
+                    grouped: dict[tuple[str, str], list[Pair]] = {}
+                    for pair in missing:
+                        query, _text = details[_pair_key(pair)]
+                        grouped.setdefault((pair["query_id"], query), []).append(pair)
+                    groups = [
+                        (query_id, query, group)
+                        for (query_id, query), group in grouped.items()
+                    ]
 
-                async def run_native():
-                    return await stream_map_ordered(
-                        groups,
-                        resources,
-                        per_client,
-                        native_operation,
-                        deadline,
-                        on_completed=lambda batch: commit(
-                            [
-                                _score_record(pair, score)
-                                for _index, value in batch
-                                for pair, score in zip(value[1], value[2], strict=True)
-                            ]
-                        ),
-                    )
+                    async def native_operation(resource, _index, item):
+                        server_index, client = resource
+                        query_id, query, group = item
+                        started_operation = clock()
+                        scores = await asyncio.to_thread(
+                            client.rerank_native,
+                            query,
+                            [details[_pair_key(pair)][1] for pair in group],
+                            model,
+                        )
+                        if len(scores) != len(group):
+                            raise ValueError(
+                                "reranker returned an unexpected score count"
+                            )
+                        telemetry.record_operation(
+                            server_index,
+                            len(group),
+                            sum(
+                                len(query) + len(details[_pair_key(pair)][1])
+                                for pair in group
+                            ),
+                            max(0.0, clock() - started_operation),
+                            "ok",
+                            0,
+                        )
+                        return (query_id, group, scores)
 
-                scheduled = asyncio.run(run_native())
-                if scheduled.stopped_early:
-                    emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
-            else:
-                contract = require_model(model).rerank_contract
-                if contract is None:
-                    raise ValueError(f"Reranker {model} has no scoring contract")
-                async def completion_operation(resource, _index, pair):
-                    server_index, client = resource
-                    query, document = details[_pair_key(pair)]
-                    started_operation = clock()
-                    scores = await client.rerank_completions_async(
-                        [contract.build_prompt(query, document)], model, concurrency=1, contract=contract
-                    )
-                    telemetry.record_operation(server_index, 1, len(query) + len(document), max(0.0, clock() - started_operation), "ok", 0)
-                    return scores[0]
+                    async def run_native():
+                        return await stream_map_ordered(
+                            groups,
+                            resources,
+                            per_client,
+                            native_operation,
+                            deadline,
+                            on_completed=lambda batch: commit(
+                                [
+                                    _score_record(pair, score)
+                                    for _index, value in batch
+                                    for pair, score in zip(
+                                        value[1], value[2], strict=True
+                                    )
+                                ]
+                            ),
+                        )
 
-                async def run_completion():
-                    return await stream_map_ordered(
-                        missing,
-                        resources,
-                        per_client,
-                        completion_operation,
-                        deadline,
-                        on_completed=lambda batch: commit(
-                            [_score_record(missing[index], score) for index, score in batch]
-                        ),
-                    )
+                    scheduled = asyncio.run(run_native())
+                    if scheduled.stopped_early:
+                        emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
+                else:
+                    model_spec = require_model(model)
+                    cache_policy = inference_cache_policy(model_spec)
+                    contract = model_spec.rerank_contract
+                    if contract is None:
+                        raise ValueError(f"Reranker {model} has no scoring contract")
 
-                scheduled = asyncio.run(run_completion())
-                if scheduled.stopped_early:
-                    emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
+                    async def completion_operation(resource, _index, pair):
+                        server_index, client = resource
+                        query, document = details[_pair_key(pair)]
+                        started_operation = clock()
+                        results = await client.rerank_completion_results_async(
+                            [contract.build_prompt(query, document)],
+                            model,
+                            concurrency=1,
+                            contract=contract,
+                            cache_prompt=bool(cache_policy.completion_cache_prompt),
+                        )
+                        result = results[0]
+                        telemetry.record_operation(
+                            server_index,
+                            1,
+                            len(query) + len(document),
+                            max(0.0, clock() - started_operation),
+                            "ok",
+                            0,
+                            prompt_tokens_cached=(
+                                result.timing.cached_tokens if result.timing else None
+                            ),
+                            prompt_tokens_evaluated=(
+                                result.timing.evaluated_tokens
+                                if result.timing
+                                else None
+                            ),
+                        )
+                        return result.score
+
+                    async def run_completion():
+                        return await stream_map_ordered(
+                            missing,
+                            resources,
+                            per_client,
+                            completion_operation,
+                            deadline,
+                            on_completed=lambda batch: commit(
+                                [
+                                    _score_record(missing[index], score)
+                                    for index, score in batch
+                                ]
+                            ),
+                        )
+
+                    scheduled = asyncio.run(run_completion())
+                    if scheduled.stopped_early:
+                        emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
+        except Exception as error:
+            termination = recoverable_termination(error)
+            if termination is None:
+                raise
 
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.touch(exist_ok=True)
     journal.compact(pairs, data_path)
     telemetry.close()
     runtime_summary = telemetry.summary()
+    if termination is not None:
+        runtime_summary["termination"] = termination
+        emit(
+            "recoverable model-server termination; "
+            f"checkpointed pairs={len(existing)}/{len(pairs)}"
+        )
     telemetry.write_report()
     artifact = artifact_from_output(
         data_path,

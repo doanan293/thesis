@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from corpus_pipeline.artifacts.manifest import Completion
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointState
 from corpus_pipeline.integrations.kaggle.kernel_reconciler import KernelResolution
@@ -64,12 +66,25 @@ class FakeCheckpoints:
 class FakeKernels:
     def __init__(self):
         self.prepared = []
+        self.checkpoint_references = []
 
     def prepare_bundle(self, _job, *, root, **_kwargs):
         bundle = Path(root) / "bundle"
         bundle.mkdir(parents=True, exist_ok=True)
         self.prepared.append(bundle)
+        self.checkpoint_references.append(_kwargs.get("checkpoint_reference"))
         return bundle
+
+
+class FakeInheritance:
+    def __init__(self, state, actions=()):
+        self.state = state
+        self.actions = tuple(actions)
+        self.calls = []
+
+    def resolve(self, job, state, *, check_only):
+        self.calls.append((job, state, check_only))
+        return SimpleNamespace(state=self.state, actions=self.actions)
 
 
 class FakeReconciler:
@@ -225,3 +240,139 @@ def test_benchmark_does_not_inspect_or_publish_checkpoint(tmp_path):
     assert len(checkpoints.emptied) == 1
     assert checkpoints.inspected == []
     assert checkpoints.published == []
+
+
+def test_checkpoint_publication_requires_strict_progress(tmp_path):
+    checkpoints = FakeCheckpoints(2)
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(), FakeDependencies(), checkpoints, FakeKernels()
+    )
+    current = CheckpointState(None, None, Completion(2, 1, 1))
+    artifact = SimpleNamespace(completion=Completion(2, 1, 1))
+
+    with pytest.raises(RuntimeError, match="made no progress"):
+        orchestrator._publish_checkpoint(None, artifact, current)
+
+
+def test_production_resolves_inheritance_before_kernel_reconciliation(tmp_path):
+    request = _request(tmp_path)
+    remote = KernelRemoteState("owner/kernel", KernelPresence.ABSENT)
+    resolution = KernelResolution(remote, None, ())
+    events = []
+    checkpoints = FakeCheckpoints(1)
+    inherited = CheckpointState("owner/checkpoint", None, Completion(1, 0, 1))
+    inheritance = FakeInheritance(
+        inherited,
+        (
+            SimpleNamespace(
+                resource_kind="checkpoint",
+                reference="owner/checkpoint",
+                verb=ActionVerb.SYNC,
+                reason="inherited",
+            ),
+        ),
+    )
+    reconciler = FakeReconciler(resolution)
+    original_inspect = reconciler.inspect
+    reconciler.inspect = lambda job: (
+        events.append("inspect-kernel") or original_inspect(job)
+    )
+    original_submit = reconciler.submit
+    reconciler.submit = lambda *args, **kwargs: (
+        events.append("submit") or original_submit(*args, **kwargs)
+    )
+    original_resolve = inheritance.resolve
+    inheritance.resolve = lambda *args, **kwargs: (
+        events.append("inherit") or original_resolve(*args, **kwargs)
+    )
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        checkpoints,
+        FakeKernels(),
+        reconciler=reconciler,
+        checkpoint_inheritance=inheritance,
+    )
+
+    result = orchestrator.run(request)
+
+    assert events == ["inherit", "inspect-kernel", "submit"]
+    assert result.actions[0].verb is ActionVerb.SYNC
+
+
+def test_check_only_includes_planned_inheritance_action_without_submit(tmp_path):
+    request = replace(_request(tmp_path), check_only=True)
+    remote = KernelRemoteState("owner/kernel", KernelPresence.ABSENT)
+    resolution = KernelResolution(remote, None, ())
+    action = SimpleNamespace(
+        resource_kind="checkpoint",
+        reference="owner/checkpoint",
+        verb=ActionVerb.SYNC,
+        reason="would inherit acc1 -> acc2",
+    )
+    inheritance = FakeInheritance(
+        CheckpointState("owner/checkpoint", None, Completion(1, 0, 1)), (action,)
+    )
+    reconciler = FakeReconciler(resolution)
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        FakeCheckpoints(1),
+        FakeKernels(),
+        reconciler=reconciler,
+        checkpoint_inheritance=inheritance,
+    )
+
+    result = orchestrator.run(request)
+
+    assert result.actions[0] is action
+    assert reconciler.submissions == []
+    assert inheritance.calls[0][2] is True
+
+
+def test_inheritance_failure_prevents_kernel_submission(tmp_path):
+    request = _request(tmp_path)
+
+    class BrokenInheritance:
+        def resolve(self, *_args, **_kwargs):
+            raise RuntimeError("inheritance failed")
+
+    remote = KernelRemoteState("owner/kernel", KernelPresence.ABSENT)
+    resolution = KernelResolution(remote, None, ())
+    reconciler = FakeReconciler(resolution)
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        FakeCheckpoints(1),
+        FakeKernels(),
+        reconciler=reconciler,
+        checkpoint_inheritance=BrokenInheritance(),
+    )
+
+    with pytest.raises(RuntimeError, match="inheritance failed"):
+        orchestrator.run(request)
+    assert reconciler.submissions == []
+
+
+def test_inherited_target_checkpoint_is_mounted_before_submit(tmp_path):
+    request = _request(tmp_path)
+    remote = KernelRemoteState("secondary-user/kernel", KernelPresence.ABSENT)
+    resolution = KernelResolution(remote, None, ())
+    kernels = FakeKernels()
+    target_state = CheckpointState(
+        "secondary-user/checkpoint", None, Completion(1, 0, 1)
+    )
+    inheritance = FakeInheritance(target_state)
+    reconciler = FakeReconciler(resolution)
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        FakeCheckpoints(1),
+        kernels,
+        reconciler=reconciler,
+        checkpoint_inheritance=inheritance,
+    )
+
+    orchestrator.run(request)
+
+    assert kernels.checkpoint_references == ["secondary-user/checkpoint"]

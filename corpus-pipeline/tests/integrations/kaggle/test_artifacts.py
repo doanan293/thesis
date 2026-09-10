@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from corpus_pipeline.integrations.kaggle.artifacts import (
+    ArtifactContractError,
     load_cloud_artifact,
     promote_complete_artifact,
     sha256_file,
@@ -78,3 +81,60 @@ def test_artifact_manifest_can_store_runtime_summary(tmp_path: Path):
 
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
     assert manifest["runtime"] == {"gpu_sampling_status": "unavailable"}
+
+
+def test_load_rejects_unexpected_artifact_type(tmp_path: Path):
+    data = tmp_path / "scores.jsonl"
+    data.write_text('{"score": 0.5}\n', encoding="utf-8")
+    artifact = artifact_from_output(
+        data,
+        artifact_type="rerank_scores",
+        identity=_identity(),
+        total=1,
+        complete=1,
+    )
+    payload = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    payload["artifact_type"] = "query_embedding_cache"
+    artifact.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactContractError, match="artifact type mismatch"):
+        load_cloud_artifact(
+            data,
+            artifact.manifest_path,
+            _identity(),
+            expected_artifact_type="rerank_scores",
+        )
+
+
+def test_load_rejects_manifest_job_hash_not_derived_from_identity(tmp_path: Path):
+    data = tmp_path / "scores.jsonl"
+    data.write_text('{"score": 0.5}\n', encoding="utf-8")
+    artifact = artifact_from_output(
+        data, artifact_type="rerank_scores", identity=_identity(), total=1, complete=1
+    )
+    payload = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    payload["identity"]["model_sha256"] = "f" * 64
+    artifact.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactContractError, match="identity hash mismatch"):
+        load_cloud_artifact(data, artifact.manifest_path, _identity(), allow_reuse=True)
+
+
+def test_load_rejects_manifest_reuse_hash_not_derived_from_identity(tmp_path: Path):
+    data = tmp_path / "scores.jsonl"
+    data.write_text('{"score": 0.5}\n', encoding="utf-8")
+    artifact = artifact_from_output(
+        data, artifact_type="rerank_scores", identity=_identity(), total=1, complete=1
+    )
+    payload = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    identity = payload["identity"]
+    identity["runtime_parameters"]["request_contract_sha256"] = "d" * 64
+    from corpus_pipeline.runtime.runtime_profiles import canonical_sha256
+
+    identity_without_job = dict(identity)
+    identity_without_job.pop("job_sha256")
+    identity["job_sha256"] = canonical_sha256(identity_without_job)
+    artifact.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactContractError, match="reuse identity hash mismatch"):
+        load_cloud_artifact(data, artifact.manifest_path, _identity(), allow_reuse=True)

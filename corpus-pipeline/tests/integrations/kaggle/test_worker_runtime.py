@@ -6,11 +6,14 @@ import pytest
 from corpus_pipeline.integrations.kaggle.artifacts import sha256_file
 from corpus_pipeline.integrations.kaggle.workers.runtime import (
     BoundedLogCollector,
+    ModelServerExited,
     build_server_command,
     managed_model_servers,
     resolve_input_file,
 )
 from corpus_pipeline.runtime.catalog import require_model
+from corpus_pipeline.runtime.client import LlamaCppRequestError
+from corpus_pipeline.runtime.server_policy import inference_cache_policy
 
 
 def _config(key: str, expected_path: Path, source: Path) -> dict:
@@ -112,6 +115,82 @@ def test_build_server_command_accepts_benchmark_runtime_overrides():
     assert command[command.index("-c") + 1] == "32768"
     assert command[command.index("-b") + 1] == "8192"
     assert command[command.index("-ub") + 1] == "4096"
+
+
+@pytest.mark.parametrize(
+    "model",
+    (
+        "bge-m3:567m-fp16",
+        "bge-reranker-v2-m3:f16",
+        "qwen3-reranker:0.6b-fp16",
+    ),
+)
+def test_build_server_command_enforces_stateless_prompt_cache(model):
+    command = build_server_command(
+        binary="llama-server",
+        model="model.gguf",
+        port=11434,
+        visible_devices="0",
+        spec=require_model(model),
+        runtime_overrides={
+            "server_slots": 2,
+            "context_per_slot": 4096,
+            "logical_batch_size": 4096,
+            "physical_batch_size": 2048,
+        },
+    )
+
+    assert command[command.index("--cache-ram") + 1] == "0"
+    assert "--no-cache-idle-slots" in command
+
+
+def test_qwen_completion_policy_preserves_slot_prompt_reuse():
+    policy = inference_cache_policy(require_model("qwen3-reranker:4b-fp16"))
+
+    assert policy.host_cache_ram_mib == 0
+    assert policy.cache_idle_slots is False
+    assert policy.completion_cache_prompt is True
+    assert policy.slot_prompt_similarity == 0.1
+    assert policy.workload_locality == "query-adjacent-v1"
+
+
+def test_native_rerank_policy_has_no_completion_request_setting():
+    policy = inference_cache_policy(require_model("bge-reranker-v2-m3:f16"))
+
+    assert policy.completion_cache_prompt is None
+    assert policy.slot_prompt_similarity is None
+    assert policy.workload_locality == "query-group-request-v1"
+
+
+def test_embedding_policy_has_no_completion_request_setting():
+    policy = inference_cache_policy(require_model("qwen3-embedding:4b-fp16"))
+
+    assert policy.completion_cache_prompt is None
+    assert policy.workload_locality == "batch-independent-v1"
+
+
+def test_stateless_policy_rejects_negative_cache_limit():
+    from corpus_pipeline.runtime.server_policy import InferenceCachePolicy
+
+    with pytest.raises(ValueError, match="cache_ram_mib"):
+        InferenceCachePolicy(-1, False, None, None, "test")
+
+
+def test_server_policy_fingerprint_changes_with_performance_behavior():
+    from corpus_pipeline.runtime.server_policy import InferenceCachePolicy
+
+    stateless = InferenceCachePolicy(0, False, True, 0.1, "query-adjacent-v1")
+    cached = InferenceCachePolicy(8192, True, True, 0.1, "query-adjacent-v1")
+
+    assert stateless.to_dict() == {
+        "schema_version": 1,
+        "host_cache_ram_mib": 0,
+        "cache_idle_slots": False,
+        "completion_cache_prompt": True,
+        "slot_prompt_similarity": 0.1,
+        "workload_locality": "query-adjacent-v1",
+    }
+    assert stateless.sha256 != cached.sha256
 
 
 def test_build_server_command_requires_runtime_overrides():
@@ -299,3 +378,129 @@ def test_managed_model_servers_reports_all_replicas_on_timeout(monkeypatch, tmp_
     assert "replica=1" in message
     assert "exit_code=None" in message
     assert "command=" in message
+
+
+def test_managed_model_servers_default_startup_timeout_allows_five_minute_window(
+    monkeypatch, tmp_path
+):
+    from corpus_pipeline.integrations.kaggle.workers import runtime
+    from corpus_pipeline.runtime import client
+
+    model_path = tmp_path / "model.gguf"
+    model_path.touch()
+    manifest_path = tmp_path / "runtime_manifest.json"
+    manifest_path.write_text("{}\n", encoding="utf-8")
+
+    class RunningProcess:
+        def __init__(self):
+            self.stdout = io.BytesIO(b"loading model\n")
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            pass
+
+        def wait(self, timeout=None):
+            return 0
+
+    health_calls = 0
+
+    def health(_self):
+        nonlocal health_calls
+        health_calls += 1
+        if health_calls == 1:
+            raise RuntimeError("not healthy")
+
+    monkeypatch.setattr(
+        runtime,
+        "find_unique",
+        lambda _root, pattern: model_path if pattern == "*.gguf" else manifest_path,
+    )
+    monkeypatch.setattr(runtime, "materialize_runtime", lambda *_args: tmp_path)
+    monkeypatch.setattr(
+        runtime.subprocess, "Popen", lambda *_args, **_kwargs: RunningProcess()
+    )
+    monkeypatch.setattr(client.LlamaCppClient, "health", health)
+    times = iter((0.0, 299.0))
+    monkeypatch.setattr(runtime.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(runtime.time, "sleep", lambda _seconds: None)
+    config = {
+        "model": "qwen3-reranker:0.6b-fp16",
+        "runtime_overrides": {
+            "server_slots": 4,
+            "context_per_slot": 4096,
+            "logical_batch_size": 4096,
+            "physical_batch_size": 2048,
+        },
+        "output_dir": str(tmp_path / "output"),
+    }
+
+    with managed_model_servers(config) as servers:
+        assert len(servers) == 2
+
+
+def test_managed_model_servers_wraps_mid_run_exit_with_diagnostics(
+    monkeypatch, tmp_path
+):
+    from corpus_pipeline.integrations.kaggle.workers import runtime
+    from corpus_pipeline.runtime import client
+
+    class MutableProcess:
+        def __init__(self, output: bytes, pid: int):
+            self.stdout = io.BytesIO(output)
+            self.returncode = None
+            self.pid = pid
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            if self.returncode is None:
+                self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    model_path = tmp_path / "model.gguf"
+    model_path.touch()
+    manifest_path = tmp_path / "runtime_manifest.json"
+    manifest_path.write_text("{}\n", encoding="utf-8")
+    pending = [
+        MutableProcess(b"replica zero ready\n", 1000),
+        MutableProcess(b"host allocation failed\n", 1001),
+    ]
+    processes = []
+    monkeypatch.setattr(
+        runtime,
+        "find_unique",
+        lambda _root, pattern: model_path if pattern == "*.gguf" else manifest_path,
+    )
+    monkeypatch.setattr(runtime, "materialize_runtime", lambda *_args: tmp_path)
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: processes.append(pending.pop(0)) or processes[-1],
+    )
+    monkeypatch.setattr(client.LlamaCppClient, "health", lambda _self: None)
+    config = {
+        "model": "qwen3-reranker:0.6b-fp16",
+        "runtime_overrides": {
+            "server_slots": 2,
+            "context_per_slot": 4096,
+            "logical_batch_size": 4096,
+            "physical_batch_size": 2048,
+        },
+        "output_dir": str(tmp_path / "output"),
+    }
+
+    with pytest.raises(ModelServerExited) as exc_info:
+        with managed_model_servers(config):
+            processes[1].returncode = 137
+            raise LlamaCppRequestError("connection refused", retryable=True)
+
+    error = exc_info.value
+    assert error.failed_replicas == (1,)
+    assert "replica=0" in str(error)
+    assert "host allocation failed" in str(error)
+    assert isinstance(error.__cause__, LlamaCppRequestError)

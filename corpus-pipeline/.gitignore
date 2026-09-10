@@ -26,5 +26,9 @@ temp/
 .kaggle/
 corpus-pipeline-kaggle-*/
 
+# Local tool state
+.superpowers/
+docs/superpowers/
+
 # Archiveable generated and large data boundary
 data/heavy/

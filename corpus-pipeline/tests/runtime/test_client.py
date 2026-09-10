@@ -1,7 +1,11 @@
 import pytest
 
 from corpus_pipeline.runtime.catalog import require_model
-from corpus_pipeline.runtime.client import LlamaCppClient, LlamaCppRequestError
+from corpus_pipeline.runtime.client import (
+    CompletionPromptTiming,
+    LlamaCppClient,
+    LlamaCppRequestError,
+)
 
 
 def test_completion_payload_can_include_model_name():
@@ -17,6 +21,82 @@ def test_completion_payload_can_include_model_name():
     )
 
     assert payload["model"] == "qwen3-reranker:0.6b-fp16"
+
+
+def test_completion_payload_explicitly_enables_slot_prompt_cache():
+    contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
+    assert contract is not None
+
+    payload = LlamaCppClient.completion_payload(
+        "prompt", contract, model="qwen", yes_id=1, no_id=2
+    )
+
+    assert payload["cache_prompt"] is True
+
+
+def test_sync_completion_uses_candidate_tokens_from_contract(monkeypatch):
+    requested_tokens = []
+
+    class Response:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "completion_probabilities": [
+                    {"top_probs": [{"id": 20, "prob": 0.75}, {"id": 21, "prob": 0.25}]}
+                ]
+            }
+
+    client = LlamaCppClient("http://server", post=lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr(
+        client,
+        "_single_token_id",
+        lambda text, _model: (
+            requested_tokens.append(text) or {"Yes": 20, "No": 21}[text]
+        ),
+    )
+    contract = require_model("bge-reranker-v2-gemma:f16").rerank_contract
+    assert contract is not None
+
+    score = client.rerank_completion("prompt", "model", contract=contract)
+
+    assert score == pytest.approx(0.75)
+    assert requested_tokens == ["Yes", "No"]
+
+
+def test_completion_result_parses_optional_prompt_timing():
+    client = LlamaCppClient("http://server")
+    result = client._parse_completion_result(
+        {
+            "completion_probabilities": [
+                {"top_probs": [{"id": 1, "prob": 0.8}, {"id": 2, "prob": 0.2}]}
+            ],
+            "timings": {"cache_n": 120, "prompt_n": 30},
+        },
+        yes_id=1,
+        no_id=2,
+    )
+
+    assert result.score == pytest.approx(0.8)
+    assert result.timing == CompletionPromptTiming(120, 30)
+
+
+def test_invalid_completion_timing_does_not_invalidate_score():
+    client = LlamaCppClient("http://server")
+    result = client._parse_completion_result(
+        {
+            "completion_probabilities": [
+                {"top_probs": [{"id": 1, "prob": 0.8}, {"id": 2, "prob": 0.2}]}
+            ],
+            "timings": {"cache_n": "bad", "prompt_n": -1},
+        },
+        yes_id=1,
+        no_id=2,
+    )
+
+    assert result.score == pytest.approx(0.8)
+    assert result.timing is None
 
 
 @pytest.mark.asyncio
@@ -52,10 +132,14 @@ async def test_async_completion_retries_retryable_http_status(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", AsyncClient)
     client = LlamaCppClient("http://server", max_attempts=2, retry_delay_seconds=0)
-    monkeypatch.setattr(client, "_single_token_id", lambda text, _model: 10 if text == "yes" else 11)
+    monkeypatch.setattr(
+        client, "_single_token_id", lambda text, _model: 10 if text == "yes" else 11
+    )
     contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
 
-    result = await client.rerank_completions_async(["prompt"], "model", contract=contract)
+    result = await client.rerank_completions_async(
+        ["prompt"], "model", contract=contract
+    )
 
     assert result == [pytest.approx(0.8)]
     assert attempts == 2
@@ -85,7 +169,9 @@ async def test_async_completion_does_not_retry_non_retryable_status(monkeypatch)
 
     monkeypatch.setattr(httpx, "AsyncClient", AsyncClient)
     client = LlamaCppClient("http://server", max_attempts=3, retry_delay_seconds=0)
-    monkeypatch.setattr(client, "_single_token_id", lambda text, _model: 10 if text == "yes" else 11)
+    monkeypatch.setattr(
+        client, "_single_token_id", lambda text, _model: 10 if text == "yes" else 11
+    )
     contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
 
     with pytest.raises(LlamaCppRequestError):

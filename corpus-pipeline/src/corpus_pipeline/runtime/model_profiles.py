@@ -24,6 +24,10 @@ DEFAULT_RERANK_INSTRUCTION = (
     "Given a Vietnamese medical retrieval query, retrieve relevant passages "
     "that answer the query"
 )
+BGE_GEMMA_RERANK_PROMPT = (
+    "Given a query A and a passage B, determine whether the passage contains "
+    "an answer to the query by providing a prediction of either 'Yes' or 'No'."
+)
 
 
 def build_qwen3_yes_no_prompt(
@@ -39,6 +43,10 @@ def build_qwen3_yes_no_prompt(
         f"<Document>: {document}<|im_end|>\n"
         "<|im_start|>assistant\n<think>\n\n</think>\n\n"
     )
+
+
+def build_bge_gemma_yes_no_prompt(query: str, document: str, instruction: str) -> str:
+    return f"<bos>A: {query}\nB: {document}\n{instruction}"
 
 
 @dataclass(frozen=True)
@@ -120,9 +128,11 @@ class RerankContract:
         return _canonical_sha256(self.canonical_payload())
 
     def build_prompt(self, query: str, document: str) -> str:
-        if self.template_id != "qwen3_yes_no_v1":
-            raise ValueError(f"unsupported prompt template: {self.template_id}")
-        return build_qwen3_yes_no_prompt(query, document, self.instruction)
+        if self.template_id == "qwen3_yes_no_v1":
+            return build_qwen3_yes_no_prompt(query, document, self.instruction)
+        if self.template_id == "bge_gemma_yes_no_v1":
+            return build_bge_gemma_yes_no_prompt(query, document, self.instruction)
+        raise ValueError(f"unsupported prompt template: {self.template_id}")
 
 
 @dataclass(frozen=True)
@@ -181,7 +191,12 @@ class EmbeddingRuntimeProfile:
     physical_batch_size: int
 
     def __post_init__(self) -> None:
-        if min(self.context_per_slot, self.logical_batch_size, self.physical_batch_size) < 1:
+        if (
+            min(
+                self.context_per_slot, self.logical_batch_size, self.physical_batch_size
+            )
+            < 1
+        ):
             raise ValueError("embedding runtime values must be positive")
 
 
@@ -194,6 +209,26 @@ def qwen3_rerank_contract() -> RerankContract:
         scoring=CompletionScoring(
             positive_token="yes",
             negative_token="no",
+            n_predict=1,
+            temperature=1.0,
+            samplers=("temperature",),
+            n_probs=2,
+            min_keep=2,
+            post_sampling_probs=True,
+            logit_bias=100.0,
+        ),
+    )
+
+
+def bge_gemma_rerank_contract() -> RerankContract:
+    return RerankContract(
+        protocol="completion_logprobs",
+        template_id="bge_gemma_yes_no_v1",
+        template_version="1",
+        instruction=BGE_GEMMA_RERANK_PROMPT,
+        scoring=CompletionScoring(
+            positive_token="Yes",
+            negative_token="No",
             n_predict=1,
             temperature=1.0,
             samplers=("temperature",),

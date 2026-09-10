@@ -13,11 +13,11 @@ def _is_ignored(path: str) -> bool:
     return result.returncode == 0
 
 
-def test_data_ignore_boundary_and_superpowers_docs_policy():
+def test_data_and_local_tool_ignore_boundaries():
     assert _is_ignored("data/heavy/probe.bin")
     assert not _is_ignored("data/runtime_kaggle_profiles/probe.json")
     assert not _is_ignored("data/retrieval_eval/probe/run.json")
-    assert not _is_ignored("docs/superpowers/specs/probe.md")
+    assert _is_ignored("docs/superpowers/specs/probe.md")
 
 
 def test_no_tracked_data_file_exceeds_five_mib():

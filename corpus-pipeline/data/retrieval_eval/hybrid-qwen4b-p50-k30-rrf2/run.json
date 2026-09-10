@@ -14,6 +14,26 @@
   },
   "reports_dir": null,
   "rerank_variants": {
+    "0e7b339394cc06c1e81f886cdb431d27e4c3441777da313c952e678d276ef25e": {
+      "artifact_dir": "rerank/qwen3_reranker_0_6b_fp16/0e7b339394cc",
+      "model": "qwen3-reranker:0.6b-fp16",
+      "status": "complete"
+    },
+    "3c22bcd050d7645da870dc43c5371f7d6e61d0308a9f94ec3f1cd2ea52bc79c6": {
+      "artifact_dir": "rerank/bge_reranker_v2_m3_f16/3c22bcd050d7",
+      "model": "bge-reranker-v2-m3:f16",
+      "status": "complete"
+    },
+    "40739f7d77d332d31f38d6f5632f4e773cbed0deb62ebfffc177175fac99aa0c": {
+      "artifact_dir": "rerank/bge_reranker_v2_gemma_f16/40739f7d77d3",
+      "model": "bge-reranker-v2-gemma:f16",
+      "status": "complete"
+    },
+    "795e562da7bde6e37a44684058796ee60be65adcfd9eda3cbd724a481008a64b": {
+      "artifact_dir": "rerank/qwen3_reranker_8b_fp16/795e562da7bd",
+      "model": "qwen3-reranker:8b-fp16",
+      "status": "complete"
+    },
     "8d5c6cecf136a4557289069777c256a0c8f7bc5d44234d68e8338e0643f00fa6": {
       "artifact_dir": "rerank/qwen3_reranker_4b_fp16/8d5c6cecf136",
       "model": "qwen3-reranker:4b-fp16",

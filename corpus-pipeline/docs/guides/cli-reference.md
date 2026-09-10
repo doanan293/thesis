@@ -99,6 +99,13 @@ stage chỉ load reranker model và score candidate pairs; không embed, retriev
 truy cập Qdrant hoặc tính metrics. Rerank gắn score vào run hiện có, không chạy
 lại retrieval và không tạo một retrieval run thứ hai.
 
+Ở profile mode (`--kaggle-account accN`), rerank và query/corpus production
+stages tự tìm checkpoint tương thích trong các profile `accN`, chọn completion
+lớn nhất và chỉ mirror khi source có tiến bộ strict hơn target. Mirror dùng
+credential riêng của target, source dataset giữ nguyên; target phải `READY` và
+được validate lại trước khi kernel submit. `--dry-run` chỉ báo kế hoạch, còn
+`--force` không thực hiện inheritance.
+
 ```bash
 uv run corpus rerank \
   --run hybrid-qwen06b-p50-k30-rrf2 \

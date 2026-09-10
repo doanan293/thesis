@@ -27,6 +27,7 @@ from corpus_pipeline.runtime.catalog import (
     ModelTopology,
     require_model,
 )
+from corpus_pipeline.runtime.server_policy import inference_cache_policy
 
 
 def find_unique(root: Path, filename: str, required: bool = True) -> Path | None:
@@ -195,6 +196,12 @@ class WorkerServer:
     visible_devices: str
 
 
+class ModelServerExited(RuntimeError):
+    def __init__(self, message: str, failed_replicas: tuple[int, ...]):
+        super().__init__(message)
+        self.failed_replicas = tuple(failed_replicas)
+
+
 class BoundedLogCollector:
     def __init__(self, max_bytes: int = 1024 * 1024):
         if max_bytes < 1:
@@ -348,6 +355,7 @@ def build_server_command(
         str(int(overrides["logical_batch_size"])),
         "-ub",
         str(int(overrides["physical_batch_size"])),
+        *inference_cache_policy(spec).arguments(),
     ]
     if spec.kind is ModelKind.EMBEDDING:
         command.append("--embedding")
@@ -437,10 +445,20 @@ def managed_model_servers(
             reader.start()
             readers.append(reader)
         servers.append(WorkerServer(f"http://127.0.0.1:{port}", layout.visible_devices))
+    if telemetry is not None:
+        register = getattr(telemetry, "register_server_processes", None)
+        if callable(register):
+            register(
+                {
+                    index: process.pid
+                    for index, process in enumerate(processes)
+                    if getattr(process, "pid", None) is not None
+                }
+            )
     try:
         from corpus_pipeline.runtime.client import LlamaCppClient
 
-        deadline = time.monotonic() + float(config.get("server_start_timeout", 120))
+        deadline = time.monotonic() + float(config.get("server_start_timeout", 300))
         for server in servers:
             client = LlamaCppClient(server.base_url, timeout=5)
             while True:
@@ -457,18 +475,19 @@ def managed_model_servers(
                         for index in failed:
                             readers[index].join(timeout=2)
                         replicas = ",".join(str(index) for index in failed)
-                        raise RuntimeError(
-                            _server_startup_diagnostic(
+                        raise ModelServerExited(
+                            _server_diagnostic(
                                 f"replica(s) {replicas} exited before becoming healthy",
                                 servers,
                                 processes,
                                 collectors,
                                 commands,
-                            )
+                            ),
+                            tuple(failed),
                         ) from None
                     if time.monotonic() >= deadline:
                         raise RuntimeError(
-                            _server_startup_diagnostic(
+                            _server_diagnostic(
                                 "health check timed out",
                                 servers,
                                 processes,
@@ -478,6 +497,28 @@ def managed_model_servers(
                         ) from None
                     time.sleep(1)
         yield servers
+    except Exception as error:
+        if isinstance(error, ModelServerExited):
+            raise
+        failed = [
+            index
+            for index, process in enumerate(processes)
+            if process.poll() is not None
+        ]
+        if failed:
+            for index in failed:
+                readers[index].join(timeout=2)
+            raise ModelServerExited(
+                _server_diagnostic(
+                    f"runtime failure; replica(s) {','.join(str(i) for i in failed)} exited",
+                    servers,
+                    processes,
+                    collectors,
+                    commands,
+                ),
+                tuple(failed),
+            ) from error
+        raise
     finally:
         for process in processes:
             process.terminate()
@@ -508,7 +549,7 @@ def _drain_process_output(stream, collector: BoundedLogCollector) -> None:
         collector.feed(chunk)
 
 
-def _server_startup_diagnostic(
+def _server_diagnostic(
     reason: str,
     servers: list[WorkerServer],
     processes: list[subprocess.Popen],

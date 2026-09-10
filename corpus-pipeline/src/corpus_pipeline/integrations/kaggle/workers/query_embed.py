@@ -13,6 +13,7 @@ from corpus_pipeline.integrations.kaggle.parsers import format_elapsed
 from corpus_pipeline.integrations.kaggle.workers.checkpointing import (
     AppendOnlyJournal,
 )
+from corpus_pipeline.integrations.kaggle.workers.recovery import recoverable_termination
 from corpus_pipeline.integrations.kaggle.workers.runtime import (
     artifact_from_output,
     identity_from_config,
@@ -76,6 +77,8 @@ def run_query_embed_worker(
     embed_batch: Callable[[list[str], str], list[list[float]]] | None = None,
     emit: Callable[[str], None] = _emit_progress,
     clock: Callable[[], float] = time.monotonic,
+    server_manager=managed_model_servers,
+    client_factory=None,
 ) -> CloudArtifact:
     started = clock()
     identity = identity_from_config(config)
@@ -113,6 +116,7 @@ def run_query_embed_worker(
         f"changed_or_new={len(missing)} deleted="
         f"{len(journal.records) - len(existing)}"
     )
+    termination = None
     if missing:
         deadline = worker_deadline(config, clock)
         batch_size = max(1, int(runtime_overrides["request_batch_size"]))
@@ -173,9 +177,13 @@ def run_query_embed_worker(
                 commit_results(list(zip(batch, vectors, strict=True)))
 
         def process_servers(servers) -> None:
-            clients = [LlamaCppClient(server.base_url) for server in servers]
+            factory = client_factory or LlamaCppClient
+            clients = [factory(server.base_url) for server in servers]
             resources = list(enumerate(clients))
-            batches = [missing[start : start + batch_size] for start in range(0, len(missing), batch_size)]
+            batches = [
+                missing[start : start + batch_size]
+                for start in range(0, len(missing), batch_size)
+            ]
 
             async def operation(resource, _index, rows):
                 server_index, client = resource
@@ -186,31 +194,42 @@ def run_query_embed_worker(
                     model,
                     int(config["vector_dimension"]),
                 )
-                telemetry.record_operation(server_index, len(rows), sum(len(str(row["query"])) for row in rows), max(0.0, time.monotonic() - operation_started), "ok", 0)
+                telemetry.record_operation(
+                    server_index,
+                    len(rows),
+                    sum(len(str(row["query"])) for row in rows),
+                    max(0.0, time.monotonic() - operation_started),
+                    "ok",
+                    0,
+                )
                 return list(zip(rows, vectors, strict=True))
 
             import asyncio
 
-            scheduled = asyncio.run(
+            asyncio.run(
                 stream_map_ordered(
                     batches,
                     resources,
                     max(1, int(runtime_overrides["concurrency"])),
                     operation,
                     deadline,
+                    on_completed=lambda completed: commit_results(completed[0][1]),
                     clock=clock,
                 )
             )
-            for result in scheduled.results:
-                commit_results(result)
 
         if embed_batch is None:
             emit("model-server starting")
             server_config = dict(config)
             server_config["runtime_overrides"] = runtime_overrides
-            with managed_model_servers(server_config) as servers:
-                emit(f"model-server ready replicas={len(servers)}")
-                process_servers(servers)
+            try:
+                with server_manager(server_config, telemetry=telemetry) as servers:
+                    emit(f"model-server ready replicas={len(servers)}")
+                    process_servers(servers)
+            except Exception as error:
+                termination = recoverable_termination(error)
+                if termination is None:
+                    raise
         else:
             process_local()
     if len(existing) < len(rows):
@@ -223,6 +242,12 @@ def run_query_embed_worker(
     journal.compact(current, data_path)
     telemetry.close()
     runtime_summary = telemetry.summary()
+    if termination is not None:
+        runtime_summary["termination"] = termination
+        emit(
+            "recoverable model-server termination; "
+            f"checkpointed queries={len(existing)}/{len(rows)}"
+        )
     telemetry.write_report()
     artifact = artifact_from_output(
         data_path,

@@ -14,7 +14,14 @@ from corpus_pipeline.integrations.kaggle.models import (
     CloudArtifact,
     Completion,
     StageJob,
+    StageName,
 )
+
+_CHECKPOINT_ARTIFACT_TYPES = {
+    StageName.CORPUS_EMBED: "vector_embedding_cache",
+    StageName.QUERY_EMBED: "query_embedding_cache",
+    StageName.RERANK: "rerank_scores",
+}
 
 
 @dataclass(frozen=True)
@@ -51,7 +58,9 @@ class CheckpointService:
             None, None, Completion(job.expected_total, 0, job.expected_total)
         )
 
-    def inspect(self, job: StageJob) -> CheckpointState:
+    def inspect(
+        self, job: StageJob, *, download_root: Path | None = None
+    ) -> CheckpointState:
         reference = self.reference(job)
         state = self.datasets.inspect_state(reference, active_owner=self.owner)
         empty = Completion(job.expected_total, 0, job.expected_total)
@@ -71,7 +80,11 @@ class CheckpointService:
         # promote a complete checkpoint or resume from a partial one after
         # this method returns.  A TemporaryDirectory would invalidate those
         # paths as soon as inspect() exits.
-        root = job.output_dir / ".checkpoint"
+        root = (
+            Path(download_root)
+            if download_root is not None
+            else job.output_dir / ".checkpoint"
+        )
         root.mkdir(parents=True, exist_ok=True)
         manifest = self.datasets.fetch_json(reference, "manifest.json")
         manifest_path = root / "manifest.json"
@@ -89,6 +102,7 @@ class CheckpointService:
             job.identity,
             allow_partial=True,
             allow_reuse=True,
+            expected_artifact_type=_CHECKPOINT_ARTIFACT_TYPES[job.stage],
         )
         completion = (
             artifact.completion

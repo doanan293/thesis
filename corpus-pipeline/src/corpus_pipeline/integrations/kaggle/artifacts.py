@@ -15,6 +15,7 @@ from corpus_pipeline.integrations.kaggle.models import (
     Completion,
     JobIdentity,
 )
+from corpus_pipeline.runtime.runtime_profiles import canonical_sha256
 
 
 class ArtifactContractError(KagglePipelineError):
@@ -148,18 +149,52 @@ def load_cloud_artifact(
     *,
     allow_partial: bool = False,
     allow_reuse: bool = False,
+    expected_artifact_type: str | None = None,
 ) -> CloudArtifact:
     data_path, manifest_path = Path(data_path), Path(manifest_path)
     manifest = _load_manifest(manifest_path)
+    if (
+        expected_artifact_type is not None
+        and manifest.artifact_type != expected_artifact_type
+    ):
+        raise ArtifactContractError(
+            "Cloud artifact type mismatch: "
+            f"{manifest.artifact_type} != {expected_artifact_type}"
+        )
     if manifest.data_filename != data_path.name:
         raise ArtifactContractError("Manifest data filename mismatch")
     if sha256_file(data_path) != manifest.data_sha256:
         raise ArtifactContractError("Cloud artifact data checksum mismatch")
     if _read_jsonl_count(data_path) != manifest.record_count:
         raise ArtifactContractError("Cloud artifact record count mismatch")
-    strict_identity_match = manifest.identity.get("job_sha256") == expected_identity.sha256
+    identity_payload = dict(manifest.identity)
+    manifest_job_sha256 = str(identity_payload.pop("job_sha256", ""))
+    if identity_payload:
+        derived_job_sha256 = canonical_sha256(identity_payload)
+        derived_reuse_sha256 = canonical_sha256(
+            {
+                key: value
+                for key, value in identity_payload.items()
+                if key != "input_sha256"
+            }
+        )
+        if manifest_job_sha256 != derived_job_sha256:
+            raise ArtifactContractError("Cloud artifact identity hash mismatch")
+        if (
+            manifest.reuse_sha256 is not None
+            and manifest.reuse_sha256 != derived_reuse_sha256
+        ):
+            raise ArtifactContractError("Cloud artifact reuse identity hash mismatch")
+    else:
+        derived_job_sha256 = manifest_job_sha256
+        derived_reuse_sha256 = manifest.reuse_sha256
+    strict_identity_match = derived_job_sha256 == expected_identity.sha256
     if not strict_identity_match:
-        if not allow_reuse or manifest.reuse_sha256 != expected_identity.reuse_sha256:
+        if (
+            not allow_reuse
+            or derived_reuse_sha256 is None
+            or derived_reuse_sha256 != expected_identity.reuse_sha256
+        ):
             raise ArtifactContractError("Cloud artifact job identity mismatch")
     checkpoint_path = None
     if manifest.checkpoint_filename is not None:
@@ -168,7 +203,10 @@ def load_cloud_artifact(
             raise ArtifactContractError(
                 f"Cloud artifact checkpoint is missing: {checkpoint_path}"
             )
-        if manifest.checkpoint_sha256 is None or sha256_file(checkpoint_path) != manifest.checkpoint_sha256:
+        if (
+            manifest.checkpoint_sha256 is None
+            or sha256_file(checkpoint_path) != manifest.checkpoint_sha256
+        ):
             raise ArtifactContractError("Cloud artifact checkpoint checksum mismatch")
     if not allow_partial and not manifest.completion.is_complete:
         raise ArtifactContractError(

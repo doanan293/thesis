@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import requests
 
@@ -30,6 +31,18 @@ class LlamaCppRequestError(LlamaCppError):
 
 class LlamaCppResponseError(LlamaCppError):
     pass
+
+
+@dataclass(frozen=True)
+class CompletionPromptTiming:
+    cached_tokens: int
+    evaluated_tokens: int
+
+
+@dataclass(frozen=True)
+class CompletionRerankResult:
+    score: float
+    timing: CompletionPromptTiming | None = None
 
 
 class LlamaCppClient:
@@ -197,18 +210,33 @@ class LlamaCppClient:
         self._token_ids[key] = tokens[0]
         return tokens[0]
 
-    def rerank_completion(self, prompt: str, model: str) -> float:
-        from corpus_pipeline.runtime.model_profiles import qwen3_rerank_contract
-
-        contract = qwen3_rerank_contract()
-        yes_id = self._single_token_id("yes", model)
-        no_id = self._single_token_id("no", model)
+    def _completion_token_ids(
+        self, model: str, contract: RerankContract
+    ) -> tuple[int, int]:
+        scoring = contract.scoring
+        if contract.protocol != "completion_logprobs" or scoring is None:
+            raise ValueError("completion token lookup requires a completion contract")
+        yes_id = self._single_token_id(scoring.positive_token, model)
+        no_id = self._single_token_id(scoring.negative_token, model)
         if yes_id == no_id:
             raise LlamaCppResponseError(
-                "Rerank yes and no candidates must use different tokens"
+                "Rerank completion candidates must use different tokens"
             )
+        return yes_id, no_id
+
+    def rerank_completion(
+        self, prompt: str, model: str, contract: RerankContract | None = None
+    ) -> float:
+        if contract is None:
+            from corpus_pipeline.runtime.model_profiles import qwen3_rerank_contract
+
+            contract = qwen3_rerank_contract()
+        yes_id, no_id = self._completion_token_ids(model, contract)
         payload = self._request(
-            "/completion", self.completion_payload(prompt, contract, model=model, yes_id=yes_id, no_id=no_id)
+            "/completion",
+            self.completion_payload(
+                prompt, contract, model=model, yes_id=yes_id, no_id=no_id
+            ),
         )
         return self._parse_completion_score(payload, yes_id, no_id)
 
@@ -220,6 +248,7 @@ class LlamaCppClient:
         model: str = "",
         yes_id: int,
         no_id: int,
+        cache_prompt: bool = True,
     ) -> dict:
         scoring = contract.scoring
         if contract.protocol != "completion_logprobs" or scoring is None:
@@ -227,6 +256,7 @@ class LlamaCppClient:
         return {
             "model": model,
             "prompt": prompt,
+            "cache_prompt": bool(cache_prompt),
             "n_predict": scoring.n_predict,
             "temperature": scoring.temperature,
             "samplers": list(scoring.samplers),
@@ -236,7 +266,9 @@ class LlamaCppClient:
             "logit_bias": [[yes_id, scoring.logit_bias], [no_id, scoring.logit_bias]],
         }
 
-    def _parse_completion_score(self, payload: dict, yes_id: int, no_id: int) -> float:
+    def _parse_completion_result(
+        self, payload: dict, yes_id: int, no_id: int
+    ) -> CompletionRerankResult:
         probabilities = payload.get("completion_probabilities")
         if not isinstance(probabilities, list) or not probabilities:
             raise LlamaCppResponseError(
@@ -280,11 +312,53 @@ class LlamaCppClient:
             raise LlamaCppResponseError(
                 "Completion rerank candidate probability total must be positive"
             )
-        return candidate_probabilities[yes_id] / total
+        timing = None
+        raw_timing = payload.get("timings")
+        if isinstance(raw_timing, dict):
+            cached = raw_timing.get("cache_n")
+            evaluated = raw_timing.get("prompt_n")
+            if (
+                isinstance(cached, int)
+                and not isinstance(cached, bool)
+                and isinstance(evaluated, int)
+                and not isinstance(evaluated, bool)
+                and cached >= 0
+                and evaluated >= 0
+            ):
+                timing = CompletionPromptTiming(cached, evaluated)
+        return CompletionRerankResult(
+            candidate_probabilities[yes_id] / total,
+            timing,
+        )
+
+    def _parse_completion_score(self, payload: dict, yes_id: int, no_id: int) -> float:
+        return self._parse_completion_result(payload, yes_id, no_id).score
 
     async def rerank_completions_async(
-        self, prompts: list[str], model: str, concurrency: int = 16, contract: RerankContract | None = None
+        self,
+        prompts: list[str],
+        model: str,
+        concurrency: int = 16,
+        contract: RerankContract | None = None,
+        cache_prompt: bool = True,
     ) -> list[float]:
+        results = await self.rerank_completion_results_async(
+            prompts,
+            model,
+            concurrency=concurrency,
+            contract=contract,
+            cache_prompt=cache_prompt,
+        )
+        return [result.score for result in results]
+
+    async def rerank_completion_results_async(
+        self,
+        prompts: list[str],
+        model: str,
+        concurrency: int = 16,
+        contract: RerankContract | None = None,
+        cache_prompt: bool = True,
+    ) -> list[CompletionRerankResult]:
         if not prompts:
             return []
         if contract is None:
@@ -295,20 +369,22 @@ class LlamaCppClient:
 
         import httpx
 
-        yes_id = self._single_token_id("yes", model)
-        no_id = self._single_token_id("no", model)
-        if yes_id == no_id:
-            raise LlamaCppResponseError(
-                "Rerank yes and no candidates must use different tokens"
-            )
+        yes_id, no_id = self._completion_token_ids(model, contract)
 
         semaphore = asyncio.Semaphore(max(1, concurrency))
 
-        async def _fetch_one(async_client: httpx.AsyncClient, prompt: str) -> float:
+        async def _fetch_one(
+            async_client: httpx.AsyncClient, prompt: str
+        ) -> CompletionRerankResult:
             async with semaphore:
                 url = f"{self.base_url}/completion"
                 payload = self.completion_payload(
-                    prompt, contract, model=model, yes_id=yes_id, no_id=no_id
+                    prompt,
+                    contract,
+                    model=model,
+                    yes_id=yes_id,
+                    no_id=no_id,
+                    cache_prompt=cache_prompt,
                 )
                 last_error: LlamaCppRequestError | None = None
                 for attempt in range(1, self.max_attempts + 1):
@@ -347,8 +423,14 @@ class LlamaCppClient:
                                 raise LlamaCppResponseError(
                                     "llama.cpp response for /completion must be an object"
                                 )
-                            return self._parse_completion_score(res_json, yes_id, no_id)
-                    if last_error is None or not last_error.retryable or attempt >= self.max_attempts:
+                            return self._parse_completion_result(
+                                res_json, yes_id, no_id
+                            )
+                    if (
+                        last_error is None
+                        or not last_error.retryable
+                        or attempt >= self.max_attempts
+                    ):
                         break
                     await asyncio.sleep(self.retry_delay_seconds * attempt)
                 assert last_error is not None
@@ -367,7 +449,9 @@ class LlamaCppClient:
             except Exception as exc:
                 retryable = isinstance(
                     exc,
-                    requests.exceptions.RequestException | ConnectionError | TimeoutError,
+                    requests.exceptions.RequestException
+                    | ConnectionError
+                    | TimeoutError,
                 )
                 last_error = LlamaCppRequestError(
                     f"llama.cpp request failed for {path}: {exc}",
@@ -396,7 +480,11 @@ class LlamaCppClient:
                             f"llama.cpp response for {path} must be an object"
                         )
                     return result
-            if last_error is None or not last_error.retryable or attempt >= self.max_attempts:
+            if (
+                last_error is None
+                or not last_error.retryable
+                or attempt >= self.max_attempts
+            ):
                 break
             self._sleep(self.retry_delay_seconds * attempt)
         assert last_error is not None

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import threading
+import time
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,6 +29,75 @@ class OperationSample:
     latency_seconds: float
     status: str
     retries: int
+    prompt_tokens_cached: int | None = None
+    prompt_tokens_evaluated: int | None = None
+
+
+@dataclass(frozen=True)
+class ProcessRssSample:
+    server_index: int
+    rss_mib: float
+    elapsed_seconds: float = 0.0
+
+
+def parse_process_rss_mib(text: str) -> float:
+    for line in text.splitlines():
+        if line.startswith("VmRSS:"):
+            fields = line.split()
+            if len(fields) < 2:
+                break
+            value = float(fields[1])
+            if value < 0:
+                raise ValueError("process RSS must be non-negative")
+            return value / 1024.0
+    raise ValueError("VmRSS is missing")
+
+
+class ProcessRssSampler:
+    def __init__(self, interval_seconds: float = 2.0):
+        self.interval_seconds = max(0.1, float(interval_seconds))
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._processes: dict[int, int] = {}
+        self._lock = threading.Lock()
+        self.status = "unavailable"
+        self.error_category: str | None = None
+
+    def register(self, processes: dict[int, int]) -> None:
+        with self._lock:
+            self._processes = dict(processes)
+
+    def start(self, callback: Callable[[ProcessRssSample], None]) -> None:
+        started = time.monotonic()
+
+        def run() -> None:
+            while not self._stop.is_set():
+                with self._lock:
+                    processes = dict(self._processes)
+                for server_index, pid in processes.items():
+                    try:
+                        sample = parse_process_rss_mib(
+                            Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+                        )
+                        callback(
+                            ProcessRssSample(
+                                server_index,
+                                sample,
+                                max(0.0, time.monotonic() - started),
+                            )
+                        )
+                        self.status = "available"
+                    except (OSError, ValueError):
+                        self.error_category = "sampling_failed"
+                self._stop.wait(self.interval_seconds)
+
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=6)
 
 
 def _number(value: str, label: str) -> float:
@@ -133,6 +204,7 @@ class RuntimeTelemetry:
         *,
         sample_interval_seconds: float = 2.0,
         sampler: NvidiaSmiSampler | None = None,
+        process_sampler: ProcessRssSampler | None = None,
     ):
         self.stage = str(stage)
         self.model = str(model)
@@ -140,6 +212,10 @@ class RuntimeTelemetry:
         self.gpu_samples: list[GpuSample] = []
         self.operations: list[OperationSample] = []
         self.sampler = sampler or NvidiaSmiSampler(sample_interval_seconds)
+        self.process_sampler = process_sampler or ProcessRssSampler(
+            sample_interval_seconds
+        )
+        self.process_rss_samples: list[ProcessRssSample] = []
         self.gpu_sampling_status = "unavailable"
         self.gpu_sampling_error: str | None = None
         self._closed = False
@@ -147,6 +223,12 @@ class RuntimeTelemetry:
             self.sampler.start(self.record_gpu_sample)
         except (OSError, RuntimeError, ValueError) as exc:
             self.gpu_sampling_error = type(exc).__name__
+        try:
+            self.process_sampler.start(self.record_process_rss_sample)
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.process_sampling_error = type(exc).__name__
+        else:
+            self.process_sampling_error = None
 
     def record_gpu_sample(self, sample: GpuSample) -> None:
         self.gpu_samples.append(sample)
@@ -160,9 +242,14 @@ class RuntimeTelemetry:
         latency_seconds: float,
         status: str,
         retries: int,
+        prompt_tokens_cached: int | None = None,
+        prompt_tokens_evaluated: int | None = None,
     ) -> None:
         if item_count < 0 or input_characters < 0 or latency_seconds < 0 or retries < 0:
             raise ValueError("telemetry operation values must be non-negative")
+        for value in (prompt_tokens_cached, prompt_tokens_evaluated):
+            if value is not None and (isinstance(value, bool) or value < 0):
+                raise ValueError("prompt timing values must be non-negative integers")
         self.operations.append(
             OperationSample(
                 int(server_index),
@@ -171,8 +258,16 @@ class RuntimeTelemetry:
                 float(latency_seconds),
                 str(status),
                 int(retries),
+                prompt_tokens_cached,
+                prompt_tokens_evaluated,
             )
         )
+
+    def register_server_processes(self, processes: dict[int, int]) -> None:
+        self.process_sampler.register(processes)
+
+    def record_process_rss_sample(self, sample: ProcessRssSample) -> None:
+        self.process_rss_samples.append(sample)
 
     def summary(self) -> dict:
         latency = [item.latency_seconds for item in self.operations]
@@ -192,14 +287,32 @@ class RuntimeTelemetry:
                 "memory_used_mib_peak": max(s.memory_used_mib for s in samples),
                 "power_draw_watts_mean": sum(s.power_draw_watts for s in samples)
                 / len(samples),
-                "temperature_celsius_peak": max(
-                    s.temperature_celsius for s in samples
-                ),
+                "temperature_celsius_peak": max(s.temperature_celsius for s in samples),
                 "sample_count": len(samples),
             }
         statuses: dict[str, int] = defaultdict(int)
         for operation in self.operations:
             statuses[operation.status] += 1
+        cached_values = [
+            item.prompt_tokens_cached
+            for item in self.operations
+            if item.prompt_tokens_cached is not None
+        ]
+        evaluated_values = [
+            item.prompt_tokens_evaluated
+            for item in self.operations
+            if item.prompt_tokens_evaluated is not None
+        ]
+        cached_total = sum(cached_values) if cached_values else None
+        evaluated_total = sum(evaluated_values) if evaluated_values else None
+        timing_total = (
+            cached_total + evaluated_total
+            if cached_total is not None and evaluated_total is not None
+            else None
+        )
+        rss_by_server: dict[int, list[ProcessRssSample]] = defaultdict(list)
+        for sample in self.process_rss_samples:
+            rss_by_server[sample.server_index].append(sample)
         return {
             "stage": self.stage,
             "model": self.model,
@@ -215,9 +328,29 @@ class RuntimeTelemetry:
                 "retries": sum(item.retries for item in self.operations),
                 "latency_p50_seconds": _percentile(latency, 0.50),
                 "latency_p95_seconds": _percentile(latency, 0.95),
+                "prompt_tokens_cached": cached_total,
+                "prompt_tokens_evaluated": evaluated_total,
+                "prompt_cache_hit_ratio": (
+                    cached_total / timing_total if timing_total else None
+                ),
                 "statuses": dict(sorted(statuses.items())),
             },
             "gpu": gpu,
+            "process_sampling_status": getattr(
+                self.process_sampler, "status", "unavailable"
+            ),
+            "process_sampling_error": getattr(self, "process_sampling_error", None)
+            or getattr(self.process_sampler, "error_category", None),
+            "servers": {
+                str(index): {
+                    "rss_mib_start": values[0].rss_mib,
+                    "rss_mib_peak": max(item.rss_mib for item in values),
+                    "rss_mib_final": values[-1].rss_mib,
+                    "post_warmup_slope_mib_per_minute": self._rss_slope(values),
+                    "sample_count": len(values),
+                }
+                for index, values in sorted(rss_by_server.items())
+            },
         }
 
     def write_report(self) -> Path:
@@ -237,3 +370,23 @@ class RuntimeTelemetry:
             return
         self._closed = True
         self.sampler.stop()
+        self.process_sampler.stop()
+
+    @staticmethod
+    def _rss_slope(samples: list[ProcessRssSample]) -> float | None:
+        if len(samples) < 2:
+            return None
+        first_time = samples[0].elapsed_seconds
+        last_time = samples[-1].elapsed_seconds
+        warmup_cutoff = first_time + (last_time - first_time) * 0.2
+        post_warmup = [
+            item for item in samples if item.elapsed_seconds >= warmup_cutoff
+        ]
+        if len(post_warmup) < 2:
+            return None
+        start, end = post_warmup[0], post_warmup[-1]
+        elapsed_minutes = (end.elapsed_seconds - start.elapsed_seconds) / 60.0
+        if elapsed_minutes <= 0:
+            return None
+        slope = (end.rss_mib - start.rss_mib) / elapsed_minutes
+        return slope if math.isfinite(slope) else None

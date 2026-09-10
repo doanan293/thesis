@@ -9,8 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 3
 
 
 def canonical_sha256(value: object) -> str:
@@ -121,6 +120,7 @@ class RuntimeProfileIdentity:
         model: str,
         model_sha256: str,
         runtime_sha256: str,
+        inference_cache_policy_sha256: str,
         machine_shape: str,
         topology: str,
         search_space: RuntimeSearchSpace,
@@ -133,6 +133,9 @@ class RuntimeProfileIdentity:
             "model": model,
             "model_sha256": _require_sha256(model_sha256, "model_sha256"),
             "runtime_sha256": _require_sha256(runtime_sha256, "runtime_sha256"),
+            "inference_cache_policy_sha256": _require_sha256(
+                inference_cache_policy_sha256, "inference_cache_policy_sha256"
+            ),
             "machine_shape": machine_shape,
             "topology": topology,
             "search_space_sha256": search_space.sha256,
@@ -284,7 +287,8 @@ class RuntimeProfileStore:
     def save(self, profile: RuntimeProfile, *, model_slug: str) -> Path:
         destination = self.path(profile.identity, model_slug=model_slug)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        handle = tempfile.NamedTemporaryFile(
+        # The handle is closed in the try block before the atomic replacement.
+        handle = tempfile.NamedTemporaryFile(  # noqa: SIM115
             mode="w",
             encoding="utf-8",
             dir=destination.parent,

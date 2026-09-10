@@ -37,6 +37,8 @@ class BenchmarkMeasurement:
     status: str = "ok"
     error_category: str | None = None
     warmup: bool = False
+    cache_prompt: bool | None = None
+    latency_p95_seconds: float | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -47,12 +49,20 @@ class BenchmarkMeasurement:
                 raise ValueError(f"{name} must be non-negative")
         if not math.isfinite(self.elapsed_seconds) or self.elapsed_seconds < 0:
             raise ValueError("elapsed_seconds must be finite and non-negative")
+        if self.latency_p95_seconds is not None and (
+            not math.isfinite(self.latency_p95_seconds) or self.latency_p95_seconds < 0
+        ):
+            raise ValueError("latency_p95_seconds must be finite and non-negative")
         if self.level.batch_size < 1 or self.level.concurrency < 1:
             raise ValueError("benchmark level values must be positive")
 
     @property
     def characters_per_second(self) -> float:
-        return self.input_characters / self.elapsed_seconds if self.elapsed_seconds else math.inf
+        return (
+            self.input_characters / self.elapsed_seconds
+            if self.elapsed_seconds
+            else math.inf
+        )
 
 
 @dataclass(frozen=True)
@@ -67,11 +77,56 @@ class BenchmarkReport:
             "schema_version": self.schema_version,
             "workload": asdict(self.workload),
             "measurements": [asdict(item) for item in self.measurements],
-            "recommendation": asdict(self.recommendation) if self.recommendation else None,
+            "recommendation": asdict(self.recommendation)
+            if self.recommendation
+            else None,
         }
 
     def to_json(self) -> str:
-        return json.dumps(self.to_payload(), ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        return (
+            json.dumps(self.to_payload(), ensure_ascii=False, sort_keys=True, indent=2)
+            + "\n"
+        )
+
+
+@dataclass(frozen=True)
+class CacheComparison:
+    enabled_rate: float
+    disabled_rate: float
+    enabled_latency_p95_seconds: float | None
+    disabled_latency_p95_seconds: float | None
+    max_abs_score_delta: float
+    top10_agreement: float
+    accepted: bool
+
+
+def compare_cache_arms(
+    enabled: BenchmarkMeasurement,
+    disabled: BenchmarkMeasurement,
+    *,
+    max_abs_score_delta: float,
+    top10_agreement: float,
+) -> CacheComparison:
+    performance_ok = (
+        enabled.characters_per_second >= disabled.characters_per_second * 0.97
+        or (
+            enabled.latency_p95_seconds is not None
+            and disabled.latency_p95_seconds is not None
+            and enabled.latency_p95_seconds <= disabled.latency_p95_seconds * 1.03
+        )
+    )
+    accepted = (
+        performance_ok and max_abs_score_delta <= 1e-4 and top10_agreement >= 0.99
+    )
+    return CacheComparison(
+        enabled.characters_per_second,
+        disabled.characters_per_second,
+        enabled.latency_p95_seconds,
+        disabled.latency_p95_seconds,
+        max_abs_score_delta,
+        top10_agreement,
+        accepted,
+    )
 
 
 def stratified_sample(items, count: int, key, length) -> tuple:
@@ -110,16 +165,26 @@ def embedding_levels(profile: EmbeddingWorkloadProfile) -> tuple[BenchmarkLevel,
 
 
 def rerank_levels(profile: RerankRuntimeProfile) -> tuple[BenchmarkLevel, ...]:
-    return tuple(BenchmarkLevel(concurrency=value) for value in profile.benchmark_concurrency)
+    return tuple(
+        BenchmarkLevel(concurrency=value) for value in profile.benchmark_concurrency
+    )
 
 
-def recommend(measurements: list[BenchmarkMeasurement] | tuple[BenchmarkMeasurement, ...]) -> BenchmarkLevel | None:
+def recommend(
+    measurements: list[BenchmarkMeasurement] | tuple[BenchmarkMeasurement, ...],
+) -> BenchmarkLevel | None:
     valid = [
-        item for item in measurements
-        if item.status == "ok" and not item.warmup and math.isfinite(item.characters_per_second)
+        item
+        for item in measurements
+        if item.status == "ok"
+        and not item.warmup
+        and item.cache_prompt is not False
+        and math.isfinite(item.characters_per_second)
     ]
     if not valid:
         return None
     best_rate = max(item.characters_per_second for item in valid)
     tied = [item for item in valid if item.characters_per_second >= best_rate * 0.98]
-    return min(tied, key=lambda item: (item.level.concurrency, item.level.batch_size)).level
+    return min(
+        tied, key=lambda item: (item.level.concurrency, item.level.batch_size)
+    ).level

@@ -64,10 +64,11 @@ def test_prepare_bundle_serializes_mounted_input_descriptors(tmp_path):
         job,
         root=tmp_path / "bundle",
         dataset_references=["owner/runtime"],
-        checkpoint_reference=None,
+        checkpoint_reference="secondary-user/checkpoint-slug",
         total_budget_seconds=60,
     )
     config = json.loads((bundle / "stage_config.json").read_text(encoding="utf-8"))
+    metadata = json.loads((bundle / "kernel-metadata.json").read_text(encoding="utf-8"))
     mounted_root = Path("/kaggle/input") / input_dataset_slug(job)
 
     assert config["input_files"] == {
@@ -80,6 +81,8 @@ def test_prepare_bundle_serializes_mounted_input_descriptors(tmp_path):
     }
     assert "candidate_path" not in config
     assert "candidate_manifest_path" not in config
+    assert "secondary-user/checkpoint-slug" in metadata["dataset_sources"]
+    assert "owner/checkpoint-slug" not in metadata["dataset_sources"]
 
 
 def test_kernel_references_prefer_sixteen_characters_and_keep_legacy(tmp_path):
