@@ -67,6 +67,9 @@ class LlamaCppCompletionReranker:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._token_ids: dict[str, int] = {}
 
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
     async def rerank(self, query: str, hits: Sequence[Hit], top_n: int) -> list[Hit]:
         if not hits:
             return []
@@ -174,6 +177,9 @@ class NativeReranker:
         self._http = http
         self._model = model
         self._semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
 
     async def rerank(self, query: str, hits: Sequence[Hit], top_n: int) -> list[Hit]:
         if not hits:
