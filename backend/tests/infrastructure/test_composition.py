@@ -16,6 +16,7 @@ async def test_build_application_wires_real_adapters(
 ) -> None:
     monkeypatch.setenv("PHARMA_LLM__DEFAULT__API_KEY", "sk-test")
     monkeypatch.setenv("PHARMA_SKILLS_DIR", str(tmp_path))
+    monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
     app = build_application(Settings(_env_file=None))
     assert isinstance(app.runner, ChatTurnRunner)
     assert isinstance(app.deps.llm, OpenAiLlmAdapter)
@@ -30,6 +31,7 @@ async def test_build_application_respects_rerank_none(
     monkeypatch.setenv("PHARMA_LLM__DEFAULT__API_KEY", "sk-test")
     monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "none")
     monkeypatch.setenv("PHARMA_SKILLS_DIR", str(tmp_path))
+    monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
     app = build_application(Settings(_env_file=None))
     assert isinstance(app.reranker, NoopReranker)
     await app.aclose()

@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -48,7 +48,7 @@ class FakeLlm:
         assert isinstance(item, schema), (
             f"scripted {type(item).__name__} but node asked for {schema.__name__}"
         )
-        return cast(T, item), LlmUsage(prompt_tokens=100, completion_tokens=10)
+        return item, LlmUsage(prompt_tokens=100, completion_tokens=10)
 
     async def stream(
         self, role: LlmRole, messages: Sequence[ChatMessage]

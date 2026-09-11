@@ -73,6 +73,7 @@ def build_application(settings: Settings) -> Application:
         url=settings.qdrant.url,
         api_key=settings.qdrant.api_key,
         timeout=int(settings.qdrant.timeout_seconds),
+        check_compatibility=settings.qdrant.check_compatibility,
     )
     retriever = QdrantHybridRetriever(
         qdrant,
