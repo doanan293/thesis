@@ -60,3 +60,36 @@ def test_missing_api_key_means_not_configured(monkeypatch: pytest.MonkeyPatch) -
     assert settings.llm.configured is False
     with pytest.raises(ValueError, match="api_key"):
         settings.llm.resolve(LlmRole.ANSWER)
+
+
+def test_platform_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("PHARMA_AUTH__JWT_SECRET", "PHARMA_POSTGRES__DSN"):
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=None)
+    assert (
+        settings.postgres.dsn
+        == "postgresql+psycopg://thesis:thesis@localhost:5433/thesis"
+    )
+    assert (
+        settings.postgres.conninfo == "postgresql://thesis:thesis@localhost:5433/thesis"
+    )
+    assert settings.memory.summary_every_turns == 2
+    assert settings.memory.context_turns == 4
+    assert settings.auth.google_enabled is False
+    with pytest.raises(ValueError, match="PHARMA_AUTH__JWT_SECRET"):
+        settings.auth.require_jwt_secret()
+
+
+def test_auth_secret_and_google(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PHARMA_AUTH__JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("PHARMA_AUTH__GOOGLE_CLIENT_ID", "id")
+    monkeypatch.setenv("PHARMA_AUTH__GOOGLE_CLIENT_SECRET", "secret")
+    settings = Settings(_env_file=None)
+    assert settings.auth.require_jwt_secret() == "x" * 40
+    assert settings.auth.google_enabled is True
+
+
+def test_short_jwt_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PHARMA_AUTH__JWT_SECRET", "short")
+    with pytest.raises(ValueError, match="at least 32"):
+        Settings(_env_file=None)

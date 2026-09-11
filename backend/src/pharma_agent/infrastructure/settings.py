@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pharma_agent.domain.agent.budget import BudgetLimits
@@ -105,6 +105,54 @@ class LangfuseSettings(BaseModel):
         return bool(self.public_key and self.secret_key)
 
 
+class PostgresSettings(BaseModel):
+    dsn: str = "postgresql+psycopg://thesis:thesis@localhost:5433/thesis"
+    pool_size: int = 10
+    echo: bool = False
+
+    @property
+    def conninfo(self) -> str:
+        """libpq connection string for psycopg (the checkpointer pool)."""
+        return self.dsn.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+class AuthSettings(BaseModel):
+    jwt_secret: SecretStr | None = None
+    jwt_lifetime_seconds: int = 7 * 24 * 3600
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    frontend_url: str = "http://localhost:3000"
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _secret_length(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("jwt_secret must be at least 32 characters")
+        return value
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    def require_jwt_secret(self) -> str:
+        if self.jwt_secret is None:
+            raise ValueError("set PHARMA_AUTH__JWT_SECRET (at least 32 characters)")
+        return self.jwt_secret.get_secret_value()
+
+
+class ApiSettings(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8000
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+
+
+class MemorySettings(BaseModel):
+    context_turns: int = 4
+    context_chars: int = 4000
+    summary_every_turns: int = 2
+    summary_max_chars: int = 1500
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PHARMA_",
@@ -119,4 +167,8 @@ class Settings(BaseSettings):
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     budget: BudgetLimits = Field(default_factory=BudgetLimits)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
+    api: ApiSettings = Field(default_factory=ApiSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
     skills_dir: Path = Path("skills")
