@@ -16,3 +16,8 @@ Thumbs.db
 # models and local keys
 ai-models/
 **/ai-models/
+
+# tool caches
+.pytest_cache/
+.ruff_cache/
+.pyrefly/

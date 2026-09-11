@@ -1,36 +1,8 @@
 project-includes = ["src", "tests"]
-
-project-excludes = [
-    "**/.venv/**",
-    "**/venv/**",
-    "**/build/**",
-    "**/dist/**",
-    "**/__pycache__/**",
-    "**/*.pyc",
-]
-
-search-path = [
-    "src",
-]
-
-site-package-path = [".venv/lib/python3.12/site-packages"]
-
+project-excludes = ["**/.venv/**", "**/__pycache__/**", "**/*.pyc"]
+search-path = ["src", "."]
 python-version = "3.12"
 ignore-errors-in-generated-code = true
-
-[errors]
-bad-argument-type = false
-bad-raise = false
-missing-argument = false
-unexpected-keyword = false
-missing-attribute = false
-bad-assignment = false
-untyped-import = false
-unnecessary-type-conversion = false
-missing-module-attribute = false
-unsupported-operation = false
-bad-specialization = false
-no-matching-overload = false
 
 [[sub-config]]
 matches = "**/tests/**"

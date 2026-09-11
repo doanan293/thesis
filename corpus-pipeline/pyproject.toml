@@ -27,57 +27,20 @@ dependencies = [
     "zstandard==0.25.0",
 ]
 
-[tool.ruff]
-target-version = "py312"
-line-length = 88
-src = ["src"]
-
-[tool.ruff.lint]
-select = [
-    "E",
-    "W",
-    "F",
-    "I",
-    "B",
-    "C4",
-    "UP",
-    "SIM",
-    "RUF",
-]
-ignore = ["E501", "RUF001", "RUF002", "RUF003", "E402", "E741", "SIM102", "B904", "B020"]
-
-[tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["B011", "B023", "RUF012", "SIM117"]
-
-[tool.ruff.format]
-docstring-code-format = true
-
-[dependency-groups]
-dev = [
-    "pre-commit==4.6.1",
-    "pytest==9.1.1",
-    "pytest-asyncio==1.4.0",
-    "pyrefly==1.1.1",
-    "ruff==0.15.22",
-]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = [
-    "src/corpus_pipeline",
-]
-
 [project.scripts]
 corpus = "corpus_pipeline.cli.app:main"
 
+[dependency-groups]
+dev = [
+    "pre-commit==4.6.2",
+    "pyrefly==1.3.0",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.16.7",
+]
+
 [tool.uv]
 package = true
-
-[tool.pytest.ini_options]
-addopts = "--import-mode=importlib"
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -87,3 +50,17 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+extend = "../ruff.toml"
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: needs Docker (run with -m integration)"]
+addopts = ["--import-mode=importlib", "-m", "not integration"]

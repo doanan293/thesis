@@ -1,0 +1,18 @@
+# Shared Ruff configuration for every Python project in this repository.
+# Projects extend it from their pyproject.toml and only set `src`.
+target-version = "py312"
+line-length = 88
+# Vendored agent skills are third-party content managed by skills-lock.json.
+extend-exclude = [".agents"]
+
+[lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
+# E501: line length is owned by the formatter.
+# RUF001-003: Vietnamese text legitimately uses characters Ruff flags as ambiguous.
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "typer.Option", "typer.Argument"]
+
+[format]
+docstring-code-format = true
