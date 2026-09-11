@@ -1,0 +1,12 @@
+project-includes = ["src", "tests"]
+project-excludes = ["**/.venv/**", "**/__pycache__/**", "**/*.pyc"]
+search-path = ["src", "."]
+python-version = "3.12"
+ignore-errors-in-generated-code = true
+
+[[sub-config]]
+matches = "**/tests/**"
+
+[sub-config.errors]
+implicit-any = false
+missing-override-decorator = false
