@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient
 
@@ -47,7 +48,9 @@ class Application:
             await close_reranker()
 
 
-def build_application(settings: Settings) -> Application:
+def build_application(
+    settings: Settings, *, checkpointer: BaseCheckpointSaver | None = None
+) -> Application:
     if settings.langfuse.enabled:
         os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse.public_key or "")
         os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse.secret_key or "")
@@ -107,7 +110,9 @@ def build_application(settings: Settings) -> Application:
         skills=FileSystemSkillCatalog(settings.skills_dir),
         clock=SystemClock(),
     )
-    runner = ChatTurnRunner(build_chat_graph(), deps, settings.budget)
+    runner = ChatTurnRunner(
+        build_chat_graph(checkpointer=checkpointer), deps, settings.budget
+    )
     return Application(
         settings=settings,
         deps=deps,

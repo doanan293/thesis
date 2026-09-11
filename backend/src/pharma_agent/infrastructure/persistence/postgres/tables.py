@@ -33,6 +33,18 @@ NAMING_CONVENTION = {
 }
 
 
+# Tables created and migrated by langgraph-checkpoint-postgres (AsyncPostgresSaver.setup),
+# not by Alembic. Autogenerate must never propose changes to them.
+EXTERNALLY_MANAGED_TABLES = frozenset(
+    {"checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations"}
+)
+
+
+def include_name(name: str | None, type_: str, parent_names: object) -> bool:
+    """Alembic `include_name` hook: skip tables owned by the LangGraph checkpointer."""
+    return not (type_ == "table" and name in EXTERNALLY_MANAGED_TABLES)
+
+
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 

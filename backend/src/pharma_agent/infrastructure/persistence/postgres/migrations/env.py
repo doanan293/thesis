@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from pharma_agent.infrastructure.persistence.postgres.tables import Base
+from pharma_agent.infrastructure.persistence.postgres.tables import Base, include_name
 from pharma_agent.infrastructure.settings import Settings
 
 config = context.config
@@ -26,6 +26,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -33,7 +34,10 @@ def run_migrations_offline() -> None:
 
 def _run_with_connection(connection: Connection) -> None:
     context.configure(
-        connection=connection, target_metadata=target_metadata, compare_type=True
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()

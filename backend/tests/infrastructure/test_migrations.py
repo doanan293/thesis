@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from pharma_agent.infrastructure.persistence.postgres.alembic_config import (
     alembic_config,
 )
-from pharma_agent.infrastructure.persistence.postgres.tables import Base
+from pharma_agent.infrastructure.persistence.postgres.tables import Base, include_name
 
 pytestmark = pytest.mark.integration
 
@@ -24,7 +24,9 @@ EXPECTED_TABLES = {
 
 
 def _diff(connection: Connection) -> list[object]:
-    context = MigrationContext.configure(connection, opts={"compare_type": True})
+    context = MigrationContext.configure(
+        connection, opts={"compare_type": True, "include_name": include_name}
+    )
     return list(compare_metadata(context, Base.metadata))
 
 
