@@ -609,19 +609,21 @@ def repair_split_syllables(text: str) -> str:
                 if len(w2) != 1 or not w2.isupper():
                     combined = w1_low + w2_low
                     combined_norm = _normalize_tone(combined)
-                    if combined_norm in NORM_SYLLABLES_DB:
-                        if (w1_low, w2_low) not in _exclusions:
-                            w1_norm = _normalize_tone(w1_low)
-                            w2_norm = _normalize_tone(w2_low)
-                            w1_is_word = w1_norm in NORM_SYLLABLES_DB
-                            w2_is_word = w2_norm in NORM_SYLLABLES_DB
-                            if (
-                                not w1_is_word
-                                or not w2_is_word
-                                or w1_low in PREFIXES
-                                or w2_low in SUFFIXES
-                            ):
-                                is_valid_merge = True
+                    if (
+                        combined_norm in NORM_SYLLABLES_DB
+                        and (w1_low, w2_low) not in _exclusions
+                    ):
+                        w1_norm = _normalize_tone(w1_low)
+                        w2_norm = _normalize_tone(w2_low)
+                        w1_is_word = w1_norm in NORM_SYLLABLES_DB
+                        w2_is_word = w2_norm in NORM_SYLLABLES_DB
+                        if (
+                            not w1_is_word
+                            or not w2_is_word
+                            or w1_low in PREFIXES
+                            or w2_low in SUFFIXES
+                        ):
+                            is_valid_merge = True
 
                 if is_valid_merge:
                     stack.pop()  # remove space

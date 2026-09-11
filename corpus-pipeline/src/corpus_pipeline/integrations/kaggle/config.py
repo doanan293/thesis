@@ -43,9 +43,7 @@ def resolve_account_profile(
     selected = selected.strip()
     match = ACCOUNT_NAME.fullmatch(selected)
     if match is None:
-        raise ValueError(
-            "Invalid Kaggle account profile; use acc1, acc2, acc3, ..."
-        )
+        raise ValueError("Invalid Kaggle account profile; use acc1, acc2, acc3, ...")
     prefix = f"KAGGLE_ACC{int(match.group(1))}"
     username_key = f"{prefix}_USERNAME"
     token_key = f"{prefix}_API_TOKEN"
@@ -94,7 +92,13 @@ def profile_runner_environment(
     environment = {
         key: value
         for key, value in environ.items()
-        if key not in {"KAGGLE_USERNAME", "KAGGLE_API_TOKEN", "KAGGLE_KEY", "KAGGLE_ACCOUNT_DEFAULT"}
+        if key
+        not in {
+            "KAGGLE_USERNAME",
+            "KAGGLE_API_TOKEN",
+            "KAGGLE_KEY",
+            "KAGGLE_ACCOUNT_DEFAULT",
+        }
         and ACCOUNT_KEY.fullmatch(key) is None
     }
     environment["KAGGLE_USERNAME"] = profile.username

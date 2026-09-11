@@ -150,7 +150,7 @@ BRAND_MATCH_STOPWORDS = {
 
 
 def normalize_match_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFD", str(value or "").lower())
+    normalized = unicodedata.normalize("NFD", (value or "").lower())
     without_marks = "".join(
         char for char in normalized if unicodedata.category(char) != "Mn"
     )
@@ -421,7 +421,7 @@ def make_row(
         "expected_title": section_label(section),
         "expected_chunk_id": expected_chunk_id,
         "expected_chunk_index": (
-            int(expected_chunk_index) if expected_chunk_index is not None else None
+            expected_chunk_index if expected_chunk_index is not None else None
         ),
         "expected_chunk_role": expected_chunk_role,
         "retrieval_granularity": retrieval_granularity,
@@ -950,13 +950,13 @@ def build_chunks_by_id(chunks: list[dict]) -> dict[str, dict]:
     return indexed
 
 
-def spread_items(items: list[dict], slots: int) -> list[dict]:
+def spread_items[T](items: list[T], slots: int) -> list[T]:
     if not items or slots <= 0:
         return []
     if len(items) <= slots:
         return items
-    selected = []
-    seen_indexes = set()
+    selected: list[T] = []
+    seen_indexes: set[int] = set()
     for offset in range(slots):
         index = min(len(items) - 1, (offset * len(items)) // slots)
         if index not in seen_indexes:
@@ -1015,7 +1015,7 @@ def allocate_quotas(
 class EvalRowAccumulator:
     def __init__(self) -> None:
         self.rows: list[dict] = []
-        self.seen_pairs: set[tuple[str, str]] = set()
+        self.seen_pairs: set[tuple[str, tuple[str, ...] | str]] = set()
         self.seen_queries: set[str] = set()
 
     def add(self, row: dict, prefer_existing: bool = False) -> bool:
@@ -1047,6 +1047,8 @@ def auto_candidate_chunks(
         chunks, key=lambda item: (item.get("chunk_key", 0), item.get("section_id", ""))
     ):
         section_id = chunk.get("section_id")
+        if not isinstance(section_id, str):
+            continue
         section = sections_by_id.get(section_id)
         if not section:
             continue
@@ -1508,7 +1510,7 @@ def product_aliases_for_section(section: dict) -> list[str]:
 
 
 def normalize_alias_key(alias: str) -> str:
-    return normalize_spaces(str(alias)).casefold()
+    return normalize_spaces(alias).casefold()
 
 
 def build_colloquial_alias_overlap_index(sections: list[dict]) -> dict[str, dict]:
@@ -2170,7 +2172,7 @@ def validate_rows(
     section_ids = {section["id"] for section in sections if section.get("id")}
     chunks_by_id = build_chunks_by_id(chunks or [])
     query_ids: set[str] = set()
-    query_pairs: set[tuple[str, str]] = set()
+    query_pairs: set[tuple[str, tuple[str, ...] | str]] = set()
     eval_groups: set[str] = set()
     source_families: set[str] = set()
     intent_categories: set[str] = set()
@@ -2232,8 +2234,10 @@ def validate_rows(
             try:
                 row_chunk_index = int(row.get("expected_chunk_index", -1))
                 actual_chunk_index = int(chunk.get("chunk_index", 0))
-            except (TypeError, ValueError):
-                raise ValueError(f"row {index} has non-integer expected_chunk_index")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"row {index} has non-integer expected_chunk_index"
+                ) from exc
             if row_chunk_index != actual_chunk_index:
                 raise ValueError(
                     f"row {index} has mismatched expected_chunk_index for {expected_chunk_id}: "

@@ -4,12 +4,9 @@ import re
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import TextIO
+from typing import Protocol, TextIO
 
-from corpus_pipeline.integrations.kaggle.api import (
-    KaggleCommandRunner,
-    kernel_logs_follow_command,
-)
+from corpus_pipeline.integrations.kaggle.api import kernel_logs_follow_command
 from corpus_pipeline.integrations.kaggle.errors import ErrorDisposition
 
 _TRANSIENT_MARKERS = (
@@ -66,9 +63,19 @@ def _emit_stdout(line: str) -> None:
     print(line, end="", flush=True)
 
 
+class FollowerCommandRunner(Protocol):
+    """Kaggle CLI runner used to stream kernel logs."""
+
+    def start(
+        self, args: list[str], /, *, capture_output: bool = False
+    ) -> subprocess.Popen[str] | None: ...
+
+    def redact(self, value: str, /) -> str: ...
+
+
 class ManagedLogFollower:
     def __init__(
-        self, runner: KaggleCommandRunner, reference: str, *, emit=_emit_stdout
+        self, runner: FollowerCommandRunner, reference: str, *, emit=_emit_stdout
     ):
         self.runner = runner
         self.reference = reference

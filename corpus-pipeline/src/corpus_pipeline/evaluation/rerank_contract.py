@@ -11,7 +11,7 @@ from corpus_pipeline.runtime.model_profiles import (
 
 
 def document_hash(document_text: str) -> str:
-    return hashlib.sha256(str(document_text).encode("utf-8")).hexdigest()
+    return hashlib.sha256(document_text.encode("utf-8")).hexdigest()
 
 
 def prompt_contract_hash(

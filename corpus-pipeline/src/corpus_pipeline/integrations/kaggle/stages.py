@@ -69,11 +69,13 @@ def _candidate_pair_count(path: Path) -> int:
 
 
 class StageAdapter(Protocol):
-    name: StageName
-    contract_version: int
+    @property
+    def name(self) -> StageName: ...
 
-    def build_job(self, request: StageRequest) -> StageJob:
-        raise NotImplementedError
+    @property
+    def contract_version(self) -> int: ...
+
+    def build_job(self, request: StageRequest) -> StageJob: ...
 
 
 def _required_runtime_profile(request: StageRequest) -> RuntimeCandidate:
@@ -308,23 +310,37 @@ class BenchmarkStage:
                 ],
             },
         )
-        output_dir = request.output_dir / self.name.value / spec.slug / identity.sha256[:12]
+        output_dir = (
+            request.output_dir / self.name.value / spec.slug / identity.sha256[:12]
+        )
         config = dict(base_job.worker_config)
-        config.update({
-            "stage": self.name.value,
-            "identity": identity.payload,
-            "job_sha256": identity.sha256,
-            "benchmark_levels": [
-                {"batch_size": item.batch_size, "concurrency": item.concurrency}
-                for item in levels
-            ],
-            "benchmark_candidates": [
-                candidate.to_dict() for candidate in search_space.candidates
-            ],
-            "benchmark_items": getattr(request, "benchmark_items", None)
-            or base_job.expected_total,
-        })
-        return replace(base_job, stage=self.name, contract_version=self.contract_version, identity=identity, output_dir=output_dir, local_cache_path=output_dir / "benchmark_results.jsonl", data_filename="benchmark_results.jsonl", worker_module="corpus_pipeline.integrations.kaggle.workers.benchmark", worker_config=config)
+        config.update(
+            {
+                "stage": self.name.value,
+                "identity": identity.payload,
+                "job_sha256": identity.sha256,
+                "benchmark_levels": [
+                    {"batch_size": item.batch_size, "concurrency": item.concurrency}
+                    for item in levels
+                ],
+                "benchmark_candidates": [
+                    candidate.to_dict() for candidate in search_space.candidates
+                ],
+                "benchmark_items": getattr(request, "benchmark_items", None)
+                or base_job.expected_total,
+            }
+        )
+        return replace(
+            base_job,
+            stage=self.name,
+            contract_version=self.contract_version,
+            identity=identity,
+            output_dir=output_dir,
+            local_cache_path=output_dir / "benchmark_results.jsonl",
+            data_filename="benchmark_results.jsonl",
+            worker_module="corpus_pipeline.integrations.kaggle.workers.benchmark",
+            worker_config=config,
+        )
 
 
 _ADAPTERS: dict[StageName, StageAdapter] = {
@@ -334,9 +350,15 @@ _ADAPTERS: dict[StageName, StageAdapter] = {
 }
 _ADAPTERS.update(
     {
-        StageName.RERANK_BENCHMARK: BenchmarkStage(StageName.RERANK_BENCHMARK, RerankStage()),
-        StageName.QUERY_EMBED_BENCHMARK: BenchmarkStage(StageName.QUERY_EMBED_BENCHMARK, QueryEmbedStage()),
-        StageName.CORPUS_EMBED_BENCHMARK: BenchmarkStage(StageName.CORPUS_EMBED_BENCHMARK, CorpusEmbedStage()),
+        StageName.RERANK_BENCHMARK: BenchmarkStage(
+            StageName.RERANK_BENCHMARK, RerankStage()
+        ),
+        StageName.QUERY_EMBED_BENCHMARK: BenchmarkStage(
+            StageName.QUERY_EMBED_BENCHMARK, QueryEmbedStage()
+        ),
+        StageName.CORPUS_EMBED_BENCHMARK: BenchmarkStage(
+            StageName.CORPUS_EMBED_BENCHMARK, CorpusEmbedStage()
+        ),
     }
 )
 

@@ -7,11 +7,11 @@ import shutil
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Protocol
 
 from corpus_pipeline.integrations.kaggle.api import kernel_metadata
 from corpus_pipeline.integrations.kaggle.dependencies import kaggle_input_root
 from corpus_pipeline.integrations.kaggle.errors import KaggleRemoteStateError
-from corpus_pipeline.integrations.kaggle.kernel_service import KernelService
 from corpus_pipeline.integrations.kaggle.models import (
     KernelPresence,
     KernelRemoteState,
@@ -20,8 +20,28 @@ from corpus_pipeline.integrations.kaggle.models import (
 )
 
 
+class KernelOperations(Protocol):
+    """Remote kernel operations PipelineKernelService delegates to."""
+
+    def inspect_state(self, reference: str, /) -> KernelRemoteState: ...
+
+    def confirm_missing(self, reference: str, /) -> bool | None: ...
+
+    def push(self, bundle: Path, /, *, timeout_seconds: int) -> None: ...
+
+    def wait_for_terminal(
+        self, reference: str, /, *, timeout_seconds: float
+    ) -> KernelStatus: ...
+
+    def download_output(self, reference: str, destination: Path, /) -> None: ...
+
+    def poll(self, reference: str, /, *, timeout_seconds: float) -> None: ...
+
+    def log_tail(self, reference: str, /) -> str: ...
+
+
 class PipelineKernelService:
-    def __init__(self, service: KernelService, *, owner: str, source_root: Path):
+    def __init__(self, service: KernelOperations, *, owner: str, source_root: Path):
         self.service = service
         self.owner = owner
         self.source_root = Path(source_root)
@@ -128,6 +148,9 @@ class PipelineKernelService:
 
     def download_output(self, reference: str, destination: Path) -> None:
         self.service.download_output(reference, destination)
+
+    def log_tail(self, reference: str) -> str:
+        return self.service.log_tail(reference)
 
     def run(self, job: StageJob, bundle: Path, *, timeout_seconds: int) -> Path:
         self.service.push(bundle, timeout_seconds=timeout_seconds)

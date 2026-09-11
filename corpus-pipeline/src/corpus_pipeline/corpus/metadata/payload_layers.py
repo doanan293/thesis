@@ -27,7 +27,7 @@ def normalized_list(value) -> list[str]:
 
 def clean_context_header(header: str) -> str:
     lines: list[str] = []
-    for raw_line in str(header or "").splitlines():
+    for raw_line in (header or "").splitlines():
         line = raw_line.strip()
         lowered = line.casefold()
         if lowered.startswith(f"{COLLOQUIAL_ALIAS_LABEL}:".casefold()):
@@ -92,7 +92,7 @@ def term_annotations_from_enrichments(
 
 
 def format_colloquial_mapping(mapping: dict, visible_text: str = "") -> str:
-    visible = str(visible_text or "").casefold()
+    visible = (visible_text or "").casefold()
     lines: list[str] = []
     aliases = [
         alias
@@ -110,7 +110,7 @@ def format_colloquial_mapping(mapping: dict, visible_text: str = "") -> str:
 def format_term_annotations(
     term_annotations: Iterable[dict], visible_text: str = "", limit: int = 8
 ) -> str:
-    visible = str(visible_text or "").casefold()
+    visible = (visible_text or "").casefold()
     lines: list[str] = []
     seen = set()
     for annotation in term_annotations or []:
@@ -171,7 +171,7 @@ def compose_evidence_text(
     if header:
         parts.append(header)
     body = "\n\n".join(
-        str(text or "").strip() for text in chunk_texts if str(text or "").strip()
+        (text or "").strip() for text in chunk_texts if (text or "").strip()
     )
     visible_before_mapping = "\n\n".join([*parts, body])
     mapping_text = format_colloquial_mapping(

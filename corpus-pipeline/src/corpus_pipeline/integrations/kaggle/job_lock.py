@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
-from contextlib import contextmanager
+from collections.abc import Generator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import Iterator
 
 from corpus_pipeline.config.paths import WORK_DIR
 
@@ -21,7 +21,7 @@ def _acquire(
     *,
     lock_root: Path,
     non_blocking: bool,
-) -> Iterator[Path]:
+) -> Generator[Path, None, None]:
     lock_path, canonical = _lock_path(target, lock_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as handle:
@@ -47,7 +47,7 @@ def kaggle_job_lock(
     target: Path,
     *,
     lock_root: Path | None = None,
-) -> Iterator[Path]:
+) -> AbstractContextManager[Path]:
     root = lock_root if lock_root is not None else (WORK_DIR / "kaggle-job-locks")
     return _acquire(target, lock_root=root, non_blocking=True)
 
@@ -56,6 +56,6 @@ def kaggle_cache_lock(
     target: Path,
     *,
     lock_root: Path | None = None,
-) -> Iterator[Path]:
+) -> AbstractContextManager[Path]:
     root = lock_root if lock_root is not None else (WORK_DIR / "kaggle-cache-locks")
     return _acquire(target, lock_root=root, non_blocking=False)

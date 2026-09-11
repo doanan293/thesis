@@ -4,16 +4,13 @@ import corpus_pipeline.cli.commands.doctor as doctor_module
 from corpus_pipeline.cli.app import app
 from corpus_pipeline.cli.runtime import CommandResult, CommandStatus
 
-
 runner = CliRunner()
 
 
 def test_doctor_passes_selected_account(monkeypatch):
     captured = {}
 
-    def fake_doctor_command(
-        backend, env_file, json_output, debug, kaggle_account=None
-    ):
+    def fake_doctor_command(backend, env_file, json_output, debug, kaggle_account=None):
         captured["account"] = kaggle_account
         return CommandResult("doctor", CommandStatus.COMPLETE)
 

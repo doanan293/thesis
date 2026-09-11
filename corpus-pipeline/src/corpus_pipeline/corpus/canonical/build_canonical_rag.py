@@ -704,27 +704,33 @@ def apply_pdf_verified_section_fixes(
 
     noisy_table = by_id.get(NRTI_CHI_DINH_PART_002)
     dosage = by_id.get(NRTI_DOSAGE_PART_002)
-    if noisy_table is not None and dosage is not None:
-        if "3.1.2. Phác đồ TDF + 3TC + NVP" in noisy_table.text:
-            dosage.text = prepend_once(dosage.text, "3.1.2. Phác đồ TDF + 3TC + NVP")
-            fix_events.append(
-                {
-                    "section_id": NRTI_DOSAGE_PART_002,
-                    "action": "transfer_heading_from_table_noise",
-                }
-            )
+    if (
+        noisy_table is not None
+        and dosage is not None
+        and "3.1.2. Phác đồ TDF + 3TC + NVP" in noisy_table.text
+    ):
+        dosage.text = prepend_once(dosage.text, "3.1.2. Phác đồ TDF + 3TC + NVP")
+        fix_events.append(
+            {
+                "section_id": NRTI_DOSAGE_PART_002,
+                "action": "transfer_heading_from_table_noise",
+            }
+        )
 
     wrong_contraindication = by_id.get(NRTI_CHONG_CHI_DINH)
     dosage = by_id.get(NRTI_DOSAGE_PART_003)
-    if wrong_contraindication is not None and dosage is not None:
-        if "3.2.1. Phác đồ AZT + 3TC + EFV" in wrong_contraindication.text:
-            dosage.text = prepend_once(dosage.text, "3.2.1. Phác đồ AZT + 3TC + EFV")
-            fix_events.append(
-                {
-                    "section_id": NRTI_DOSAGE_PART_003,
-                    "action": "transfer_heading_from_misclassified_section",
-                }
-            )
+    if (
+        wrong_contraindication is not None
+        and dosage is not None
+        and "3.2.1. Phác đồ AZT + 3TC + EFV" in wrong_contraindication.text
+    ):
+        dosage.text = prepend_once(dosage.text, "3.2.1. Phác đồ AZT + 3TC + EFV")
+        fix_events.append(
+            {
+                "section_id": NRTI_DOSAGE_PART_003,
+                "action": "transfer_heading_from_misclassified_section",
+            }
+        )
 
     # Move Capecitabine displaced NCIC tables from 'Tên thương mại' to 'Liều lượng và cách dùng'
     capecitabin_commercial = by_id.get("drug:capecitabin:ten-thuong-mai")
@@ -896,7 +902,8 @@ def apply_table_overrides(
     updated: list[dict[str, Any]] = []
     for table in tables:
         table_copy = dict(table)
-        override = overrides.get(table_copy.get("table_id"))
+        table_id = table_copy.get("table_id")
+        override = overrides.get(table_id) if isinstance(table_id, str) else None
         if override:
             table_copy["_manual_override"] = override
             if override.get("target_section_id"):

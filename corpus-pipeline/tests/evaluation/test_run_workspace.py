@@ -77,9 +77,7 @@ def test_record_candidates_stores_relative_path_when_inside_run(tmp_path):
 def test_split_workspace_keeps_registry_and_manifest_outside_heavy_root(tmp_path):
     metadata = tmp_path / "retrieval_eval" / "run-a"
     heavy = tmp_path / "heavy" / "retrieval_eval" / "run-a"
-    workspace = RunWorkspace.open_or_create(
-        metadata, identity(), artifact_root=heavy
-    )
+    workspace = RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
     artifact = SimpleNamespace(
         data_path=heavy / "candidates" / "candidates.jsonl",
         manifest_path=heavy / "candidates" / "manifest.json",
@@ -91,7 +89,9 @@ def test_split_workspace_keeps_registry_and_manifest_outside_heavy_root(tmp_path
     workspace.record_candidates(artifact)
 
     assert (metadata / "run.json").is_file()
-    assert (metadata / "candidates-manifest.json").read_bytes() == artifact.manifest_path.read_bytes()
+    assert (
+        metadata / "candidates-manifest.json"
+    ).read_bytes() == artifact.manifest_path.read_bytes()
     assert workspace.candidates_dir == heavy / "candidates"
     assert load_run_record(metadata / "run.json").candidates_dir == "candidates"
 
@@ -101,9 +101,7 @@ def test_reopen_split_workspace_preserves_heavy_artifact_root(tmp_path):
     heavy = tmp_path / "heavy" / "retrieval_eval" / "run-a"
     RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
 
-    reopened = RunWorkspace.open_or_create(
-        metadata, identity(), artifact_root=heavy
-    )
+    reopened = RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
 
     assert reopened.artifact_base == heavy
     assert reopened.candidates_dir == heavy / "candidates"

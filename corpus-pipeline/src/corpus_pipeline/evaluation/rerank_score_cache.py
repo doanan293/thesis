@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,8 +73,8 @@ class RerankScoreCache:
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
-        self.model_sha256 = str(self.model_sha256)
-        self.request_contract_sha256 = str(self.request_contract_sha256)
+        self.model_sha256 = self.model_sha256
+        self.request_contract_sha256 = self.request_contract_sha256
         self.records: dict[RerankKey, float] = {}
         self.record_metadata: dict[RerankKey, dict[str, Any]] = {}
         self._load()
@@ -92,7 +93,7 @@ class RerankScoreCache:
         if not chunk_id:
             raise RerankScoreCacheError("Rerank key requires chunk_id")
         return RerankKey(
-            str(reranker),
+            reranker,
             self.model_sha256,
             self.request_contract_sha256,
             query_id,
@@ -206,7 +207,7 @@ class RerankScoreCache:
             "score": score,
         }
         if protocol is not None:
-            record["protocol"] = str(protocol)
+            record["protocol"] = protocol
         record = append_record(self.path, record, schema="rerank-score-v2")
         self.records[key] = score
         self.record_metadata[key] = record
@@ -240,7 +241,7 @@ class RerankScoreCache:
             )
         return [self.record_metadata[key] for key in sorted(expected)]
 
-    def replace_keys(self, keys: set[RerankKey]) -> None:
+    def replace_keys(self, keys: builtins.set[RerankKey]) -> None:
         kept = [
             record for key, record in self.record_metadata.items() if key not in keys
         ]
@@ -269,7 +270,7 @@ class RerankScoreCache:
         self,
         candidate_data_path: Path,
         reranker: str,
-    ) -> set[RerankKey]:
+    ) -> builtins.set[RerankKey]:
         expected: set[RerankKey] = set()
         for record in CandidateArtifactReader.from_data_path(candidate_data_path):
             query_row = {"query_id": record["query_id"], "query": record["query"]}
@@ -340,7 +341,7 @@ def finalize_rerank_cache(
         "pair_count": len(expected),
     }
     if job_sha256 is not None:
-        identity["job_sha256"] = str(job_sha256)
+        identity["job_sha256"] = job_sha256
     manifest = ArtifactManifest.create(
         artifact_type="rerank_score_cache",
         data_path=data_path,

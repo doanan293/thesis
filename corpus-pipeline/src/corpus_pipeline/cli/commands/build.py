@@ -29,20 +29,32 @@ def build_command(
     max_chars: int | None = None,
 ) -> CommandResult:
     config = default_config()
-    overrides = {
-        "pdf_path": pdf,
-        "snapshot_archive": snapshot_archive,
-        "snapshot_manifest": snapshot_manifest,
-        "curated_tables_path": curated_tables,
-        "table_overrides_path": table_overrides,
-        "mappings_path": mappings,
-        "glossary_path": glossary,
-        "work_root": work_root,
-        "final_dir": final_dir,
-        "max_chars": max_chars,
-    }
     config = replace(
-        config, **{key: value for key, value in overrides.items() if value is not None}
+        config,
+        pdf_path=pdf if pdf is not None else config.pdf_path,
+        snapshot_archive=(
+            snapshot_archive
+            if snapshot_archive is not None
+            else config.snapshot_archive
+        ),
+        snapshot_manifest=(
+            snapshot_manifest
+            if snapshot_manifest is not None
+            else config.snapshot_manifest
+        ),
+        curated_tables_path=(
+            curated_tables if curated_tables is not None else config.curated_tables_path
+        ),
+        table_overrides_path=(
+            table_overrides
+            if table_overrides is not None
+            else config.table_overrides_path
+        ),
+        mappings_path=mappings if mappings is not None else config.mappings_path,
+        glossary_path=glossary if glossary is not None else config.glossary_path,
+        work_root=work_root if work_root is not None else config.work_root,
+        final_dir=final_dir if final_dir is not None else config.final_dir,
+        max_chars=max_chars if max_chars is not None else config.max_chars,
     )
     result = run_build(config)
     return CommandResult(

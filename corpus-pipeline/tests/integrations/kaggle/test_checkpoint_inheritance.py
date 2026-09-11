@@ -1,6 +1,5 @@
-from types import SimpleNamespace
-
 import pytest
+from tests.integrations.kaggle.factories import cloud_artifact, stage_job
 
 from corpus_pipeline.artifacts.manifest import Completion
 from corpus_pipeline.integrations.kaggle.checkpoint_inheritance import (
@@ -13,7 +12,7 @@ from corpus_pipeline.integrations.kaggle.models import ActionVerb
 
 def _state(total: int, complete: int, reference: str | None = None):
     artifact = (
-        SimpleNamespace(completion=Completion(total, complete, total - complete))
+        cloud_artifact(Completion(total, complete, total - complete))
         if complete
         else None
     )
@@ -64,7 +63,7 @@ def test_resolve_mirrors_strictly_best_source(tmp_path):
 
     result = _service(
         target, (("acc1", acc1), ("acc2", acc2), ("acc3", target)), tmp_path
-    ).resolve(SimpleNamespace(), _state(300000, 0), check_only=False)
+    ).resolve(stage_job(tmp_path), _state(300000, 0), check_only=False)
 
     assert len(target.published) == 1
     assert target.published[0][0] is acc1.state.artifact
@@ -82,7 +81,7 @@ def test_resolve_keeps_target_when_tied(tmp_path):
     source = FakeCheckpointService(_state(10, 5, "acc1/checkpoint"))
 
     result = _service(target, (("acc1", source), ("acc3", target)), tmp_path).resolve(
-        SimpleNamespace(), target.state, check_only=False
+        stage_job(tmp_path), target.state, check_only=False
     )
 
     assert result.state is target.state
@@ -97,7 +96,7 @@ def test_resolve_ignores_absent_and_zero_progress_sources(tmp_path):
 
     result = _service(
         target, (("acc1", absent), ("acc2", zero), ("acc3", target)), tmp_path
-    ).resolve(SimpleNamespace(), target.state, check_only=False)
+    ).resolve(stage_job(tmp_path), target.state, check_only=False)
 
     assert result.state is target.state
     assert target.published == []
@@ -113,7 +112,7 @@ def test_resolve_uses_numeric_profile_order_for_source_tie(tmp_path):
 
     result = _service(
         target, (("acc2", acc2), ("acc3", target), ("acc10", acc10)), tmp_path
-    ).resolve(SimpleNamespace(), target.state, check_only=False)
+    ).resolve(stage_job(tmp_path), target.state, check_only=False)
 
     assert target.published[0][0] is acc2.state.artifact
     assert "acc2 -> acc3" in result.actions[0].reason
@@ -124,7 +123,7 @@ def test_resolve_dry_run_reports_without_publishing(tmp_path):
     source = FakeCheckpointService(_state(10, 4, "acc1/checkpoint"))
 
     result = _service(target, (("acc1", source), ("acc3", target)), tmp_path).resolve(
-        SimpleNamespace(), target.state, check_only=True
+        stage_job(tmp_path), target.state, check_only=True
     )
 
     assert target.published == []
@@ -141,7 +140,7 @@ def test_resolve_fails_closed_when_source_has_progress_without_artifact(tmp_path
 
     with pytest.raises(RuntimeError, match="artifact"):
         _service(target, (("acc1", source), ("acc3", target)), tmp_path).resolve(
-            SimpleNamespace(), target.state, check_only=False
+            stage_job(tmp_path), target.state, check_only=False
         )
 
 
@@ -155,7 +154,7 @@ def test_resolve_propagates_source_inspection_failure(tmp_path):
     source = Broken(_state(10, 4, "acc1/checkpoint"))
     with pytest.raises(RuntimeError, match="source inspection failed"):
         _service(target, (("acc1", source), ("acc3", target)), tmp_path).resolve(
-            SimpleNamespace(), target.state, check_only=False
+            stage_job(tmp_path), target.state, check_only=False
         )
     assert target.published == []
 
@@ -167,7 +166,7 @@ def test_resolve_fails_when_revalidated_target_has_less_progress(tmp_path):
     source = FakeCheckpointService(_state(10, 4, "acc1/checkpoint"))
     with pytest.raises(RuntimeError, match="lost progress"):
         _service(target, (("acc1", source), ("acc3", target)), tmp_path).resolve(
-            SimpleNamespace(), target.state, check_only=False
+            stage_job(tmp_path), target.state, check_only=False
         )
 
 

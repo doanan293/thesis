@@ -2,10 +2,15 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from tests.integrations.kaggle.factories import (
+    owners,
+    rerank_runtime_profile,
+    stage_request,
+)
+
 from corpus_pipeline.integrations.kaggle import dependencies
 from corpus_pipeline.integrations.kaggle.models import StageName
 from corpus_pipeline.integrations.kaggle.stages import RerankStage
-from corpus_pipeline.runtime.catalog import require_model
 
 
 def _job(tmp_path: Path):
@@ -23,18 +28,11 @@ def _job(tmp_path: Path):
     )
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({"schema_version": 1}) + "\n", encoding="utf-8")
-    request = SimpleNamespace(
-        stage=StageName.RERANK,
-        model="qwen3-reranker:0.6b-fp16",
-        input_path=candidates,
-        output_dir=tmp_path / "output",
-        gguf_root=tmp_path / "gguf",
-        owners=SimpleNamespace(
-            execution="owner", runtime="owner", corpus="owner", checkpoint="owner"
-        ),
-        runtime_profile=require_model(
-            "qwen3-reranker:0.6b-fp16"
-        ).rerank_search_space.candidates[0],
+    request = stage_request(
+        StageName.RERANK,
+        "qwen3-reranker:0.6b-fp16",
+        candidates,
+        runtime_profile=rerank_runtime_profile(),
     )
     return RerankStage().build_job(request), candidates, manifest
 
@@ -51,13 +49,7 @@ def test_input_dataset_materializes_every_bundle_file_and_manifest(
             sha256="model-sha",
         ),
     )
-    desired = dependencies.default_desired_datasets(
-        job,
-        SimpleNamespace(
-            execution="owner", runtime="owner", corpus="owner", checkpoint="owner"
-        ),
-        tmp_path,
-    )
+    desired = dependencies.default_desired_datasets(job, owners(), tmp_path)
     input_dataset = next(item for item in desired if item.resource_kind == "input")
     staged = input_dataset.materialize(tmp_path / "staged")
     payload = json.loads(
@@ -86,17 +78,16 @@ def test_desired_datasets_multi_owner_resolution(tmp_path, monkeypatch):
             sha256="model-sha",
         ),
     )
-    owners = SimpleNamespace(
-        execution="worker-acc",
+    owner_configuration = owners(
+        "worker-acc",
         runtime="runtime-acc",
         corpus="corpus-acc",
         checkpoint="worker-acc",
     )
-    desired = dependencies.default_desired_datasets(job, owners, tmp_path)
+    desired = dependencies.default_desired_datasets(job, owner_configuration, tmp_path)
     by_kind = {item.resource_kind: item for item in desired}
 
     assert by_kind["model"].reference == "runtime-acc/model-slug"
     assert by_kind["model"].public is True
     assert by_kind["input"].reference.startswith("worker-acc/pipeline-input-")
     assert by_kind["input"].public is True
-

@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from tests.integrations.kaggle.factories import rerank_runtime_profile
+
 from corpus_pipeline.artifacts.manifest import Completion
 from corpus_pipeline.integrations.kaggle.auto_profile import (
     ensure_runtime_profile,
@@ -15,7 +17,7 @@ MODEL = "qwen3-reranker:0.6b-fp16"
 
 
 def _benchmark_result(tmp_path: Path):
-    selected = require_model(MODEL).rerank_search_space.candidates[-1]
+    selected = rerank_runtime_profile(MODEL, index=-1)
     data = tmp_path / "benchmark_results.jsonl"
     data.write_text(
         json.dumps(

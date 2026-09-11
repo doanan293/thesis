@@ -13,7 +13,7 @@ from corpus_pipeline.integrations.kaggle.errors import KaggleCommandError
 
 
 def dataset_metadata(owner: str, slug: str, title: str, public: bool = False) -> dict:
-    metadata = {
+    metadata: dict[str, object] = {
         "id": f"{owner}/{slug}",
         "title": title,
         "licenses": [{"name": "CC0-1.0"}],
@@ -41,7 +41,7 @@ def kernel_metadata(
         "is_private": "true",
         "enable_gpu": "true",
         "enable_tpu": "false",
-        "enable_internet": str(bool(enable_internet)).lower(),
+        "enable_internet": str(enable_internet).lower(),
         "machine_shape": "NvidiaTeslaT4",
         "dataset_sources": list(dataset_sources),
     }
@@ -140,7 +140,7 @@ def kernel_push_command(bundle: Path, timeout_seconds: int) -> list[str]:
         "--accelerator",
         "NvidiaTeslaT4",
         "--timeout",
-        str(int(timeout_seconds)),
+        str(timeout_seconds),
         "-p",
         str(bundle),
     ]
@@ -232,16 +232,16 @@ class KaggleCommandRunner:
         if self.dry_run:
             print("DRY RUN: " + " ".join(command), flush=True)
             return None
-        streams = (
-            {
-                "stdout": subprocess.PIPE,
-                "stderr": subprocess.PIPE,
-                "bufsize": 1,
-            }
-            if capture_output
-            else {}
-        )
-        return subprocess.Popen(command, env=self.environment, text=True, **streams)
+        if capture_output:
+            return subprocess.Popen(
+                command,
+                env=self.environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=1,
+            )
+        return subprocess.Popen(command, env=self.environment, text=True)
 
     def redact(self, value: str) -> str:
         environment = dict(os.environ)

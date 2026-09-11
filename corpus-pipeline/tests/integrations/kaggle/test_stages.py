@@ -1,11 +1,12 @@
 import json
+from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
-from typing import cast
 
 import pytest
+from tests.integrations.kaggle.factories import stage_request
 
-from corpus_pipeline.integrations.kaggle.models import StageName
+from corpus_pipeline.integrations.kaggle.models import StageName, StageRequest
 from corpus_pipeline.integrations.kaggle.stages import (
     CorpusEmbedStage,
     QueryEmbedStage,
@@ -15,20 +16,11 @@ from corpus_pipeline.integrations.kaggle.stages import (
 from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
 
-def _owners():
-    return SimpleNamespace(
-        execution="owner", runtime="owner", corpus="owner", checkpoint="owner"
-    )
-
-
-def _request(stage: StageName, model: str, input_path: Path):
-    return SimpleNamespace(
-        stage=stage,
-        model=model,
-        input_path=input_path,
-        output_dir=input_path.parent / "output",
-        gguf_root=input_path.parent / "gguf",
-        owners=_owners(),
+def _request(stage: StageName, model: str, input_path: Path) -> StageRequest:
+    return stage_request(
+        stage,
+        model,
+        input_path,
         runtime_profile=RuntimeCandidate(
             server_slots=4,
             concurrency=2,
@@ -90,7 +82,8 @@ def test_rerank_builds_version_3_two_file_bundle(tmp_path):
     )
 
     assert job.contract_version == 3
-    runtime_parameters = cast(dict, job.identity.payload["runtime_parameters"])
+    runtime_parameters = job.identity.payload["runtime_parameters"]
+    assert isinstance(runtime_parameters, Mapping)
     assert "request_contract_sha256" in runtime_parameters
     assert "prompt_contract_sha256" not in runtime_parameters
 
@@ -109,8 +102,10 @@ def test_production_stage_requires_runtime_profile(tmp_path):
         encoding="utf-8",
     )
     (tmp_path / "manifest.json").write_text("{}\n", encoding="utf-8")
-    request = _request(StageName.RERANK, "qwen3-reranker:0.6b-fp16", candidates)
-    request.runtime_profile = None
+    request = replace(
+        _request(StageName.RERANK, "qwen3-reranker:0.6b-fp16", candidates),
+        runtime_profile=None,
+    )
 
     with pytest.raises(ValueError, match="runtime profile is required"):
         RerankStage().build_job(request)

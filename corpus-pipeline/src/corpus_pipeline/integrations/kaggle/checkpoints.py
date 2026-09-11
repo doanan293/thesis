@@ -4,11 +4,13 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol
 
 from corpus_pipeline.integrations.kaggle.artifacts import load_cloud_artifact
 from corpus_pipeline.integrations.kaggle.dataset_service import (
     DatasetPresence,
-    DatasetService,
+    DatasetRemoteState,
+    PreparedDataset,
 )
 from corpus_pipeline.integrations.kaggle.models import (
     CloudArtifact,
@@ -24,6 +26,33 @@ _CHECKPOINT_ARTIFACT_TYPES = {
 }
 
 
+class CheckpointDatasets(Protocol):
+    """Kaggle dataset operations CheckpointService depends on."""
+
+    def inspect_state(
+        self, reference: str, /, *, active_owner: str | None = None
+    ) -> DatasetRemoteState: ...
+
+    def wait_for_dataset_ready(self, reference: str, /) -> None: ...
+
+    def fetch_json(self, reference: str, filename: str, /) -> dict[str, Any]: ...
+
+    def download_file(
+        self, reference: str, filename: str, destination: Path, /
+    ) -> Path: ...
+
+    def ensure_dataset(
+        self,
+        slug: str,
+        title: str,
+        path: Path,
+        /,
+        *,
+        public: bool = False,
+        active_owner: str | None = None,
+    ) -> PreparedDataset: ...
+
+
 @dataclass(frozen=True)
 class CheckpointState:
     reference: str | None
@@ -32,7 +61,7 @@ class CheckpointState:
 
 
 class CheckpointService:
-    def __init__(self, datasets: DatasetService, owner: str):
+    def __init__(self, datasets: CheckpointDatasets, owner: str):
         self.datasets = datasets
         self.owner = owner
 

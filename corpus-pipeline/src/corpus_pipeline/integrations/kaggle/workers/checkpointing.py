@@ -130,9 +130,9 @@ class AppendOnlyJournal:
         for current in current_records:
             key = self.key_fn(current)
             cached = self.records.get(key)
-            if cached is not None and self.fingerprint_fn(cached) == self.fingerprint_fn(
-                current
-            ):
+            if cached is not None and self.fingerprint_fn(
+                cached
+            ) == self.fingerprint_fn(current):
                 reusable[key] = cached
         return reusable
 
@@ -141,9 +141,9 @@ class AppendOnlyJournal:
         for current in current_records:
             key = self.key_fn(current)
             cached = self.records.get(key)
-            if cached is not None and self.fingerprint_fn(cached) == self.fingerprint_fn(
-                current
-            ):
+            if cached is not None and self.fingerprint_fn(
+                cached
+            ) == self.fingerprint_fn(current):
                 selected.append(cached)
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)

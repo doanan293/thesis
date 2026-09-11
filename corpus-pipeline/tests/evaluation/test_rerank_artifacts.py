@@ -160,9 +160,7 @@ def test_split_workspace_finalizes_and_reuses_variant_under_artifact_root(
         cache_path=complete_rerank_cache.path,
         identity=identity,
     )
-    record = load_run_record(complete_run / "run.json").rerank_variants[
-        identity.sha256
-    ]
+    record = load_run_record(complete_run / "run.json").rerank_variants[identity.sha256]
     second = load_registered_rerank_bundle(workspace, identity.sha256, record)
 
     assert first.root.is_relative_to(heavy / "rerank")

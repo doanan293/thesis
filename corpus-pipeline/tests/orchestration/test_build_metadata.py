@@ -32,9 +32,7 @@ def test_latest_snapshot_pair_reads_manifest_from_tracked_root(tmp_path, monkeyp
     archive = archive_dir / "snapshot.tar.zst"
     archive.write_bytes(b"archive")
     manifest = manifest_dir / "snapshot.manifest.json"
-    manifest.write_text(
-        json.dumps({"archive_name": archive.name}), encoding="utf-8"
-    )
+    manifest.write_text(json.dumps({"archive_name": archive.name}), encoding="utf-8")
     monkeypatch.setattr(build_corpus, "verify_snapshot", lambda *_args: None)
 
     resolved_archive, resolved_manifest = latest_snapshot_pair(

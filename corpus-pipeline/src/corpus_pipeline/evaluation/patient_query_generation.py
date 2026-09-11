@@ -117,7 +117,7 @@ def unique_preserve_order(values: list[str]) -> list[str]:
     seen = set()
     unique = []
     for value in values:
-        cleaned = normalize_spaces(str(value or ""))
+        cleaned = normalize_spaces(value or "")
         if not cleaned:
             continue
         key = cleaned.lower()

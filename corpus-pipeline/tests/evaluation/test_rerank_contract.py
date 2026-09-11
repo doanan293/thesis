@@ -17,9 +17,7 @@ def test_completion_payload_is_derived_from_contract():
     assert contract is not None and contract.scoring is not None
     client = LlamaCppClient("http://127.0.0.1:1")
 
-    payload = client.completion_payload(
-        "prompt", contract, yes_id=10, no_id=11
-    )
+    payload = client.completion_payload("prompt", contract, yes_id=10, no_id=11)
 
     assert payload["n_predict"] == contract.scoring.n_predict
     assert payload["samplers"] == list(contract.scoring.samplers)

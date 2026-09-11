@@ -108,9 +108,7 @@ def map_batches_ordered[InputT, OutputT, ClientT](
     items: Sequence[InputT],
     clients: Sequence[ClientT],
     per_client_batch_size: int,
-    operation: Callable[
-        [ClientT, list[tuple[int, InputT]]], list[tuple[int, OutputT]]
-    ],
+    operation: Callable[[ClientT, list[tuple[int, InputT]]], list[tuple[int, OutputT]]],
     deadline: float,
     clock: Callable[[], float] = time.monotonic,
 ) -> ScheduledBatch[OutputT]:
@@ -130,9 +128,7 @@ def map_batches_ordered[InputT, OutputT, ClientT](
             (index, items[index])
             for index in range(start, min(start + outer_size, len(items)))
         ]
-        partitions: list[list[tuple[int, InputT]]] = [
-            [] for _client in clients
-        ]
+        partitions: list[list[tuple[int, InputT]]] = [[] for _client in clients]
         for offset, item in enumerate(outer_batch):
             partitions[offset % len(clients)].append(item)
         active = [

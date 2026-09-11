@@ -29,6 +29,7 @@ def test_rerank_identity_uses_catalog_contract_hash():
     spec = require_model("qwen3-reranker:0.6b-fp16")
     identity = RerankVariantIdentity.create("candidate", spec.name)
 
+    assert spec.rerank_contract is not None
     assert identity.payload["request_contract_sha256"] == spec.rerank_contract.sha256
 
 

@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -51,9 +51,13 @@ def resolve_input_file(
     configured_value = value.get("path")
     filename = value.get("filename")
     expected_sha256 = value.get("sha256")
-    if not all(
-        isinstance(item, str) and item.strip()
-        for item in (configured_value, filename, expected_sha256)
+    if (
+        not isinstance(configured_value, str)
+        or not isinstance(filename, str)
+        or not isinstance(expected_sha256, str)
+        or not (
+            configured_value.strip() and filename.strip() and expected_sha256.strip()
+        )
     ):
         raise RuntimeError(
             f"Input descriptor for {key!r} requires path, filename, and sha256"
@@ -206,15 +210,13 @@ class BoundedLogCollector:
     def __init__(self, max_bytes: int = 1024 * 1024):
         if max_bytes < 1:
             raise ValueError("max_bytes must be positive")
-        self.max_bytes = int(max_bytes)
+        self.max_bytes = max_bytes
         self._buffer = bytearray()
         self._lock = threading.Lock()
 
     def feed(self, chunk: bytes | str) -> None:
         raw = (
-            chunk.encode("utf-8", errors="replace")
-            if isinstance(chunk, str)
-            else bytes(chunk)
+            chunk.encode("utf-8", errors="replace") if isinstance(chunk, str) else chunk
         )
         with self._lock:
             self._buffer.extend(raw)
@@ -305,7 +307,7 @@ def _link_cuda_dependencies(runtime_lib_dir: Path) -> None:
 
 
 def build_server_environment(
-    base: dict[str, str], library: Path, visible_devices: str
+    base: Mapping[str, str], library: Path, visible_devices: str
 ) -> dict[str, str]:
     environment = dict(base)
     existing = environment.get("LD_LIBRARY_PATH", "").strip()
@@ -348,13 +350,13 @@ def build_server_command(
         "--n-gpu-layers",
         "99",
         "-np",
-        str(int(overrides["server_slots"])),
+        str(overrides["server_slots"]),
         "-c",
-        str(int(overrides["context_per_slot"]) * int(overrides["server_slots"])),
+        str(overrides["context_per_slot"] * overrides["server_slots"]),
         "-b",
-        str(int(overrides["logical_batch_size"])),
+        str(overrides["logical_batch_size"]),
         "-ub",
-        str(int(overrides["physical_batch_size"])),
+        str(overrides["physical_batch_size"]),
         *inference_cache_policy(spec).arguments(),
     ]
     if spec.kind is ModelKind.EMBEDDING:
@@ -411,9 +413,10 @@ def managed_model_servers(
     readers: list[threading.Thread] = []
     servers: list[WorkerServer] = []
     base_port = int(config.get("server_port", 11434))
-    runtime_overrides = config.get("runtime_overrides")
-    if not isinstance(runtime_overrides, dict):
+    raw_overrides = config.get("runtime_overrides")
+    if not isinstance(raw_overrides, dict):
         raise ValueError("runtime_overrides is required")
+    runtime_overrides = {str(key): int(value) for key, value in raw_overrides.items()}
     for index, layout in enumerate(server_layout(spec)):
         port = base_port + index
         command = build_server_command(

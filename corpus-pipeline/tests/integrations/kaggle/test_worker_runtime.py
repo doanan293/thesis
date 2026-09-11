@@ -306,9 +306,8 @@ def test_managed_model_servers_reports_early_process_failure(monkeypatch, tmp_pa
         "output_dir": str(tmp_path / "output"),
     }
 
-    with pytest.raises(RuntimeError) as exc_info:
-        with managed_model_servers(config):
-            pass
+    with pytest.raises(RuntimeError) as exc_info, managed_model_servers(config):
+        pass
 
     message = str(exc_info.value)
     assert "exited before becoming healthy" in message
@@ -368,9 +367,8 @@ def test_managed_model_servers_reports_all_replicas_on_timeout(monkeypatch, tmp_
         "output_dir": str(tmp_path / "output"),
     }
 
-    with pytest.raises(RuntimeError) as exc_info:
-        with managed_model_servers(config):
-            pass
+    with pytest.raises(RuntimeError) as exc_info, managed_model_servers(config):
+        pass
 
     message = str(exc_info.value)
     assert "health check timed out" in message
@@ -494,10 +492,12 @@ def test_managed_model_servers_wraps_mid_run_exit_with_diagnostics(
         "output_dir": str(tmp_path / "output"),
     }
 
-    with pytest.raises(ModelServerExited) as exc_info:
-        with managed_model_servers(config):
-            processes[1].returncode = 137
-            raise LlamaCppRequestError("connection refused", retryable=True)
+    with (
+        pytest.raises(ModelServerExited) as exc_info,
+        managed_model_servers(config),
+    ):
+        processes[1].returncode = 137
+        raise LlamaCppRequestError("connection refused", retryable=True)
 
     error = exc_info.value
     assert error.failed_replicas == (1,)

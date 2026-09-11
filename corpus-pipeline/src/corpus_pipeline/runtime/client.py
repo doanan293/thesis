@@ -25,7 +25,7 @@ class LlamaCppRequestError(LlamaCppError):
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
-        self.retryable = bool(retryable)
+        self.retryable = retryable
         self.failed_input_index = failed_input_index
 
 
@@ -56,11 +56,11 @@ class LlamaCppClient:
         retry_delay_seconds: float = 0.5,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        self.base_url = str(base_url).rstrip("/")
+        self.base_url = base_url.rstrip("/")
         self.timeout = float(timeout)
         self._post = post
         self._get = get
-        self.max_attempts = max(1, int(max_attempts))
+        self.max_attempts = max(1, max_attempts)
         self.retry_delay_seconds = max(0.0, float(retry_delay_seconds))
         self._sleep = sleep
         self._token_ids: dict[tuple[str, str], int] = {}
@@ -256,7 +256,7 @@ class LlamaCppClient:
         return {
             "model": model,
             "prompt": prompt,
-            "cache_prompt": bool(cache_prompt),
+            "cache_prompt": cache_prompt,
             "n_predict": scoring.n_predict,
             "temperature": scoring.temperature,
             "samplers": list(scoring.samplers),

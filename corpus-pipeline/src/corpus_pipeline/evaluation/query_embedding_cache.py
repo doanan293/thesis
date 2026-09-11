@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -60,7 +61,7 @@ class QueryEmbeddingCache:
 
     def __post_init__(self):
         self.path = Path(self.path)
-        self.model_sha256 = str(self.model_sha256)
+        self.model_sha256 = self.model_sha256
         self.records: dict[tuple[str, str, str], list[float]] = {}
         self.record_metadata: dict[tuple[str, str, str], dict] = {}
         self.hits = 0
@@ -138,7 +139,7 @@ class QueryEmbeddingCache:
     def prune_to_queries(self, model: str, rows: list[dict]) -> dict:
         allowed_keys = {
             (
-                str(model),
+                model,
                 str(row.get("query_id") or ""),
                 query_hash(str(row.get("query") or "")),
             )
@@ -165,7 +166,7 @@ class QueryEmbeddingCache:
         return {"kept": len(kept), "removed": removed}
 
     def get(self, model: str, query_id: str, query_text: str) -> list[float] | None:
-        key = (str(model), str(query_id), query_hash(query_text))
+        key = (model, query_id, query_hash(query_text))
         vector = self.records.get(key)
         if vector is None:
             return None
@@ -181,13 +182,13 @@ class QueryEmbeddingCache:
             raise QueryEmbeddingCacheError(
                 f"Query embedding dimension mismatch: {len(vector)} != {self.vector_dim}"
             )
-        key = (str(model), str(query_id), query_hash(query_text))
+        key = (model, query_id, query_hash(query_text))
         record = {
-            "model": str(model),
+            "model": model,
             "model_sha256": self.model_sha256,
-            "query_id": str(query_id),
+            "query_id": query_id,
             "query_hash": key[2],
-            "query": str(query_text),
+            "query": query_text,
             "vector_dim": self.vector_dim,
             "embedding": vector,
             "created_at": datetime.now(UTC).isoformat(),
@@ -201,7 +202,7 @@ class QueryEmbeddingCache:
     def default_path(model_name: str) -> Path:
         return QUERY_EMBEDDING_CACHE_DIR / f"{model_slug(model_name)}.jsonl"
 
-    def replace_keys(self, keys: set[tuple[str, str, str]]) -> None:
+    def replace_keys(self, keys: builtins.set[tuple[str, str, str]]) -> None:
         kept = [
             key_record
             for key, key_record in self.record_metadata.items()
@@ -217,7 +218,7 @@ class QueryEmbeddingCache:
     def validate_subset(self, rows: list[dict], model: str) -> ValidatedSubset:
         expected = {
             (
-                str(model),
+                model,
                 str(row.get("query_id") or ""),
                 query_hash(str(row.get("query") or "")),
             )
@@ -229,7 +230,7 @@ class QueryEmbeddingCache:
             if key in self.record_metadata
         ]
         for record in found:
-            if record.get("model") != str(model):
+            if record.get("model") != model:
                 raise QueryEmbeddingCacheError(
                     "Query cache contains an unexpected model"
                 )
@@ -252,7 +253,7 @@ class QueryEmbeddingCache:
     def compact_to(
         self,
         destination: Path,
-        allowed_keys: set[tuple[str, str, str]],
+        allowed_keys: builtins.set[tuple[str, str, str]],
     ) -> Path:
         allowed_models = {item[0] for item in allowed_keys}
         unexpected = {

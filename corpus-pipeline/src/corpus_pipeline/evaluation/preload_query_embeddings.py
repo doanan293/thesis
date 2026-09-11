@@ -4,13 +4,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from corpus_pipeline.config.paths import PROCESSED_EVALUATION_DIR, PROJECT_ROOT
-
-DEFAULT_COMPOSE_FILE = PROJECT_ROOT.parent / "docker-compose.yml"
-DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 from corpus_pipeline.evaluation.query_embedding_cache import (
     QueryEmbeddingCache,
     default_query_embedding_cache_path,
 )
+
+DEFAULT_COMPOSE_FILE = PROJECT_ROOT.parent / "docker-compose.yml"
+DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 
 DEFAULT_EVAL_JSONL = PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl"
 

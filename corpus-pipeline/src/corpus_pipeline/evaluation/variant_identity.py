@@ -27,11 +27,11 @@ class RerankVariantIdentity:
     ) -> RerankVariantIdentity:
         payload = {
             "contract_version": RERANK_VARIANT_CONTRACT_VERSION,
-            "candidate_data_sha256": str(candidate_data_sha256),
-            "reranker": str(model),
-            "model_sha256": str(model_sha256),
-            "protocol": str(protocol),
-            "request_contract_sha256": str(request_contract_sha256),
+            "candidate_data_sha256": candidate_data_sha256,
+            "reranker": model,
+            "model_sha256": model_sha256,
+            "protocol": protocol,
+            "request_contract_sha256": request_contract_sha256,
         }
         return cls(payload, canonical_sha256(payload))
 
@@ -68,11 +68,11 @@ class MetricsArtifactIdentity:
     ) -> MetricsArtifactIdentity:
         payload: dict[str, Any] = {
             "contract_version": METRICS_CONTRACT_VERSION,
-            "evaluation_sha256": str(evaluation_sha256),
-            "candidate_data_sha256": str(candidate_data_sha256),
-            "top_k": int(top_k),
-            "window_size": int(window_size),
+            "evaluation_sha256": evaluation_sha256,
+            "candidate_data_sha256": candidate_data_sha256,
+            "top_k": top_k,
+            "window_size": window_size,
         }
         if rerank_variant_sha256 is not None:
-            payload["rerank_variant_sha256"] = str(rerank_variant_sha256)
+            payload["rerank_variant_sha256"] = rerank_variant_sha256
         return cls(payload, canonical_sha256(payload))

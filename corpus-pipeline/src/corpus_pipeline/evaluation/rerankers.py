@@ -31,7 +31,7 @@ class CachedReranker:
 
     def __init__(self, cache: RerankScoreCache, reranker: str):
         self.cache = cache
-        self.reranker = str(reranker)
+        self.reranker = reranker
 
     def rerank(
         self, query_row: dict, candidates: list[RetrievalCandidate]
@@ -93,7 +93,7 @@ class LlamaCppReranker:
     ) -> None:
         self.spec = spec
         self.client = client
-        self.max_retries = int(max_retries)
+        self.max_retries = max_retries
         self.retry_sleep_seconds = float(retry_sleep_seconds)
         self.retry_sleep = retry_sleep
 

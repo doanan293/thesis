@@ -67,9 +67,21 @@ def test_remote_rerank_reconciliation_replaces_conflicts_and_keeps_local_only(
     """A missing replacement would keep conflicting local scores and fail merge."""
     local_path = tmp_path / "local.jsonl"
     remote_path = tmp_path / "remote.jsonl"
-    append_record(local_path, _score_record(query_id="shared", score=0.1), schema="rerank-score-v2")
-    append_record(local_path, _score_record(query_id="local-only", score=0.2), schema="rerank-score-v2")
-    append_record(remote_path, _score_record(query_id="shared", score=0.9), schema="rerank-score-v2")
+    append_record(
+        local_path,
+        _score_record(query_id="shared", score=0.1),
+        schema="rerank-score-v2",
+    )
+    append_record(
+        local_path,
+        _score_record(query_id="local-only", score=0.2),
+        schema="rerank-score-v2",
+    )
+    append_record(
+        remote_path,
+        _score_record(query_id="shared", score=0.9),
+        schema="rerank-score-v2",
+    )
 
     remote = RerankScoreCache(
         remote_path,
@@ -163,21 +175,28 @@ def test_kaggle_dry_run_formats_resource_identity_and_does_not_register(
 def test_kaggle_rerank_propagates_selected_account(complete_run, monkeypatch):
     seen = []
     spec = require_model("qwen3-reranker:0.6b-fp16")
+    assert spec.rerank_search_space is not None
     selected = spec.rerank_search_space.candidates[0]
     monkeypatch.setattr(
         auto_profile,
         "ensure_runtime_profile",
-        lambda **kwargs: seen.append(("profile", kwargs["kaggle_account"]))
-        or SimpleNamespace(profile=SimpleNamespace(selected=selected), action="reuse"),
+        lambda **kwargs: (
+            seen.append(("profile", kwargs["kaggle_account"]))
+            or SimpleNamespace(
+                profile=SimpleNamespace(selected=selected), action="reuse"
+            )
+        ),
     )
     monkeypatch.setattr(
         kaggle_service,
         "run_kaggle_stage",
-        lambda **kwargs: seen.append(("stage", kwargs["kaggle_account"]))
-        or SimpleNamespace(
-            artifact_path=None,
-            completion=Completion(1, 0, 1),
-            actions=(),
+        lambda **kwargs: (
+            seen.append(("stage", kwargs["kaggle_account"]))
+            or SimpleNamespace(
+                artifact_path=None,
+                completion=Completion(1, 0, 1),
+                actions=(),
+            )
         ),
     )
 

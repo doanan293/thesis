@@ -14,9 +14,7 @@ class AliasOnlyQdrantClient:
 
     def get_aliases(self):
         return SimpleNamespace(
-            aliases=[
-                SimpleNamespace(alias_name="thesis_chunks_embeddinggemma_300m")
-            ]
+            aliases=[SimpleNamespace(alias_name="thesis_chunks_embeddinggemma_300m")]
         )
 
 

@@ -9,6 +9,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,24 @@ def _percentile(values: list[float], percentile: float) -> float | None:
     return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
 
 
+class GpuSampler(Protocol):
+    """Periodic GPU sampler feeding RuntimeTelemetry."""
+
+    def start(self, callback: Callable[[GpuSample], None], /) -> None: ...
+
+    def stop(self) -> None: ...
+
+
+class ProcessSampler(Protocol):
+    """Periodic llama.cpp server process sampler feeding RuntimeTelemetry."""
+
+    def register(self, processes: dict[int, int], /) -> None: ...
+
+    def start(self, callback: Callable[[ProcessRssSample], None], /) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 class RuntimeTelemetry:
     def __init__(
         self,
@@ -203,16 +222,16 @@ class RuntimeTelemetry:
         output_dir: Path,
         *,
         sample_interval_seconds: float = 2.0,
-        sampler: NvidiaSmiSampler | None = None,
-        process_sampler: ProcessRssSampler | None = None,
+        sampler: GpuSampler | None = None,
+        process_sampler: ProcessSampler | None = None,
     ):
-        self.stage = str(stage)
-        self.model = str(model)
+        self.stage = stage
+        self.model = model
         self.output_dir = Path(output_dir)
         self.gpu_samples: list[GpuSample] = []
         self.operations: list[OperationSample] = []
-        self.sampler = sampler or NvidiaSmiSampler(sample_interval_seconds)
-        self.process_sampler = process_sampler or ProcessRssSampler(
+        self.sampler: GpuSampler = sampler or NvidiaSmiSampler(sample_interval_seconds)
+        self.process_sampler: ProcessSampler = process_sampler or ProcessRssSampler(
             sample_interval_seconds
         )
         self.process_rss_samples: list[ProcessRssSample] = []
@@ -252,12 +271,12 @@ class RuntimeTelemetry:
                 raise ValueError("prompt timing values must be non-negative integers")
         self.operations.append(
             OperationSample(
-                int(server_index),
-                int(item_count),
-                int(input_characters),
+                server_index,
+                item_count,
+                input_characters,
                 float(latency_seconds),
-                str(status),
-                int(retries),
+                status,
+                retries,
                 prompt_tokens_cached,
                 prompt_tokens_evaluated,
             )
@@ -331,7 +350,9 @@ class RuntimeTelemetry:
                 "prompt_tokens_cached": cached_total,
                 "prompt_tokens_evaluated": evaluated_total,
                 "prompt_cache_hit_ratio": (
-                    cached_total / timing_total if timing_total else None
+                    cached_total / timing_total
+                    if cached_total is not None and timing_total
+                    else None
                 ),
                 "statuses": dict(sorted(statuses.items())),
             },

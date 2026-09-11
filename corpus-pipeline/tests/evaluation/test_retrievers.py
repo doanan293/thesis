@@ -1,16 +1,14 @@
 from types import SimpleNamespace
+from unittest.mock import create_autospec
+
+from qdrant_client import QdrantClient
 
 from corpus_pipeline.evaluation.retrievers import QdrantHybridRetriever
 
 
-class CapturingQdrantClient:
-    def query_points(self, **kwargs):
-        self.query_kwargs = kwargs
-        return SimpleNamespace(points=[])
-
-
 def test_hybrid_retriever_forwards_explicit_rrf_k():
-    client = CapturingQdrantClient()
+    client = create_autospec(QdrantClient, instance=True)
+    client.query_points.return_value = SimpleNamespace(points=[])
     retriever = QdrantHybridRetriever(
         client,
         "collection",
@@ -20,5 +18,6 @@ def test_hybrid_retriever_forwards_explicit_rrf_k():
     )
 
     assert retriever.search("query", limit=30) == []
-    assert client.query_kwargs["query"].rrf.k == 2
-    assert client.query_kwargs["query"].rrf.weights is None
+    query = client.query_points.call_args.kwargs["query"]
+    assert query.rrf.k == 2
+    assert query.rrf.weights is None

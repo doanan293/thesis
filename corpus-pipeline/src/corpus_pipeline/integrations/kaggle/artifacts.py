@@ -189,13 +189,12 @@ def load_cloud_artifact(
         derived_job_sha256 = manifest_job_sha256
         derived_reuse_sha256 = manifest.reuse_sha256
     strict_identity_match = derived_job_sha256 == expected_identity.sha256
-    if not strict_identity_match:
-        if (
-            not allow_reuse
-            or derived_reuse_sha256 is None
-            or derived_reuse_sha256 != expected_identity.reuse_sha256
-        ):
-            raise ArtifactContractError("Cloud artifact job identity mismatch")
+    if not strict_identity_match and (
+        not allow_reuse
+        or derived_reuse_sha256 is None
+        or derived_reuse_sha256 != expected_identity.reuse_sha256
+    ):
+        raise ArtifactContractError("Cloud artifact job identity mismatch")
     checkpoint_path = None
     if manifest.checkpoint_filename is not None:
         checkpoint_path = manifest_path.with_name(manifest.checkpoint_filename)

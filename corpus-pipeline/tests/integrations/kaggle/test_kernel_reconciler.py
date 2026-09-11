@@ -1,5 +1,6 @@
 from pathlib import Path
-from types import SimpleNamespace
+
+from tests.integrations.kaggle.factories import stage_job
 
 from corpus_pipeline.integrations.kaggle.errors import KaggleOutputUnavailable
 from corpus_pipeline.integrations.kaggle.kernel_reconciler import KernelReconciler
@@ -8,6 +9,7 @@ from corpus_pipeline.integrations.kaggle.models import (
     KernelPresence,
     KernelRemoteState,
     KernelStatus,
+    StageJob,
 )
 
 
@@ -19,8 +21,14 @@ class FakeKernels:
         self.waits = []
         self.downloads = []
 
-    def reference(self, _job):
+    def reference(self, job: StageJob) -> str:
         return self.remote.reference
+
+    def discover(self, job: StageJob) -> KernelRemoteState:
+        return self.remote
+
+    def log_tail(self, reference: str) -> str:
+        return f"log tail for {reference}"
 
     def wait_for_terminal(self, reference, *, timeout_seconds):
         self.waits.append((reference, timeout_seconds))
@@ -45,7 +53,7 @@ def test_running_kernel_attaches_without_push(tmp_path):
     )
     kernels = FakeKernels(remote)
     result = KernelReconciler(kernels).attach_or_recover(
-        SimpleNamespace(), remote, tmp_path, timeout_seconds=60
+        stage_job(tmp_path), remote, tmp_path, timeout_seconds=60
     )
 
     assert kernels.pushes == []
@@ -58,13 +66,11 @@ def test_running_kernel_attaches_without_push(tmp_path):
 
 
 def test_error_without_output_is_recoverable(tmp_path):
-    remote = KernelRemoteState(
-        "owner/job", KernelPresence.EXISTS, KernelStatus.ERROR
-    )
+    remote = KernelRemoteState("owner/job", KernelPresence.EXISTS, KernelStatus.ERROR)
     kernels = FakeKernels(remote, output_unavailable=True)
 
     result = KernelReconciler(kernels).attach_or_recover(
-        SimpleNamespace(), remote, tmp_path, timeout_seconds=60
+        stage_job(tmp_path), remote, tmp_path, timeout_seconds=60
     )
 
     assert result.output_root is None

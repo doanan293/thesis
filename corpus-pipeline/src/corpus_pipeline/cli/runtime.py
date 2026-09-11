@@ -45,7 +45,7 @@ class ResumableIncomplete(RuntimeError):
 
 
 def result_payload(result: CommandResult) -> dict[str, Any]:
-    payload = asdict(result)
+    payload: dict[str, Any] = asdict(result)
     payload["status"] = result.status.value
     payload["artifact"] = str(result.artifact) if result.artifact else None
     return payload

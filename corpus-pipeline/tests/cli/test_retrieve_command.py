@@ -20,7 +20,9 @@ def test_retrieve_passes_split_metadata_and_heavy_roots(monkeypatch):
         captured["request"] = request
         return SimpleNamespace(
             workspace=SimpleNamespace(root=Path("data/retrieval_eval/experiment")),
-            artifact=SimpleNamespace(data_path=Path("data/heavy/candidates.jsonl"), query_count=1),
+            artifact=SimpleNamespace(
+                data_path=Path("data/heavy/candidates.jsonl"), query_count=1
+            ),
         )
 
     monkeypatch.setattr(retrieve_command, "run_retrieval", fake_run)
@@ -80,8 +82,13 @@ def test_retrieve_forwards_explicit_rrf_k(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "retrieve", "--run", "experiment", "--retriever", "bm25",
-            "--rrf-k", "60",
+            "retrieve",
+            "--run",
+            "experiment",
+            "--retriever",
+            "bm25",
+            "--rrf-k",
+            "60",
         ],
     )
 

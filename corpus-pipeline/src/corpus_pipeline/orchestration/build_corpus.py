@@ -100,7 +100,9 @@ def _digest_payload(config: BuildConfig) -> dict[str, Any]:
         "table_overrides": sha256_file(config.table_overrides_path),
         "mappings": sha256_file(config.mappings_path),
         "glossary": sha256_file(config.glossary_path),
-        "valid_syllables": sha256_file(RESOURCES_DIR / "vietnamese_valid_syllables.json"),
+        "valid_syllables": sha256_file(
+            RESOURCES_DIR / "vietnamese_valid_syllables.json"
+        ),
         "max_chars": config.max_chars,
         "schema_version": "rag-final-v2",
     }

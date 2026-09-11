@@ -105,7 +105,6 @@ class DenseQdrantRetriever:
 
     def search(self, query, limit: int) -> list[RetrievalCandidate]:
         vector = self.embed_query(query)
-        last_error = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 query_kwargs = {
@@ -121,13 +120,14 @@ class DenseQdrantRetriever:
                         query_kwargs["query_filter"] = query_filter
                 response = self.qdrant_client.query_points(**query_kwargs)
                 break
-            except Exception as exc:
-                last_error = exc
+            except Exception:
                 if attempt >= self.max_retries:
                     raise
                 self.retry_sleep(min(0.5 * (2 ** (attempt - 1)), 5.0))
         else:
-            raise last_error
+            raise RuntimeError(
+                "Qdrant search was not attempted: max_retries must be >= 1"
+            )
         results = response.points
         candidates: list[RetrievalCandidate] = []
         for rank, result in enumerate(results, start=1):
@@ -200,7 +200,6 @@ class QdrantBm25Retriever:
 
     def search(self, query, limit: int) -> list[RetrievalCandidate]:
         query_text = query.get("query", "") if isinstance(query, dict) else str(query)
-        last_error = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 query_kwargs = {
@@ -216,13 +215,14 @@ class QdrantBm25Retriever:
                         query_kwargs["query_filter"] = query_filter
                 response = self.qdrant_client.query_points(**query_kwargs)
                 break
-            except Exception as exc:
-                last_error = exc
+            except Exception:
                 if attempt >= self.max_retries:
                     raise
                 self.retry_sleep(min(0.5 * (2 ** (attempt - 1)), 5.0))
         else:
-            raise last_error
+            raise RuntimeError(
+                "Qdrant search was not attempted: max_retries must be >= 1"
+            )
 
         candidates: list[RetrievalCandidate] = []
         for rank, result in enumerate(response.points, start=1):
@@ -310,7 +310,6 @@ class QdrantHybridRetriever(DenseQdrantRetriever):
         query_filter = (
             self.filter_builder(query) if self.filter_builder is not None else None
         )
-        last_error = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 prefetch = [
@@ -335,13 +334,14 @@ class QdrantHybridRetriever(DenseQdrantRetriever):
                     with_payload=True,
                 )
                 break
-            except Exception as exc:
-                last_error = exc
+            except Exception:
                 if attempt >= self.max_retries:
                     raise
                 self.retry_sleep(min(0.5 * (2 ** (attempt - 1)), 5.0))
         else:
-            raise last_error
+            raise RuntimeError(
+                "Qdrant search was not attempted: max_retries must be >= 1"
+            )
         candidates: list[RetrievalCandidate] = []
         for rank, result in enumerate(response.points, start=1):
             payload = result.payload or {}

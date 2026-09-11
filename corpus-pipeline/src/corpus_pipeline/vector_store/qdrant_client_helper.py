@@ -33,12 +33,16 @@ PAYLOAD_INDEXES = {
 class QdrantClientHelper:
     def __init__(
         self,
-        host="localhost",
-        port=6333,
-        collection_name="thesis_chunks",
-        vector_size=1024,
+        host: str = "localhost",
+        port: int = 6333,
+        collection_name: str = "thesis_chunks",
+        vector_size: int = 1024,
+        *,
+        client: QdrantClient | None = None,
     ):
-        self.client = QdrantClient(host=host, port=port)
+        self.client = (
+            client if client is not None else QdrantClient(host=host, port=port)
+        )
         self.collection_name = collection_name
         self.vector_size = vector_size
 
@@ -47,7 +51,12 @@ class QdrantClientHelper:
         return self.collection_name in collections
 
     def point_count(self) -> int:
-        return int(self.client.get_collection(self.collection_name).points_count)
+        count = self.client.get_collection(self.collection_name).points_count
+        if count is None:
+            raise RuntimeError(
+                f"Qdrant did not report a point count for '{self.collection_name}'"
+            )
+        return count
 
     def init_collection(self, vector_size=None):
         size = vector_size or self.vector_size
@@ -86,7 +95,7 @@ class QdrantClientHelper:
         """Atomically point a stable alias at this versioned collection."""
         collections = {item.name for item in self.client.get_collections().collections}
         aliases = {item.alias_name for item in self.client.get_aliases().aliases}
-        actions = []
+        actions: list[DeleteAliasOperation | CreateAliasOperation] = []
         if alias_name in collections:
             if not delete_legacy_collection:
                 raise RuntimeError(

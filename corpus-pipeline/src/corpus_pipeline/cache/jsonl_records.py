@@ -48,7 +48,7 @@ def seal_record(record: Mapping[str, Any], schema: str) -> dict[str, Any]:
         raise CacheRecordError("cache schema must not be empty")
     sealed = dict(record)
     sealed.pop(CHECKSUM_FIELD, None)
-    sealed["cache_schema"] = str(schema)
+    sealed["cache_schema"] = schema
     sealed[CHECKSUM_FIELD] = hashlib.sha256(_canonical_bytes(sealed)).hexdigest()
     return sealed
 

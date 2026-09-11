@@ -4,7 +4,7 @@ import hashlib
 
 
 def normalize_query_for_hash(query: str) -> str:
-    return str(query).strip()
+    return query.strip()
 
 
 def query_hash(query: str) -> str:

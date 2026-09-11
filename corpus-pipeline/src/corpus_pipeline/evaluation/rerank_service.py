@@ -76,15 +76,12 @@ def rerank_checkpoint_path(output_dir: Path, candidate_sha256: str, model: str) 
     return Path(output_dir) / ".checkpoints" / f"{canonical_sha256(identity)}.jsonl"
 
 
-def _cleanup_completed_stage_artifact(
-    artifact_path: Path, staging_root: Path
-) -> None:
+def _cleanup_completed_stage_artifact(artifact_path: Path, staging_root: Path) -> None:
     root = Path(staging_root).resolve()
     artifact_dir = Path(artifact_path).resolve().parent
     if artifact_dir == root or not artifact_dir.is_relative_to(root):
         raise ValueError(
-            f"completed artifact is outside Kaggle rerank staging root: "
-            f"{artifact_dir}"
+            f"completed artifact is outside Kaggle rerank staging root: {artifact_dir}"
         )
     shutil.rmtree(artifact_dir)
 
@@ -351,7 +348,13 @@ class KaggleRerankBackend:
             kaggle_account=request.kaggle_account,
         )
         if resolution.profile is None:
-            return RerankStageResult(None, identity.sha256, None, (f"profile={resolution.action}",), incomplete=True)
+            return RerankStageResult(
+                None,
+                identity.sha256,
+                None,
+                (f"profile={resolution.action}",),
+                incomplete=True,
+            )
         if spec.rerank_contract is None:
             raise ValueError(f"Reranker {request.model} has no scoring contract")
         contract = spec.rerank_contract.sha256

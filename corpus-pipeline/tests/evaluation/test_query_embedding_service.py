@@ -9,29 +9,36 @@ from corpus_pipeline.integrations.kaggle import auto_profile
 from corpus_pipeline.integrations.kaggle import service as kaggle_service
 from corpus_pipeline.runtime.catalog import require_model
 
-
 MODEL = "qwen3-embedding:4b-fp16"
 
 
 def test_kaggle_query_embedding_propagates_selected_account(tmp_path, monkeypatch):
     seen = []
-    selected = require_model(MODEL).embedding_search_space.query.candidates[0]
+    search_space = require_model(MODEL).embedding_search_space
+    assert search_space is not None
+    selected = search_space.query.candidates[0]
     input_path = tmp_path / "evaluation.jsonl"
     input_path.write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(
         auto_profile,
         "ensure_runtime_profile",
-        lambda **kwargs: seen.append(("profile", kwargs["kaggle_account"]))
-        or SimpleNamespace(profile=SimpleNamespace(selected=selected), action="reuse"),
+        lambda **kwargs: (
+            seen.append(("profile", kwargs["kaggle_account"]))
+            or SimpleNamespace(
+                profile=SimpleNamespace(selected=selected), action="reuse"
+            )
+        ),
     )
     monkeypatch.setattr(
         kaggle_service,
         "run_kaggle_stage",
-        lambda **kwargs: seen.append(("stage", kwargs["kaggle_account"]))
-        or SimpleNamespace(
-            artifact_path=None,
-            completion=Completion(1, 0, 1),
-            actions=(),
+        lambda **kwargs: (
+            seen.append(("stage", kwargs["kaggle_account"]))
+            or SimpleNamespace(
+                artifact_path=None,
+                completion=Completion(1, 0, 1),
+                actions=(),
+            )
         ),
     )
 

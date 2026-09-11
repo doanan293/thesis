@@ -118,11 +118,11 @@ class ArtifactManifest:
             raise ArtifactContractError("record_count must be non-negative")
         return cls(
             schema_version=1,
-            artifact_type=str(artifact_type),
+            artifact_type=artifact_type,
             created_at=datetime.now(UTC).isoformat(),
             data_filename=data_path.name,
             data_sha256=sha256_file(data_path),
-            record_count=int(record_count),
+            record_count=record_count,
             identity=dict(identity),
         )
 
@@ -140,11 +140,11 @@ class ArtifactManifest:
             raise ArtifactContractError("record_count must be non-negative")
         return cls(
             schema_version=1,
-            artifact_type=str(artifact_type),
+            artifact_type=artifact_type,
             created_at=datetime.now(UTC).isoformat(),
             data_filename=Path(data_path).name,
             data_sha256=data_sha256,
-            record_count=int(record_count),
+            record_count=record_count,
             identity=dict(identity),
         )
 

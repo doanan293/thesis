@@ -86,6 +86,8 @@ def is_running_header(record: LineRecord) -> bool:
 def line_records_from_page(page: fitz.Page, page_number: int) -> list[LineRecord]:
     records: list[LineRecord] = []
     page_dict = page.get_text("dict")
+    if not isinstance(page_dict, dict):
+        raise TypeError(f"PyMuPDF returned {type(page_dict).__name__} for text dict")
     for block in page_dict.get("blocks", []):
         if block.get("type") != 0:
             continue

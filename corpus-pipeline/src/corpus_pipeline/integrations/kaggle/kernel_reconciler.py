@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Protocol
 
 from corpus_pipeline.integrations.kaggle.errors import (
     KaggleDetached,
     KaggleOutputUnavailable,
     KaggleRemoteStateError,
 )
-from corpus_pipeline.integrations.kaggle.kernels import PipelineKernelService
 from corpus_pipeline.integrations.kaggle.models import (
     ActionVerb,
     KernelPresence,
@@ -27,9 +27,33 @@ class KernelResolution:
     submitted: bool = False
 
 
+class ReconcilerKernels(Protocol):
+    """Pipeline kernel operations KernelReconciler depends on."""
+
+    def reference(self, job: StageJob, /) -> str: ...
+
+    def discover(self, job: StageJob, /) -> KernelRemoteState: ...
+
+    def push(self, bundle: Path, /, *, timeout_seconds: int) -> None: ...
+
+    def wait_for_terminal(
+        self, reference: str, /, *, timeout_seconds: int
+    ) -> KernelStatus: ...
+
+    def download_output(self, reference: str, destination: Path, /) -> None: ...
+
+    def log_tail(self, reference: str, /) -> str: ...
+
+
 class KernelReconciler:
-    def __init__(self, kernels: PipelineKernelService):
+    def __init__(self, kernels: ReconcilerKernels):
         self.kernels = kernels
+
+    def reference(self, job: StageJob) -> str:
+        return self.kernels.reference(job)
+
+    def log_tail(self, reference: str) -> str:
+        return self.kernels.log_tail(reference)
 
     def inspect(self, job: StageJob) -> KernelRemoteState:
         return self.kernels.discover(job)

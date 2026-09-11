@@ -27,7 +27,10 @@ def test_benchmark_worker_attempts_all_levels_and_keeps_invalid_level(tmp_path):
     artifact = run_benchmark_worker(config, measure_level=measure)
 
     assert artifact.completion.complete == 2
-    rows = [json.loads(line) for line in (tmp_path / "benchmark_results.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "benchmark_results.jsonl").read_text().splitlines()
+    ]
     assert len(rows) == 2
     assert rows[1]["measurement"]["status"] == "invalid"
     assert (tmp_path / "benchmark_report.md").is_file()

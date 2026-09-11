@@ -107,6 +107,8 @@ def parse_ankhang_html(file_path):
         return None  # No user guide section found
 
     parent = huong_dan_h2.parent
+    if parent is None:
+        return None
     container_div = parent.find("div")
     if not container_div:
         return None

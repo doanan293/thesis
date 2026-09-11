@@ -159,7 +159,6 @@ def upsert_points_from_embeddings(
 ) -> int:
     dependencies = dependencies or load_qdrant_dependencies()
     pending_points = []
-    prepared_count = 0
     upserted_count = 0
 
     def flush_points() -> None:
@@ -170,7 +169,7 @@ def upsert_points_from_embeddings(
         upserted_count += len(pending_points)
         pending_points.clear()
 
-    for prepared_count, point in enumerate(points, start=prepared_count + 1):
+    for prepared_count, point in enumerate(points, start=1):
         cache_key = int(point["cache_key"])
         pending_points.append(
             build_qdrant_point(point, embeddings_by_cache_key[cache_key], dependencies)

@@ -117,7 +117,7 @@ def _term_pattern(match_text: str, case_sensitive: bool) -> re.Pattern:
 def detect_term_enrichments(
     text: str, glossary_entries: list[dict], limit: int = TERM_ENRICHMENT_LIMIT
 ) -> list[dict]:
-    haystack = str(text or "")
+    haystack = text or ""
     matches: list[tuple[int, dict]] = []
     seen_terms = set()
     for entry in glossary_entries:
@@ -202,7 +202,7 @@ def format_term_annotation(
     limit: int = TERM_ENRICHMENT_LIMIT,
 ) -> str:
     lines = []
-    visible = str(visible_text or "").casefold()
+    visible = (visible_text or "").casefold()
     for enrichment in _dedupe_enrichments(term_enrichments, limit):
         expansion = _expansion_text(enrichment)
         if not expansion:

@@ -141,9 +141,7 @@ def resolve_server(
     gguf_root: Path,
 ) -> list[str]:
     if mode == "external":
-        endpoints = [
-            str(value).rstrip("/") for value in external_urls if str(value).strip()
-        ]
+        endpoints = [value.rstrip("/") for value in external_urls if value.strip()]
         if not endpoints:
             raise ValueError("External server mode requires --llama-server-url")
         return endpoints

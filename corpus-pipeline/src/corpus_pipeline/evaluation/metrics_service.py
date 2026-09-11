@@ -193,14 +193,10 @@ def _load_metrics_candidate_bundle(
     return candidate_bundle
 
 
-def _resolve_metrics_evaluation_path(
-    recorded_path: str, expected_sha256: str
-) -> Path:
+def _resolve_metrics_evaluation_path(recorded_path: str, expected_sha256: str) -> Path:
     recorded = Path(recorded_path)
     evaluation = (
-        recorded
-        if recorded.is_file()
-        else PROCESSED_EVALUATION_DIR / recorded.name
+        recorded if recorded.is_file() else PROCESSED_EVALUATION_DIR / recorded.name
     )
     if sha256_file(evaluation) != expected_sha256:
         raise ArtifactContractError(
@@ -214,9 +210,7 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
     record = load_run_record(run_path)
     validate_metrics_cutoff(request.top_k, record.identity.candidate_k)
     workspace = RunWorkspace(request.run_root, record.identity, request.artifact_root)
-    candidate_bundle = _load_metrics_candidate_bundle(
-        workspace, record.candidates_dir
-    )
+    candidate_bundle = _load_metrics_candidate_bundle(workspace, record.candidates_dir)
     evaluation = _resolve_metrics_evaluation_path(
         record.identity.evaluation_path,
         record.identity.evaluation_sha256,
@@ -244,9 +238,7 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
             )
         spec = require_model(reranker)
         if spec.rerank_contract is None:
-            raise RerankScoreCacheError(
-                f"Reranker {reranker} has no scoring contract"
-            )
+            raise RerankScoreCacheError(f"Reranker {reranker} has no scoring contract")
         contract = spec.rerank_contract.sha256
         score_cache = RerankScoreCache(
             score_bundle.data_path,

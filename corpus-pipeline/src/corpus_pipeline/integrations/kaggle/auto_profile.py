@@ -114,7 +114,8 @@ def _load_benchmark_selection(
         identity.get("job_sha256"), str
     ):
         raise RuntimeError("benchmark manifest is missing job identity")
-    return selected, tuple(measurements), str(identity["job_sha256"])
+    job_sha256 = identity["job_sha256"]
+    return selected, tuple(measurements), job_sha256
 
 
 def ensure_runtime_profile(
@@ -167,17 +168,19 @@ def ensure_runtime_profile(
         from corpus_pipeline.integrations.kaggle.models import StageName
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
 
-        def benchmark_runner(**kwargs: object):
+        def benchmark_runner(
+            *, input_path: Path, gguf_root: Path, benchmark_items: int
+        ):
             return run_kaggle_stage(
                 stage=StageName(benchmark_stage),
                 model=model,
-                input_path=Path(kwargs["input_path"]),
+                input_path=Path(input_path),
                 output_dir=benchmark_output_dir,
-                gguf_root=Path(kwargs["gguf_root"]),
+                gguf_root=Path(gguf_root),
                 force=False,
                 check_only=False,
                 budget_seconds=budget_seconds,
-                benchmark_items=512,
+                benchmark_items=benchmark_items,
                 kaggle_account=kaggle_account,
             )
 

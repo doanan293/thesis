@@ -12,7 +12,7 @@ from corpus_pipeline.evaluation.artifact_contracts import (
     write_json,
 )
 from corpus_pipeline.evaluation.metrics_artifacts import MetricsArtifactResult
-from corpus_pipeline.evaluation.metrics_service import MetricsResult
+from corpus_pipeline.evaluation.metrics_service import MetricsRequest, MetricsResult
 from corpus_pipeline.evaluation.query_hash import query_hash
 from corpus_pipeline.evaluation.rejudge_service import (
     RejudgeRequest,
@@ -155,6 +155,23 @@ def rejudge_fixture(tmp_path: Path):
     )
 
 
+def _write_fake_metrics(request: MetricsRequest) -> MetricsResult:
+    artifact_root = request.artifact_root
+    assert artifact_root is not None
+    generated_report = artifact_root / "reports" / "generated" / "report.md"
+    generated_report.parent.mkdir(parents=True, exist_ok=True)
+    generated_report.write_text("new report", encoding="utf-8")
+    return MetricsResult(
+        baseline=MetricsArtifactResult(
+            artifact_dir=artifact_root / "reports" / "baseline",
+            report_path=generated_report,
+            results_path=artifact_root / "reports" / "metrics.jsonl",
+            metrics_sha256="metrics",
+        ),
+        reranked=(),
+    )
+
+
 def test_rejudge_dry_run_does_not_modify_or_run_metrics(
     rejudge_fixture: RejudgeRequest, monkeypatch: pytest.MonkeyPatch
 ):
@@ -186,20 +203,9 @@ def test_rejudge_apply_replaces_reports_and_updates_hashes(
 ):
     requests = []
 
-    def fake_metrics(request):
+    def fake_metrics(request: MetricsRequest) -> MetricsResult:
         requests.append(request)
-        generated_report = request.artifact_root / "reports" / "generated" / "report.md"
-        generated_report.parent.mkdir(parents=True, exist_ok=True)
-        generated_report.write_text("new report", encoding="utf-8")
-        return MetricsResult(
-            baseline=MetricsArtifactResult(
-                artifact_dir=request.artifact_root / "reports" / "baseline",
-                report_path=generated_report,
-                results_path=request.artifact_root / "reports" / "metrics.jsonl",
-                metrics_sha256="metrics",
-            ),
-            reranked=(),
-        )
+        return _write_fake_metrics(request)
 
     monkeypatch.setattr(
         "corpus_pipeline.evaluation.rejudge_service.RAG_FINAL_SECTIONS_PATH",
@@ -243,9 +249,10 @@ def test_rejudge_rolls_back_when_metrics_fails(
         rejudge_fixture.dense_artifact_root / "reports" / "old-report.md"
     ).read_bytes()
 
-    def fail_on_hybrid(request):
+    def fail_on_hybrid(request: MetricsRequest) -> MetricsResult:
         if request.run_root == rejudge_fixture.hybrid_run_root:
             raise RuntimeError("metrics failure")
+        return _write_fake_metrics(request)
 
     monkeypatch.setattr(
         "corpus_pipeline.evaluation.rejudge_service.RAG_FINAL_SECTIONS_PATH",

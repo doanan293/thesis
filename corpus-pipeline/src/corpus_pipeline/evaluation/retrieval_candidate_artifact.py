@@ -37,8 +37,8 @@ def _serialize_candidate(candidate: RetrievalCandidate) -> dict[str, Any]:
     return {
         "chunk_id": chunk_id,
         "retrieval_score": require_finite_number(candidate.score, "retrieval_score"),
-        "retrieval_rank": int(candidate.rank),
-        "source": str(candidate.source),
+        "retrieval_rank": candidate.rank,
+        "source": candidate.source,
         "document_text": text,
         "document_hash": document_hash(text),
         "payload": {

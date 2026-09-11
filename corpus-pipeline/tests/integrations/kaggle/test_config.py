@@ -44,9 +44,9 @@ def test_explicit_profile_resolves_acc2_and_shared_owners():
 
 
 def test_profile_environment_contains_only_selected_secret():
-    environment = profile_runner_environment(
-        resolve_account_profile("acc2", _profiles()), _profiles()
-    )
+    profile = resolve_account_profile("acc2", _profiles())
+    assert profile is not None
+    environment = profile_runner_environment(profile, _profiles())
     assert environment["KAGGLE_USERNAME"] == "secondary-user"
     assert environment["KAGGLE_API_TOKEN"] == "secondary-token"
     assert not any(key.startswith("KAGGLE_ACC") for key in environment)
@@ -59,23 +59,24 @@ def test_profile_discovery_is_numeric():
 
 def test_acc1_username_must_match_shared_owner():
     values = _profiles() | {"KAGGLE_ACC1_USERNAME": "wrong-primary"}
-    with pytest.raises(ValueError, match="KAGGLE_ACC1_USERNAME.*KAGGLE_SHARED_OWNER"):
+    with pytest.raises(ValueError, match=r"KAGGLE_ACC1_USERNAME.*KAGGLE_SHARED_OWNER"):
         resolve_account_profile("acc1", values)
 
 
-@pytest.mark.parametrize(
-    "name", ["main", "gpu1", "acc0", "acc01", "ACC2", "acc2x"]
-)
+@pytest.mark.parametrize("name", ["main", "gpu1", "acc0", "acc01", "ACC2", "acc2x"])
 def test_invalid_profile_name_is_rejected(name):
     with pytest.raises(ValueError, match="acc1, acc2"):
         resolve_account_profile(name, _profiles())
 
 
 def test_no_profile_mode_returns_none_for_legacy_environment():
-    assert resolve_account_profile(
-        None,
-        {"KAGGLE_USERNAME": "legacy", "KAGGLE_API_TOKEN": "legacy-token"},
-    ) is None
+    assert (
+        resolve_account_profile(
+            None,
+            {"KAGGLE_USERNAME": "legacy", "KAGGLE_API_TOKEN": "legacy-token"},
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -86,9 +87,7 @@ def test_no_profile_mode_returns_none_for_legacy_environment():
         ("KAGGLE_SHARED_OWNER", "KAGGLE_SHARED_OWNER"),
     ],
 )
-def test_profile_errors_name_missing_setting_without_secret(
-    missing_key, expected_name
-):
+def test_profile_errors_name_missing_setting_without_secret(missing_key, expected_name):
     values = _profiles()
     del values[missing_key]
     with pytest.raises(ValueError) as raised:

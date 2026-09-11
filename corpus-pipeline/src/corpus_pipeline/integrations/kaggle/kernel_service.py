@@ -3,9 +3,9 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
+from typing import Protocol
 
 from corpus_pipeline.integrations.kaggle.api import (
-    KaggleCommandRunner,
     kernel_list_mine_command,
     kernel_logs_command,
     kernel_output_command,
@@ -20,6 +20,7 @@ from corpus_pipeline.integrations.kaggle.errors import (
     classify_command_error,
 )
 from corpus_pipeline.integrations.kaggle.log_follower import (
+    FollowerCommandRunner,
     ManagedLogFollower,
     retry_delay_seconds,
 )
@@ -36,10 +37,19 @@ from corpus_pipeline.integrations.kaggle.parsers import (
 )
 
 
+class KernelCommandRunner(FollowerCommandRunner, Protocol):
+    """Kaggle CLI runner used by KernelService."""
+
+    @property
+    def dry_run(self) -> bool: ...
+
+    def run(self, args: list[str], /, capture_output: bool = False) -> str: ...
+
+
 class KernelService:
     def __init__(
         self,
-        runner: KaggleCommandRunner,
+        runner: KernelCommandRunner,
         owner: str,
         *,
         poll_interval_seconds: float = 15,
@@ -199,11 +209,9 @@ class KernelService:
     def poll(self, reference: str, *, timeout_seconds: float = 43_200) -> None:
         status = self.wait_for_terminal(reference, timeout_seconds=timeout_seconds)
         if status is KernelStatus.ERROR:
-            raise RuntimeError(
-                f"Kernel {reference} failed: {self._log_tail(reference)}"
-            )
+            raise RuntimeError(f"Kernel {reference} failed: {self.log_tail(reference)}")
 
-    def _log_tail(self, reference: str) -> str:
+    def log_tail(self, reference: str) -> str:
         try:
             entries = parse_kernel_log_entries(
                 self.runner.run(kernel_logs_command(reference), capture_output=True)

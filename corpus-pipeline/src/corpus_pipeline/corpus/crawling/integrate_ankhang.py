@@ -31,7 +31,7 @@ def load_mappings(path: Path = MAPPINGS_PATH):
 
 
 def resolve_colloquial_mapping(slug: str, mappings: dict | None) -> dict:
-    slug = str(slug or "").strip()
+    slug = (slug or "").strip()
     empty = {"aliases": [], "visual_sign": "", "mapping_key": ""}
     if not slug or not mappings:
         return empty
@@ -62,11 +62,11 @@ def resolve_colloquial_mapping(slug: str, mappings: dict | None) -> dict:
 
 
 def build_context_header(title: str) -> str:
-    return f"{str(title or '').strip()}\n> Thông tin chi tiết".strip()
+    return f"{(title or '').strip()}\n> Thông tin chi tiết".strip()
 
 
 def normalize_inline_spaces(value: str) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
+    return re.sub(r"\s+", " ", (value or "")).strip()
 
 
 def title_without_parenthetical(title: str) -> str:
@@ -278,7 +278,7 @@ def convert_single_column_tables_to_text(text: str) -> str:
 def process_table_clean(table_lines: list[str]) -> list[str]:
     if len(table_lines) <= 2:
         has_sep = any(
-            re.match(r"^\s*\|(?:\s*:?-+:?\s*\|)+\s*$", l) for l in table_lines
+            re.match(r"^\s*\|(?:\s*:?-+:?\s*\|)+\s*$", line) for line in table_lines
         )
         if has_sep:
             return []

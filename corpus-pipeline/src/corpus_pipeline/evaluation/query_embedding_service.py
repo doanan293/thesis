@@ -18,13 +18,13 @@ from corpus_pipeline.evaluation.query_embedding_cache import (
     QueryEmbeddingCache,
     query_hash,
 )
-from corpus_pipeline.runtime.catalog import ModelKind, require_model
-from corpus_pipeline.runtime.client import LlamaCppClient
-from corpus_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
 from corpus_pipeline.integrations.kaggle.job_lock import (
     kaggle_cache_lock,
     kaggle_job_lock,
 )
+from corpus_pipeline.runtime.catalog import ModelKind, require_model
+from corpus_pipeline.runtime.client import LlamaCppClient
+from corpus_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
 from corpus_pipeline.vector_store.ingest_vectors import (
     DEFAULT_COMPOSE_FILE,
     DEFAULT_GGUF_ROOT,
@@ -98,6 +98,11 @@ class LocalQueryEmbeddingBackend:
         manager = LlamaCppComposeManager(self.compose_file)
         endpoint = resolve_server("compose", [], spec, manager, self.gguf_root)[0]
         client = LlamaCppClient(endpoint, timeout=request.request_timeout_seconds)
+        expected_dimension = spec.vector_dimension
+        if expected_dimension is None:
+            raise ValueError(
+                f"embedding model has no vector dimension: {request.model}"
+            )
         partial_cache = Path(request.output_dir)
         cache = QueryEmbeddingCache(
             partial_cache,
@@ -124,7 +129,7 @@ class LocalQueryEmbeddingBackend:
             model_name=request.model,
             cache_path=partial_cache,
             embed_batch_fn=lambda queries: client.embed(
-                queries, request.model, spec.vector_dimension
+                queries, request.model, expected_dimension
             ),
             batch_size=spec.local_request_batch_size,
             force=False,
@@ -171,7 +176,9 @@ class KaggleQueryEmbeddingBackend:
         from corpus_pipeline.integrations.kaggle.service import run_kaggle_stage
 
         spec = require_model(request.model)
-        from corpus_pipeline.integrations.kaggle.auto_profile import ensure_runtime_profile
+        from corpus_pipeline.integrations.kaggle.auto_profile import (
+            ensure_runtime_profile,
+        )
 
         resolution = ensure_runtime_profile(
             workload="query-embed",
@@ -185,7 +192,9 @@ class KaggleQueryEmbeddingBackend:
             kaggle_account=request.kaggle_account,
         )
         if resolution.profile is None:
-            return QueryEmbeddingStageResult(None, None, (f"profile={resolution.action}",), incomplete=True)
+            return QueryEmbeddingStageResult(
+                None, None, (f"profile={resolution.action}",), incomplete=True
+            )
         remote_dir = (
             WORK_DIR / "kaggle-query-embeddings" / require_model(request.model).slug
         )
@@ -259,7 +268,7 @@ def _read_query_rows(path: Path) -> list[dict]:
 def _query_keys(rows: list[dict], model: str) -> set[tuple[str, str, str]]:
     return {
         (
-            str(model),
+            model,
             str(row.get("query_id") or ""),
             query_hash(str(row.get("query") or "")),
         )

@@ -22,6 +22,12 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _to_int(value: object) -> int:
+    if isinstance(value, int | float | str):
+        return int(value)
+    raise TypeError(f"expected an integer value, got {type(value).__name__}")
+
+
 def _require_sha256(value: object, field: str) -> str:
     text = str(value)
     if len(text) != 64 or any(char not in "0123456789abcdef" for char in text):
@@ -74,7 +80,7 @@ class RuntimeCandidate:
         if missing:
             raise ValueError(f"runtime candidate is missing: {', '.join(missing)}")
         try:
-            values = {name: int(payload[name]) for name in names}
+            values = {name: _to_int(payload[name]) for name in names}
         except (TypeError, ValueError) as exc:
             raise ValueError("runtime candidate values must be integers") from exc
         return cls(**values)
@@ -127,7 +133,7 @@ class RuntimeProfileIdentity:
     ) -> RuntimeProfileIdentity:
         if not workload.strip() or not model.strip() or not machine_shape.strip():
             raise ValueError("runtime profile identity fields must not be empty")
-        payload = {
+        payload: dict[str, object] = {
             "schema_version": PROFILE_SCHEMA_VERSION,
             "workload": workload,
             "model": model,
@@ -197,7 +203,7 @@ class RuntimeProfile:
         )
 
     def to_dict(self) -> dict[str, object]:
-        body = {
+        body: dict[str, object] = {
             "schema_version": PROFILE_SCHEMA_VERSION,
             "identity": self.identity.payload,
             "identity_sha256": self.identity.sha256,
@@ -211,7 +217,7 @@ class RuntimeProfile:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RuntimeProfile:
-        if int(payload.get("schema_version", -1)) != PROFILE_SCHEMA_VERSION:
+        if _to_int(payload.get("schema_version", -1)) != PROFILE_SCHEMA_VERSION:
             raise ValueError("unsupported runtime profile schema")
         identity_payload = payload.get("identity")
         if not isinstance(identity_payload, dict):
@@ -234,7 +240,7 @@ class RuntimeProfile:
         )
         if len(measurements) != len(measurements_payload):
             raise ValueError("runtime profile measurements must contain objects")
-        sample_count = int(payload.get("sample_count", 0))
+        sample_count = _to_int(payload.get("sample_count", 0))
         benchmark_job_sha256 = _require_sha256(
             payload.get("benchmark_job_sha256"), "benchmark_job_sha256"
         )
@@ -287,18 +293,18 @@ class RuntimeProfileStore:
     def save(self, profile: RuntimeProfile, *, model_slug: str) -> Path:
         destination = self.path(profile.identity, model_slug=model_slug)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        # The handle is closed in the try block before the atomic replacement.
-        handle = tempfile.NamedTemporaryFile(  # noqa: SIM115
-            mode="w",
-            encoding="utf-8",
-            dir=destination.parent,
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-            delete=False,
-        )
-        temporary = Path(handle.name)
+        temporary: Path | None = None
         try:
-            with handle:
+            # The handle closes before the atomic replacement below.
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
                 json.dump(
                     profile.to_dict(),
                     handle,
@@ -309,6 +315,6 @@ class RuntimeProfileStore:
                 handle.write("\n")
             os.replace(temporary, destination)
         finally:
-            if temporary.exists():
+            if temporary is not None and temporary.exists():
                 temporary.unlink()
         return destination

@@ -54,7 +54,9 @@ def test_profile_preflight_checks_selected_account_and_shared_runtime(tmp_path):
     assert not [issue for issue in report.issues if issue.check == "kaggle-credentials"]
 
 
-def test_profile_preflight_names_missing_token_without_exposing_it(tmp_path, monkeypatch):
+def test_profile_preflight_names_missing_token_without_exposing_it(
+    tmp_path, monkeypatch
+):
     from corpus_pipeline.config.enums import Backend
 
     monkeypatch.delenv("KAGGLE_ACC2_API_TOKEN", raising=False)

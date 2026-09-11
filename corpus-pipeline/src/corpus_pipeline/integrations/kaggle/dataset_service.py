@@ -7,10 +7,9 @@ import time
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from corpus_pipeline.integrations.kaggle.api import (
-    KaggleCommandRunner,
     config_view_command,
     dataset_create_command,
     dataset_file_download_command,
@@ -30,6 +29,19 @@ from corpus_pipeline.integrations.kaggle.parsers import (
     parse_dataset_status_payload,
     parse_kaggle_username,
 )
+
+
+class DatasetCommandRunner(Protocol):
+    """Kaggle CLI runner used by DatasetService."""
+
+    def run(
+        self,
+        args: list[str],
+        /,
+        capture_output: bool = False,
+        *,
+        live_output: bool = False,
+    ) -> str: ...
 
 
 class DatasetPresence(Enum):
@@ -64,7 +76,7 @@ def _is_not_found(error: KaggleCommandError) -> bool:
 
 
 class DatasetService:
-    def __init__(self, runner: KaggleCommandRunner, owner: str):
+    def __init__(self, runner: DatasetCommandRunner, owner: str):
         self.runner = runner
         self.owner = owner
 
@@ -89,7 +101,9 @@ class DatasetService:
                 and active_owner is not None
                 and reference_owner.casefold() != active_owner.casefold()
             )
-            if is_foreign and ("404" in folded or "not found" in folded or "403" in folded):
+            if is_foreign and (
+                "404" in folded or "not found" in folded or "403" in folded
+            ):
                 try:
                     files_output = self.runner.run(
                         dataset_files_command(reference), capture_output=True
@@ -242,9 +256,7 @@ class DatasetService:
             encoding="utf-8",
         )
         if state.presence is DatasetPresence.ABSENT:
-            print(
-                f"Uploading Kaggle dataset {reference} (create)...", flush=True
-            )
+            print(f"Uploading Kaggle dataset {reference} (create)...", flush=True)
             self.runner.run(
                 dataset_create_command(Path(path), public=public),
                 live_output=True,
@@ -271,12 +283,9 @@ class DatasetService:
         for _ in range(max_attempts):
             try:
                 state = self.inspect_state(reference, active_owner=self.owner)
-                version_ready = (
-                    minimum_version is None
-                    or (
-                        state.current_version is not None
-                        and state.current_version >= minimum_version
-                    )
+                version_ready = minimum_version is None or (
+                    state.current_version is not None
+                    and state.current_version >= minimum_version
                 )
                 if state.status == "READY" and version_ready:
                     return

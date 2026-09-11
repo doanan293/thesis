@@ -1,82 +1,78 @@
 from types import SimpleNamespace
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    AliasDescription,
+    CollectionDescription,
+    CollectionsAliasesResponse,
+    CollectionsResponse,
+)
 
 from corpus_pipeline.vector_store.qdrant_client_helper import QdrantClientHelper
 
 
-class FakeQdrantTransport:
-    def __init__(self, *, collections=(), aliases=(), points_count=0):
-        self.collections = set(collections)
-        self.aliases = set(aliases)
-        self.points_count = points_count
-        self.deleted_collections = []
-        self.alias_updates = []
-        self.get_collection_names = []
-
-    def get_collections(self):
-        self.get_collection_names.append("all")
-        return SimpleNamespace(
-            collections=[SimpleNamespace(name=name) for name in self.collections]
-        )
-
-    def get_aliases(self):
-        return SimpleNamespace(
-            aliases=[SimpleNamespace(alias_name=name) for name in self.aliases]
-        )
-
-    def get_collection(self, name):
-        self.get_collection_names.append(name)
-        return SimpleNamespace(points_count=self.points_count)
-
-    def delete_collection(self, name):
-        self.deleted_collections.append(name)
-        self.collections.discard(name)
-
-    def update_collection_aliases(self, *, change_aliases_operations):
-        self.alias_updates.append(change_aliases_operations)
-
-
-def helper_with_fake_transport(**kwargs):
-    transport = FakeQdrantTransport(**kwargs)
-    helper = QdrantClientHelper.__new__(QdrantClientHelper)
-    helper.client = transport
-    helper.collection_name = "versioned"
-    helper.vector_size = 3
-    return helper, transport
+def helper_with_client(
+    *,
+    collections: tuple[str, ...] = (),
+    aliases: tuple[str, ...] = (),
+    points_count: int = 0,
+) -> tuple[QdrantClientHelper, MagicMock]:
+    client = create_autospec(QdrantClient, instance=True)
+    client.get_collections.return_value = CollectionsResponse(
+        collections=[CollectionDescription(name=name) for name in collections]
+    )
+    client.get_aliases.return_value = CollectionsAliasesResponse(
+        aliases=[
+            AliasDescription(alias_name=name, collection_name="previous")
+            for name in aliases
+        ]
+    )
+    client.get_collection.return_value = SimpleNamespace(points_count=points_count)
+    helper = QdrantClientHelper(
+        collection_name="versioned", vector_size=3, client=client
+    )
+    return helper, client
 
 
 def test_point_count_reads_collection_info():
-    helper, transport = helper_with_fake_transport(points_count=12)
+    helper, client = helper_with_client(points_count=12)
 
     assert helper.point_count() == 12
-    assert transport.get_collection_names == [helper.collection_name]
+    client.get_collection.assert_called_once_with(helper.collection_name)
 
 
 def test_switch_alias_replaces_existing_alias_with_1_18_models():
-    helper, transport = helper_with_fake_transport(aliases={"stable"})
+    helper, client = helper_with_client(aliases=("stable",))
 
     helper.switch_alias("stable")
 
-    delete, create = transport.alias_updates[0]
+    operations = client.update_collection_aliases.call_args.kwargs[
+        "change_aliases_operations"
+    ]
+    delete, create = operations
     assert delete.delete_alias.alias_name == "stable"
     assert create.create_alias.alias_name == "stable"
     assert create.create_alias.collection_name == helper.collection_name
 
 
 def test_switch_alias_requires_permission_to_delete_legacy_collection():
-    helper, transport = helper_with_fake_transport(collections={"stable"})
+    helper, client = helper_with_client(collections=("stable",))
 
     with pytest.raises(RuntimeError, match="legacy collection"):
         helper.switch_alias("stable")
 
-    assert transport.deleted_collections == []
+    client.delete_collection.assert_not_called()
 
 
 def test_switch_alias_deletes_authorized_legacy_collection_before_creation():
-    helper, transport = helper_with_fake_transport(collections={"stable"})
+    helper, client = helper_with_client(collections=("stable",))
 
     helper.switch_alias("stable", delete_legacy_collection=True)
 
-    assert transport.deleted_collections == ["stable"]
-    assert transport.alias_updates[0][0].create_alias.alias_name == "stable"
+    client.delete_collection.assert_called_once_with("stable")
+    operations = client.update_collection_aliases.call_args.kwargs[
+        "change_aliases_operations"
+    ]
+    assert operations[0].create_alias.alias_name == "stable"

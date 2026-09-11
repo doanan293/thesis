@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 from corpus_pipeline.integrations.kaggle.artifacts import (
     ArtifactContractError,
@@ -8,10 +9,13 @@ from corpus_pipeline.integrations.kaggle.artifacts import (
     promote_complete_artifact,
 )
 from corpus_pipeline.integrations.kaggle.checkpoint_inheritance import (
-    CheckpointInheritanceService,
+    CheckpointInheritanceResult,
 )
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointState
-from corpus_pipeline.integrations.kaggle.kernel_reconciler import KernelReconciler
+from corpus_pipeline.integrations.kaggle.kernel_reconciler import (
+    KernelReconciler,
+    KernelResolution,
+)
 from corpus_pipeline.integrations.kaggle.models import (
     ActionVerb,
     KernelPresence,
@@ -19,6 +23,7 @@ from corpus_pipeline.integrations.kaggle.models import (
     KernelStatus,
     PipelineResult,
     ReconcileAction,
+    StageJob,
     StageRequest,
 )
 from corpus_pipeline.integrations.kaggle.stages import get_stage_adapter
@@ -31,6 +36,44 @@ def runtime_dataset_reference(owners) -> str:
     return f"{owners.runtime}/{RUNTIME_DATASET_SLUG}"
 
 
+class KernelReconciliation(Protocol):
+    """Kernel lifecycle operations the orchestrator depends on."""
+
+    def reference(self, job: StageJob, /) -> str: ...
+
+    def log_tail(self, reference: str, /) -> str: ...
+
+    def inspect(self, job: StageJob, /) -> KernelRemoteState: ...
+
+    def attach_or_recover(
+        self,
+        job: StageJob,
+        remote: KernelRemoteState,
+        staging_root: Path,
+        /,
+        *,
+        timeout_seconds: int,
+    ) -> KernelResolution: ...
+
+    def submit(
+        self,
+        job: StageJob,
+        bundle: Path,
+        staging_root: Path,
+        /,
+        *,
+        timeout_seconds: int,
+    ) -> KernelResolution: ...
+
+
+class CheckpointInheritanceResolver(Protocol):
+    """Resolves the best checkpoint across Kaggle account profiles."""
+
+    def resolve(
+        self, job: StageJob, target_state: CheckpointState, /, *, check_only: bool
+    ) -> CheckpointInheritanceResult: ...
+
+
 class KagglePipelineOrchestrator:
     def __init__(
         self,
@@ -40,14 +83,14 @@ class KagglePipelineOrchestrator:
         kernels,
         *,
         temp_root: Path = Path("/tmp"),
-        reconciler: KernelReconciler | None = None,
-        checkpoint_inheritance: CheckpointInheritanceService | None = None,
+        reconciler: KernelReconciliation | None = None,
+        checkpoint_inheritance: CheckpointInheritanceResolver | None = None,
     ):
         self.stages = stages
         self.dependencies = dependencies
         self.checkpoints = checkpoints
         self.kernels = kernels
-        self.reconciler = reconciler or KernelReconciler(kernels)
+        self.reconciler: KernelReconciliation = reconciler or KernelReconciler(kernels)
         self.temp_root = Path(temp_root)
         self.checkpoint_inheritance = checkpoint_inheritance
 
@@ -79,9 +122,7 @@ class KagglePipelineOrchestrator:
                 checkpoint = inheritance.state
                 checkpoint_actions = inheritance.actions
         remote = (
-            KernelRemoteState(
-                self.reconciler.kernels.reference(job), KernelPresence.ABSENT
-            )
+            KernelRemoteState(self.reconciler.reference(job), KernelPresence.ABSENT)
             if request.force
             else self.reconciler.inspect(job)
         )
@@ -121,7 +162,7 @@ class KagglePipelineOrchestrator:
                         ):
                             raise ArtifactContractError(
                                 f"{error}; kernel={resolution.remote.reference}; "
-                                f"log_tail={self.reconciler.kernels.service._log_tail(resolution.remote.reference)}"
+                                f"log_tail={self.reconciler.log_tail(resolution.remote.reference)}"
                             ) from error
                     if artifact is not None:
                         if artifact.completion.is_complete:
@@ -211,7 +252,7 @@ class KagglePipelineOrchestrator:
             except ArtifactContractError as error:
                 raise ArtifactContractError(
                     f"{error}; kernel={resolution.remote.reference}; "
-                    f"log_tail={self.reconciler.kernels.service._log_tail(resolution.remote.reference)}"
+                    f"log_tail={self.reconciler.log_tail(resolution.remote.reference)}"
                 ) from error
             combined_actions = (*actions, *dependency_actions, *resolution.actions)
             if artifact.completion.is_complete:

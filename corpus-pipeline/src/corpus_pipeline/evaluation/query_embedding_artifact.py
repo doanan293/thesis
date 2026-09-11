@@ -93,7 +93,7 @@ def _query_key(model: str, row: dict[str, Any]) -> tuple[str, str, str]:
         raise ArtifactContractError(
             "Every evaluation query requires query_id and query"
         )
-    return str(model), query_id, query_hash(query_text)
+    return model, query_id, query_hash(query_text)
 
 
 def _query_rows(eval_path: Path) -> list[dict[str, Any]]:
@@ -137,9 +137,9 @@ def query_cache_identity(
         raise ArtifactContractError("vector_dimension must be positive")
     return {
         "eval_sha256": sha256_file(Path(eval_path)),
-        "model": str(model),
-        "gguf_sha256": str(gguf_sha256),
-        "vector_dimension": int(vector_dimension),
+        "model": model,
+        "gguf_sha256": gguf_sha256,
+        "vector_dimension": vector_dimension,
         "cache_schema": "query-embedding-v1",
     }
 
@@ -205,7 +205,7 @@ def finalize_query_cache(
     )
     identity["logical_sha256"] = canonical_sha256(identity)
     if job_sha256 is not None:
-        identity["job_sha256"] = str(job_sha256)
+        identity["job_sha256"] = job_sha256
     manifest = ArtifactManifest.create(
         artifact_type="query_embeddings",
         data_path=data_path,

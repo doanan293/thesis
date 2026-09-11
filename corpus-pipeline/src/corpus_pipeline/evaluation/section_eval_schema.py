@@ -200,11 +200,11 @@ def answer_mode_for_expected_ids(
 
 
 def normalize_eval_tags(tags: list[str] | set[str] | tuple[str, ...]) -> list[str]:
-    return sorted({str(tag).strip() for tag in tags if str(tag).strip()})
+    return sorted({tag.strip() for tag in tags if tag.strip()})
 
 
 def clean_query_label(value: str, max_chars: int = 72) -> str:
-    text = str(value or "").strip()
+    text = (value or "").strip()
     if not text:
         return ""
     if text.count("|") >= 2 or re.search(r"\|\s*-{2,}\s*\|", text):

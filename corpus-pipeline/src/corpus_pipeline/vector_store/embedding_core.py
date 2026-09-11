@@ -157,7 +157,7 @@ def model_slug(model_name: str) -> str:
 
 
 def text_hash(text: str) -> str:
-    return hashlib.sha256(str(text).strip().encode("utf-8")).hexdigest()
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
 
 
 def canonical_json_hash(value) -> str:
@@ -173,7 +173,7 @@ def qdrant_point_id(chunk_id, cache_key: int) -> int | str:
 
     chunk_id_text = str(chunk_id or "").strip()
     if not chunk_id_text:
-        return int(cache_key)
+        return cache_key
     if chunk_id_text.isdecimal():
         return int(chunk_id_text)
 
@@ -217,7 +217,7 @@ class ChunkEmbeddingCache:
         self.path = Path(path)
         self.vector_dim = vector_dim
         self.allow_truncated_final_record = allow_truncated_final_record
-        self.model_sha256 = str(model_sha256)
+        self.model_sha256 = model_sha256
         self.records: dict[tuple[str, int, str, str, int], list[float]] = {}
         self.content_records: dict[tuple[str, str, str, int], list[float]] = {}
         self.record_data: dict[tuple[str, int, str, str, int], dict] = {}
@@ -304,10 +304,10 @@ class ChunkEmbeddingCache:
         self, model: str, chunk_key: int, text: str, payload_hash_value: str
     ) -> list[float] | None:
         key = (
-            str(model),
-            int(chunk_key),
+            model,
+            chunk_key,
             text_hash(text),
-            str(payload_hash_value),
+            payload_hash_value,
             self.vector_dim,
         )
         vector = self.records.get(key)
@@ -330,10 +330,10 @@ class ChunkEmbeddingCache:
     ) -> list[float]:
         vector = validate_cached_embedding(embedding, self.vector_dim)
         key = (
-            str(model),
-            int(chunk_key),
+            model,
+            chunk_key,
             text_hash(text),
-            str(payload_hash_value),
+            payload_hash_value,
             self.vector_dim,
         )
         record = {
@@ -375,7 +375,7 @@ class ChunkEmbeddingCache:
         records = []
         for point in points:
             key = (
-                str(model),
+                model,
                 int(point["cache_key"]),
                 text_hash(point["embedding_text"]),
                 str(point["payload_hash"]),
@@ -482,7 +482,7 @@ def normalize_canonical_metadata_record(chunk: dict, cache_key: int) -> dict:
     embedding_text = payload["embedding_text"]
     return {
         "point_id": qdrant_point_id(chunk_id, cache_key),
-        "cache_key": int(cache_key),
+        "cache_key": cache_key,
         "embedding_text": embedding_text,
         "payload": payload,
         "payload_hash": canonical_json_hash(payload),
@@ -529,11 +529,11 @@ def expected_cache_keys(
 ) -> set[tuple[str, int, str, str, int]]:
     return {
         (
-            str(model),
+            model,
             int(point["cache_key"]),
             text_hash(point["embedding_text"]),
             point["payload_hash"],
-            int(vector_dim),
+            vector_dim,
         )
         for point in points
     }
@@ -570,7 +570,7 @@ def detect_cache_vector_dimension(cache_path: Path, model: str) -> int:
                 raise EmbeddingCacheError(
                     f"Invalid JSON in {cache_path}:{line_number}: {exc}"
                 ) from exc
-            if str(record.get("model")) != str(model) or "payload_hash" not in record:
+            if str(record.get("model")) != model or "payload_hash" not in record:
                 continue
             if "vector_dim" not in record:
                 raise EmbeddingCacheError(
@@ -693,7 +693,9 @@ def collect_or_create_embeddings(
 
     pending_batches: list[tuple[list[dict], list[str]]] = []
 
-    def commit_embeddings(points_to_embed: list[dict], new_embeddings: list[list[float]]) -> None:
+    def commit_embeddings(
+        points_to_embed: list[dict], new_embeddings: list[list[float]]
+    ) -> None:
         nonlocal embedded_count
         for point, vector_embedding in zip(
             points_to_embed, new_embeddings, strict=True

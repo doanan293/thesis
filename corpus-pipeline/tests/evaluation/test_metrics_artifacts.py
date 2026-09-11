@@ -21,6 +21,10 @@ from corpus_pipeline.evaluation.run_workspace import (
     RunWorkspace,
     load_run_record,
 )
+from corpus_pipeline.evaluation.variant_identity import (
+    MetricsArtifactIdentity,
+    RerankVariantIdentity,
+)
 
 
 def _split_artifact_root(complete_run: Path, tmp_path: Path) -> Path:
@@ -87,7 +91,9 @@ def test_metrics_rebases_missing_legacy_evaluation_path_by_verified_hash(
     _rewrite_run_json(
         complete_run,
         identity={
-            **json.loads((complete_run / "run.json").read_text(encoding="utf-8"))["identity"],
+            **json.loads((complete_run / "run.json").read_text(encoding="utf-8"))[
+                "identity"
+            ],
             "evaluation_path": str(tmp_path / "legacy" / evaluation_path.name),
         },
     )
@@ -116,7 +122,9 @@ def test_metrics_rejects_legacy_evaluation_fallback_when_hash_differs(
     _rewrite_run_json(
         complete_run,
         identity={
-            **json.loads((complete_run / "run.json").read_text(encoding="utf-8"))["identity"],
+            **json.loads((complete_run / "run.json").read_text(encoding="utf-8"))[
+                "identity"
+            ],
             "evaluation_path": str(tmp_path / "legacy" / evaluation_path.name),
         },
     )
@@ -125,10 +133,6 @@ def test_metrics_rejects_legacy_evaluation_fallback_when_hash_differs(
         load_and_validate_metric_inputs(
             MetricsRequest(complete_run, top_k=1, artifact_root=heavy_root)
         )
-from corpus_pipeline.evaluation.variant_identity import (
-    MetricsArtifactIdentity,
-    RerankVariantIdentity,
-)
 
 
 def test_select_variants_defaults_to_all_and_model_keeps_all_revisions():

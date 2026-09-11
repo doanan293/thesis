@@ -1,24 +1,21 @@
 import json
 import re
 from pathlib import Path
-from types import SimpleNamespace
+from typing import Any
 
 import pytest
+from tests.integrations.kaggle.factories import stage_job
 
 from corpus_pipeline.integrations.kaggle.artifacts import ArtifactContractError
 from corpus_pipeline.integrations.kaggle.checkpoints import CheckpointService
-from corpus_pipeline.integrations.kaggle.dataset_service import DatasetPresence
+from corpus_pipeline.integrations.kaggle.dataset_service import (
+    DatasetPresence,
+    DatasetRemoteState,
+    PreparedDataset,
+)
 from corpus_pipeline.integrations.kaggle.models import JobIdentity, StageName
 from corpus_pipeline.integrations.kaggle.workers.runtime import artifact_from_output
 from corpus_pipeline.runtime.catalog import MODEL_CATALOG
-
-
-def _job(stage: StageName, model: str):
-    return SimpleNamespace(
-        stage=stage,
-        model=model,
-        identity=SimpleNamespace(reuse_sha256="12345678" + "a" * 56),
-    )
 
 
 def _identity() -> JobIdentity:
@@ -32,26 +29,57 @@ def _identity() -> JobIdentity:
     )
 
 
-class FakeDatasetService:
-    def __init__(self, manifest, source_path):
+class UnusedDatasets:
+    """Dataset port for tests that must never reach Kaggle."""
+
+    def inspect_state(
+        self, reference: str, *, active_owner: str | None = None
+    ) -> DatasetRemoteState:
+        raise AssertionError(f"unexpected dataset inspection: {reference}")
+
+    def wait_for_dataset_ready(self, reference: str) -> None:
+        raise AssertionError(f"unexpected dataset wait: {reference}")
+
+    def fetch_json(self, reference: str, filename: str) -> dict[str, Any]:
+        raise AssertionError(f"unexpected dataset fetch: {reference}/{filename}")
+
+    def download_file(self, reference: str, filename: str, destination: Path) -> Path:
+        raise AssertionError(f"unexpected dataset download: {reference}/{filename}")
+
+    def ensure_dataset(
+        self,
+        slug: str,
+        title: str,
+        path: Path,
+        *,
+        public: bool = False,
+        active_owner: str | None = None,
+    ) -> PreparedDataset:
+        raise AssertionError(f"unexpected dataset publish: {slug}")
+
+
+class FakeDatasetService(UnusedDatasets):
+    def __init__(self, manifest: dict[str, Any], source_path: Path):
         self.manifest = manifest
         self.source_path = Path(source_path)
-        self.roots = []
+        self.roots: list[Path] = []
 
-    def inspect_state(self, reference, *, active_owner=None):
-        return SimpleNamespace(presence=DatasetPresence.EXISTS, status="READY")
+    def inspect_state(
+        self, reference: str, *, active_owner: str | None = None
+    ) -> DatasetRemoteState:
+        return DatasetRemoteState(DatasetPresence.EXISTS, status="READY")
 
-    def fetch_json(self, reference, filename, destination=None):
+    def fetch_json(self, reference: str, filename: str) -> dict[str, Any]:
         return self.manifest
 
-    def download_file(self, reference, filename, destination):
+    def download_file(self, reference: str, filename: str, destination: Path) -> Path:
         destination = Path(destination)
         self.roots.append(destination)
         target = destination / filename
         target.write_bytes(self.source_path.read_bytes())
         return target
 
-    def wait_for_dataset_ready(self, reference):
+    def wait_for_dataset_ready(self, reference: str) -> None:
         return None
 
 
@@ -68,13 +96,8 @@ def test_checkpoint_inspect_uses_explicit_isolated_root(tmp_path):
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
     manifest["data_filename"] = data.name
     service = FakeDatasetService(manifest, data)
-    job = SimpleNamespace(
-        stage=StageName.RERANK,
-        model="qwen3-reranker:0.6b-fp16",
-        identity=_identity(),
-        output_dir=tmp_path / "output",
-        data_filename=data.name,
-        expected_total=2,
+    job = stage_job(
+        tmp_path, identity=_identity(), data_filename=data.name, expected_total=2
     )
 
     state = CheckpointService(service, "owner").inspect(
@@ -99,13 +122,8 @@ def test_checkpoint_inspect_rejects_wrong_artifact_type(tmp_path):
     )
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
     service = FakeDatasetService(manifest, data)
-    job = SimpleNamespace(
-        stage=StageName.RERANK,
-        model="qwen3-reranker:0.6b-fp16",
-        identity=_identity(),
-        output_dir=tmp_path / "output",
-        data_filename=data.name,
-        expected_total=1,
+    job = stage_job(
+        tmp_path, identity=_identity(), data_filename=data.name, expected_total=1
     )
 
     with pytest.raises(ArtifactContractError, match="artifact type mismatch"):
@@ -114,14 +132,16 @@ def test_checkpoint_inspect_rejects_wrong_artifact_type(tmp_path):
         )
 
 
-def test_rerank_checkpoint_reference_respects_kaggle_slug_limit():
-    service = CheckpointService(SimpleNamespace(), "owner")
+def test_rerank_checkpoint_reference_respects_kaggle_slug_limit(tmp_path):
+    service = CheckpointService(UnusedDatasets(), "owner")
+    job = stage_job(tmp_path, stage=StageName.RERANK, model="qwen3-reranker:0.6b-fp16")
+    reuse_prefix = job.identity.reuse_sha256[:8]
 
-    reference = service.reference(_job(StageName.RERANK, "qwen3-reranker:0.6b-fp16"))
+    reference = service.reference(job)
     owner, slug = reference.split("/", 1)
 
     assert owner == "owner"
-    assert slug == "re-eval-rerank-qwen3-reranker-12345678-checkpoint"
+    assert slug == f"re-eval-rerank-qwen3-reranker-{reuse_prefix}-checkpoint"
     assert 6 <= len(slug) <= 50
     assert re.fullmatch(r"[a-z0-9-]+", slug)
 
@@ -133,9 +153,12 @@ PRODUCTION_STAGES = tuple(
 
 @pytest.mark.parametrize("stage", PRODUCTION_STAGES)
 @pytest.mark.parametrize("model", tuple(MODEL_CATALOG))
-def test_production_checkpoint_references_are_bounded_and_deterministic(stage, model):
-    service = CheckpointService(SimpleNamespace(), "owner")
-    job = _job(stage, model)
+def test_production_checkpoint_references_are_bounded_and_deterministic(
+    stage, model, tmp_path
+):
+    service = CheckpointService(UnusedDatasets(), "owner")
+    job = stage_job(tmp_path, stage=stage, model=model)
+    reuse_prefix = job.identity.reuse_sha256[:8]
 
     first = service.reference(job)
     second = service.reference(job)
@@ -144,5 +167,5 @@ def test_production_checkpoint_references_are_bounded_and_deterministic(stage, m
     assert first == second
     assert 6 <= len(slug) <= 50
     assert slug.startswith(f"re-eval-{stage.value}-")
-    assert slug.endswith("-12345678-checkpoint")
+    assert slug.endswith(f"-{reuse_prefix}-checkpoint")
     assert re.fullmatch(r"[a-z0-9-]+", slug)

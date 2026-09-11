@@ -1,3 +1,6 @@
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from corpus_pipeline.integrations.kaggle.errors import (
@@ -15,11 +18,19 @@ class FakeRunner:
     def __init__(self, outputs):
         self.outputs = iter(outputs)
 
-    def run(self, _args, capture_output=False):
-        del capture_output
+    def run(self, args: list[str], capture_output: bool = False) -> str:
+        del args, capture_output
         value = next(self.outputs)
         if isinstance(value, BaseException):
             raise value
+        return value
+
+    def start(
+        self, args: list[str], *, capture_output: bool = False
+    ) -> subprocess.Popen[str] | None:
+        raise AssertionError("log following is replaced by FakeFollower")
+
+    def redact(self, value: str) -> str:
         return value
 
 
@@ -179,7 +190,7 @@ def test_download_output_retries_transient_command_error():
         jitter=lambda: 0.0,
     )
 
-    service.download_output("owner/job", "/tmp/output")
+    service.download_output("owner/job", Path("/tmp/output"))
 
 
 def test_download_output_maps_not_found_to_unavailable():
@@ -188,4 +199,4 @@ def test_download_output_maps_not_found_to_unavailable():
     )
 
     with pytest.raises(KaggleOutputUnavailable):
-        service.download_output("owner/job", "/tmp/output")
+        service.download_output("owner/job", Path("/tmp/output"))

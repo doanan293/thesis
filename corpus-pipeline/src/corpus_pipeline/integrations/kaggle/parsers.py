@@ -102,13 +102,18 @@ def parse_dataset_status_payload(output: str) -> dict:
     raise RuntimeError(f"Unrecognized Kaggle dataset status: {output.strip()}")
 
 
+def _first_csv_cell(line: str) -> str:
+    row = next(csv.reader([line]), [])
+    return row[0].strip() if row else ""
+
+
 def parse_dataset_references(output: str) -> set[str]:
     lines = output.splitlines()
     header_index = next(
         (
             index
             for index, line in enumerate(lines)
-            if next(csv.reader([line]), [None])[0].strip().casefold() == "ref"
+            if _first_csv_cell(line).casefold() == "ref"
         ),
         None,
     )

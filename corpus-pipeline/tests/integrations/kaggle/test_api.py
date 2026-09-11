@@ -62,8 +62,7 @@ def test_live_run_result_preserves_complete_captured_output(capsys):
     runner = KaggleCommandRunner(executable=sys.executable)
     result = runner.run_result(
         _python_command(
-            "import sys; sys.stdout.write('a\\rb\\n'); "
-            "sys.stderr.write('warning\\n')"
+            "import sys; sys.stdout.write('a\\rb\\n'); sys.stderr.write('warning\\n')"
         ),
         live_output=True,
     )

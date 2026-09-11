@@ -28,6 +28,7 @@ def test_qwen_contract_hash_changes_for_semantic_fields():
     contract = spec.rerank_contract
 
     assert isinstance(contract, RerankContract)
+    assert contract.scoring is not None
     assert (
         replace(contract, instruction=contract.instruction + " changed").sha256
         != contract.sha256
@@ -60,11 +61,14 @@ def test_bge_gemma_contract_builds_decoder_rerank_prompt():
 
 def test_runtime_changes_do_not_change_rerank_contract_hash():
     spec = require_model("qwen3-reranker:0.6b-fp16")
+    assert spec.rerank_runtime is not None
+    assert spec.rerank_contract is not None
     tuned = replace(
         spec, rerank_runtime=replace(spec.rerank_runtime, concurrency_per_gpu=2)
     )
 
     assert tuned.rerank_runtime != spec.rerank_runtime
+    assert tuned.rerank_contract is not None
     assert tuned.rerank_contract.sha256 == spec.rerank_contract.sha256
 
 
@@ -80,12 +84,12 @@ def test_embedding_profile_separates_query_and_corpus_workloads():
 
 
 def test_embedding_model_exposes_separate_runtime_search_spaces():
-    spec = require_model("qwen3-embedding:4b-fp16")
+    search_space = require_model("qwen3-embedding:4b-fp16").embedding_search_space
 
-    assert spec.embedding_search_space.query != spec.embedding_search_space.corpus
+    assert search_space is not None
+    assert search_space.query != search_space.corpus
     assert all(
-        candidate.request_batch_size > 0
-        for candidate in spec.embedding_search_space.query.candidates
+        candidate.request_batch_size > 0 for candidate in search_space.query.candidates
     )
 
 

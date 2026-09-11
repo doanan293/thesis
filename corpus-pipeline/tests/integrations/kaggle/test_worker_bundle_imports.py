@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.integrations.kaggle.factories import UnusedKernelService
 
 from corpus_pipeline.config.paths import PROJECT_ROOT
 from corpus_pipeline.integrations.kaggle.kernels import PipelineKernelService
@@ -14,7 +15,7 @@ from corpus_pipeline.integrations.kaggle.kernels import PipelineKernelService
 
 def _source_bundle(tmp_path: Path) -> Path:
     service = PipelineKernelService(
-        service=None,  # type: ignore[arg-type]
+        service=UnusedKernelService(),
         owner="test-owner",
         source_root=PROJECT_ROOT / "src",
     )

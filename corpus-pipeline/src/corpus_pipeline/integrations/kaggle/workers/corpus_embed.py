@@ -18,7 +18,6 @@ from corpus_pipeline.integrations.kaggle.workers.runtime import (
     worker_deadline,
 )
 from corpus_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
-from corpus_pipeline.runtime.catalog import require_model
 from corpus_pipeline.runtime.client import LlamaCppClient
 from corpus_pipeline.vector_store.embedding_core import (
     ChunkEmbeddingCache,
@@ -68,9 +67,7 @@ def run_corpus_embed_worker(
         with managed_model_servers(server_config, telemetry=telemetry) as servers:
             args = SimpleNamespace(
                 model=model_name,
-                input_batch_size=int(
-                    runtime_overrides["request_batch_size"]
-                ),
+                input_batch_size=int(runtime_overrides["request_batch_size"]),
                 mock=False,
                 llama_clients=[LlamaCppClient(server.base_url) for server in servers],
                 embedding_concurrency=int(runtime_overrides["concurrency"]),

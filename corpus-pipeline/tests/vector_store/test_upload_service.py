@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 
@@ -8,7 +9,7 @@ from corpus_pipeline.vector_store.upload_service import UploadVectorsRequest
 
 
 class FakeUploadHelper:
-    instances = []
+    instances: ClassVar[list["FakeUploadHelper"]] = []
     initial_exists = False
     initial_count = 0
 

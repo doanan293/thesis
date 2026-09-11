@@ -19,7 +19,7 @@ class KaggleCommandError(KagglePipelineError):
     ):
         self.operation = operation
         self.target = target
-        self.returncode = int(returncode)
+        self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
         detail = (stderr or stdout or "<empty response>").strip()

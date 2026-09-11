@@ -211,7 +211,9 @@ def publish_metrics_artifact(
             shutil.rmtree(summary_target)
         temporary_summary.mkdir(parents=True, exist_ok=True)
         shutil.copy2(target / "report.md", temporary_summary / "report.md")
-        shutil.copy2(target / "manifest.json", temporary_summary / "metrics-manifest.json")
+        shutil.copy2(
+            target / "manifest.json", temporary_summary / "metrics-manifest.json"
+        )
         os.replace(temporary_summary, summary_target)
         return MetricsArtifactResult(
             target,

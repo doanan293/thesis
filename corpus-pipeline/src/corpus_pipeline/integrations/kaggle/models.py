@@ -12,7 +12,7 @@ from corpus_pipeline.integrations.kaggle.config import OwnerConfiguration
 from corpus_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
 type JSONValue = (
-    None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
+    bool | int | float | str | Sequence["JSONValue"] | Mapping[str, "JSONValue"] | None
 )
 
 
