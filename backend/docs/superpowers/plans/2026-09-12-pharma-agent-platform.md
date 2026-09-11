@@ -106,8 +106,13 @@ def test_platform_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("PHARMA_AUTH__JWT_SECRET", "PHARMA_POSTGRES__DSN"):
         monkeypatch.delenv(name, raising=False)
     settings = Settings(_env_file=None)
-    assert settings.postgres.dsn == "postgresql+psycopg://thesis:thesis@localhost:5433/thesis"
-    assert settings.postgres.conninfo == "postgresql://thesis:thesis@localhost:5433/thesis"
+    assert (
+        settings.postgres.dsn
+        == "postgresql+psycopg://thesis:thesis@localhost:5433/thesis"
+    )
+    assert (
+        settings.postgres.conninfo == "postgresql://thesis:thesis@localhost:5433/thesis"
+    )
     assert settings.memory.summary_every_turns == 2
     assert settings.memory.context_turns == 4
     assert settings.auth.google_enabled is False
@@ -313,7 +318,9 @@ from tests.domain.factories import NOW, make_run
 
 def test_start_sets_title_from_first_message() -> None:
     conversation = Conversation.start(
-        user_id="u1", first_message="  Paracetamol   uống bao nhiêu?  " + "x" * 200, now=NOW
+        user_id="u1",
+        first_message="  Paracetamol   uống bao nhiêu?  " + "x" * 200,
+        now=NOW,
     )
     assert conversation.title.startswith("Paracetamol uống bao nhiêu?")
     assert len(conversation.title) <= 80
@@ -328,7 +335,9 @@ def test_summary_is_due_every_n_turns() -> None:
     assert conversation.needs_summary(every=2) is False
     conversation.record_turn(NOW + timedelta(seconds=2))
     assert conversation.needs_summary(every=2) is True
-    conversation.apply_summary("  tóm tắt  ", covered_turns=2, now=NOW + timedelta(seconds=3))
+    conversation.apply_summary(
+        "  tóm tắt  ", covered_turns=2, now=NOW + timedelta(seconds=3)
+    )
     assert conversation.summary == "tóm tắt" and conversation.summarized_turns == 2
     assert conversation.needs_summary(every=2) is False
     assert conversation.updated_at == NOW + timedelta(seconds=3)
@@ -356,7 +365,13 @@ def test_build_turn_messages_and_pair_turns() -> None:
     run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=NOW)
     run.complete()
     citation = Citation(
-        index=1, chunk_id="c1", section_id="s1", title="Paracetamol", section="Liều", start_page=1, end_page=2
+        index=1,
+        chunk_id="c1",
+        section_id="s1",
+        title="Paracetamol",
+        section="Liều",
+        start_page=1,
+        end_page=2,
     )
     user_msg, assistant_msg = build_turn_messages(
         conversation_id="conv1",
@@ -368,14 +383,22 @@ def test_build_turn_messages_and_pair_turns() -> None:
     )
     assert user_msg.role is MessageRole.USER and user_msg.content == "Liều paracetamol?"
     assert user_msg.status == RunStatus.COMPLETED.value
-    assert assistant_msg.role is MessageRole.ASSISTANT and assistant_msg.citations == [citation]
-    assert assistant_msg.run_id == run.run_id and assistant_msg.phases == ["guarding", "answering"]
+    assert assistant_msg.role is MessageRole.ASSISTANT and assistant_msg.citations == [
+        citation
+    ]
+    assert assistant_msg.run_id == run.run_id and assistant_msg.phases == [
+        "guarding",
+        "answering",
+    ]
     assert assistant_msg.usage["llm_calls"] == 0
     assert assistant_msg.created_at > user_msg.created_at
 
     turns = pair_turns([user_msg, assistant_msg, user_msg])
     assert len(turns) == 1
-    assert turns[0].user_text == "Liều paracetamol?" and turns[0].assistant_text == "500 mg [1]"
+    assert (
+        turns[0].user_text == "Liều paracetamol?"
+        and turns[0].assistant_text == "500 mg [1]"
+    )
     assert turns[0].status == "completed"
 ```
 
@@ -417,7 +440,10 @@ class Conversation(BaseModel):
         now: datetime,
         conversation_id: str | None = None,
     ) -> "Conversation":
-        title = _clean_title(first_message)[:MAX_TITLE_CHARS].rstrip() or "Cuộc trò chuyện mới"
+        title = (
+            _clean_title(first_message)[:MAX_TITLE_CHARS].rstrip()
+            or "Cuộc trò chuyện mới"
+        )
         return cls(
             conversation_id=conversation_id or new_id(),
             user_id=user_id,
@@ -572,7 +598,9 @@ def result_for(query: str, *hits: tuple[str, float]) -> SearchResult:
     return SearchResult(
         items=[
             RetrievedItem(
-                hit=make_hit(chunk_id, rerank=score).model_copy(update={"matched_queries": [query]})
+                hit=make_hit(chunk_id, rerank=score).model_copy(
+                    update={"matched_queries": [query]}
+                )
             )
             for chunk_id, score in hits
         ]
@@ -588,7 +616,15 @@ def test_one_record_per_query_per_round_with_ranked_hits_and_citations() -> None
     run.record_search([q2, q3], result_for(q2.text, ("c3", 0.7)), now=NOW)
 
     citations = [
-        Citation(index=1, chunk_id="c2", section_id="sec-1", title="t", section="s", start_page=1, end_page=1)
+        Citation(
+            index=1,
+            chunk_id="c2",
+            section_id="sec-1",
+            title="t",
+            section="s",
+            start_page=1,
+            end_page=1,
+        )
     ]
     records = audit_from_run(run, citations, snippet_chars=5)
 
@@ -598,7 +634,10 @@ def test_one_record_per_query_per_round_with_ranked_hits_and_citations() -> None
         (2, "paracetamol trẻ em"),
     ]
     first = records[0]
-    assert [(h.rank, h.chunk_id, h.cited) for h in first.hits] == [(1, "c2", True), (2, "c1", False)]
+    assert [(h.rank, h.chunk_id, h.cited) for h in first.hits] == [
+        (1, "c2", True),
+        (2, "c1", False),
+    ]
     assert first.hits[0].rerank_score == 0.9 and first.hits[0].snippet == "parac"
     assert [h.chunk_id for h in records[1].hits] == ["c3"]
     assert records[2].hits == []
@@ -682,7 +721,9 @@ def audit_from_run(
                 for rank, evidence in enumerate(matching, start=1)
             ]
             records.append(
-                RetrievalRunRecord(round=round_number, query_text=str(query_text), hits=hits)
+                RetrievalRunRecord(
+                    round=round_number, query_text=str(query_text), hits=hits
+                )
             )
     return records
 ```
@@ -726,7 +767,13 @@ from pharma_agent.domain.conversation.prompts import summary_messages
 def test_summary_prompt_contains_previous_summary_turns_and_limit() -> None:
     messages = summary_messages(
         "Người dùng hỏi về amoxicillin.",
-        [Turn(user_text="Uống lúc no hay đói?", assistant_text="Uống lúc nào cũng được [1].", status="completed")],
+        [
+            Turn(
+                user_text="Uống lúc no hay đói?",
+                assistant_text="Uống lúc nào cũng được [1].",
+                status="completed",
+            )
+        ],
         max_chars=1500,
     )
     text = "\n".join(m.content for m in messages)
@@ -737,7 +784,9 @@ def test_summary_prompt_contains_previous_summary_turns_and_limit() -> None:
 
 
 def test_summary_prompt_without_previous_summary() -> None:
-    messages = summary_messages("", [Turn(user_text="a", assistant_text="b", status="completed")], max_chars=500)
+    messages = summary_messages(
+        "", [Turn(user_text="a", assistant_text="b", status="completed")], max_chars=500
+    )
     assert "(chưa có)" in messages[1].content
 ```
 
@@ -909,7 +958,9 @@ def fresh_database_dsn(postgres_dsn: str) -> str:
 def migrated_dsn(postgres_dsn: str) -> str:
     from alembic import command
 
-    from pharma_agent.infrastructure.persistence.postgres.alembic_config import alembic_config
+    from pharma_agent.infrastructure.persistence.postgres.alembic_config import (
+        alembic_config,
+    )
 
     dsn = create_database(postgres_dsn, "app")
     command.upgrade(alembic_config(dsn), "head")
@@ -927,12 +978,21 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from pharma_agent.infrastructure.persistence.postgres.alembic_config import alembic_config
+from pharma_agent.infrastructure.persistence.postgres.alembic_config import (
+    alembic_config,
+)
 from pharma_agent.infrastructure.persistence.postgres.tables import Base
 
 pytestmark = pytest.mark.integration
 
-EXPECTED_TABLES = {"user", "oauth_account", "conversations", "messages", "retrieval_runs", "retrieval_hits"}
+EXPECTED_TABLES = {
+    "user",
+    "oauth_account",
+    "conversations",
+    "messages",
+    "retrieval_runs",
+    "retrieval_hits",
+}
 
 
 def _diff(connection: Connection) -> list[object]:
@@ -1021,7 +1081,9 @@ class OAuthAccountTable(SQLAlchemyBaseOAuthAccountTableUUID, Base):
 class UserTable(SQLAlchemyBaseUserTableUUID, Base):
     """fastapi-users users (table name `user`) plus profile columns."""
 
-    display_name: Mapped[str] = mapped_column(String(120), nullable=False, server_default="")
+    display_name: Mapped[str] = mapped_column(
+        String(120), nullable=False, server_default=""
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1038,12 +1100,18 @@ class ConversationTable(Base):
     )
     title: Mapped[str] = mapped_column(String(80), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
-    turn_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    turn_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     summarized_turns: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class MessageTable(Base):
@@ -1070,7 +1138,9 @@ class MessageTable(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class RetrievalRunTable(Base):
@@ -1092,7 +1162,9 @@ class RetrievalRunTable(Base):
     retriever_config: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class RetrievalHitTable(Base):
@@ -1108,7 +1180,9 @@ class RetrievalHitTable(Base):
     fusion_score: Mapped[float] = mapped_column(Float, nullable=False)
     rerank_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     hydrate_strategy: Mapped[str] = mapped_column(String(32), nullable=False)
-    cited: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    cited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     snippet: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
 ```
 
@@ -1118,7 +1192,12 @@ class RetrievalHitTable(Base):
 
 ```python
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 
 class Database:
@@ -1259,14 +1338,19 @@ def _dsn() -> str:
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=_dsn(), target_metadata=target_metadata, literal_binds=True, compare_type=True
+        url=_dsn(),
+        target_metadata=target_metadata,
+        literal_binds=True,
+        compare_type=True,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def _run_with_connection(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, compare_type=True
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -1335,7 +1419,12 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, select, text
 
-from pharma_agent.domain.conversation.models import Citation, Conversation, Message, MessageRole
+from pharma_agent.domain.conversation.models import (
+    Citation,
+    Conversation,
+    Message,
+    MessageRole,
+)
 from pharma_agent.domain.retrieval.audit import RetrievalHitRecord, RetrievalRunRecord
 from pharma_agent.infrastructure.persistence.postgres.conversation_repository import (
     AuditContext,
@@ -1358,7 +1447,9 @@ async def database(migrated_dsn: str) -> AsyncIterator[Database]:
     db = Database(migrated_dsn, pool_size=2)
     async with db.engine.begin() as connection:
         await connection.execute(
-            text('TRUNCATE "user", conversations, messages, retrieval_runs, retrieval_hits CASCADE')
+            text(
+                'TRUNCATE "user", conversations, messages, retrieval_runs, retrieval_hits CASCADE'
+            )
         )
     yield db
     await db.dispose()
@@ -1382,15 +1473,41 @@ def repository(database: Database) -> PostgresConversationRepository:
     )
 
 
-def turn(conversation_id: str, index: int, status: str = "completed") -> tuple[Message, Message]:
+def turn(
+    conversation_id: str, index: int, status: str = "completed"
+) -> tuple[Message, Message]:
     at = NOW + timedelta(minutes=index)
-    citation = Citation(index=1, chunk_id="c1", section_id="s1", title="T", section="S", start_page=1, end_page=1)
+    citation = Citation(
+        index=1,
+        chunk_id="c1",
+        section_id="s1",
+        title="T",
+        section="S",
+        start_page=1,
+        end_page=1,
+    )
     return (
-        Message(message_id=uuid.uuid4().hex, conversation_id=conversation_id, role=MessageRole.USER,
-                content=f"q{index}", status=status, run_id="r" * 32, created_at=at),
-        Message(message_id=uuid.uuid4().hex, conversation_id=conversation_id, role=MessageRole.ASSISTANT,
-                content=f"a{index}", status=status, citations=[citation], phases=["answering"],
-                usage={"llm_calls": 5}, run_id="r" * 32, created_at=at + timedelta(microseconds=1)),
+        Message(
+            message_id=uuid.uuid4().hex,
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=f"q{index}",
+            status=status,
+            run_id="r" * 32,
+            created_at=at,
+        ),
+        Message(
+            message_id=uuid.uuid4().hex,
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content=f"a{index}",
+            status=status,
+            citations=[citation],
+            phases=["answering"],
+            usage={"llm_calls": 5},
+            run_id="r" * 32,
+            created_at=at + timedelta(microseconds=1),
+        ),
     )
 
 
@@ -1399,8 +1516,17 @@ AUDIT = [
         round=1,
         query_text="paracetamol liều",
         hits=[
-            RetrievalHitRecord(rank=1, chunk_id="c1", section_id="s1", table_id="", fusion_score=0.5,
-                               rerank_score=0.9, hydrate_strategy="chunk_window", cited=True, snippet="x"),
+            RetrievalHitRecord(
+                rank=1,
+                chunk_id="c1",
+                section_id="s1",
+                table_id="",
+                fusion_score=0.5,
+                rerank_score=0.9,
+                hydrate_strategy="chunk_window",
+                cited=True,
+                snippet="x",
+            ),
         ],
     )
 ]
@@ -1410,17 +1536,25 @@ async def test_create_get_is_scoped_to_owner(database: Database) -> None:
     repo = repository(database)
     owner = await make_user(database)
     stranger = await make_user(database, "b@example.com")
-    conversation = Conversation.start(user_id=owner, first_message="Paracetamol?", now=NOW)
+    conversation = Conversation.start(
+        user_id=owner, first_message="Paracetamol?", now=NOW
+    )
     await repo.create(conversation)
 
     loaded = await repo.get(owner, conversation.conversation_id)
-    assert loaded is not None and loaded.title == "Paracetamol?" and loaded.created_at == NOW
+    assert (
+        loaded is not None
+        and loaded.title == "Paracetamol?"
+        and loaded.created_at == NOW
+    )
     assert await repo.get(stranger, conversation.conversation_id) is None
     assert await repo.get(owner, "not-a-uuid") is None
     assert await repo.delete(stranger, conversation.conversation_id) is False
 
 
-async def test_append_turn_is_atomic_and_increments_turn_count(database: Database) -> None:
+async def test_append_turn_is_atomic_and_increments_turn_count(
+    database: Database,
+) -> None:
     repo = repository(database)
     owner = await make_user(database)
     conversation = Conversation.start(user_id=owner, first_message="hi", now=NOW)
@@ -1429,26 +1563,41 @@ async def test_append_turn_is_atomic_and_increments_turn_count(database: Databas
     for index in range(3):
         user_msg, assistant_msg = turn(conversation.conversation_id, index)
         conversation.record_turn(assistant_msg.created_at)
-        await repo.append_turn(conversation, user_msg, assistant_msg, AUDIT if index == 0 else [])
+        await repo.append_turn(
+            conversation, user_msg, assistant_msg, AUDIT if index == 0 else []
+        )
 
     loaded = await repo.get(owner, conversation.conversation_id)
     assert loaded is not None and loaded.turn_count == 3
-    assert [t.user_text for t in await repo.recent_turns(conversation.conversation_id, 2)] == ["q1", "q2"]
-    assert [t.user_text for t in await repo.turns_since(conversation.conversation_id, 1)] == ["q1", "q2"]
+    assert [
+        t.user_text for t in await repo.recent_turns(conversation.conversation_id, 2)
+    ] == ["q1", "q2"]
+    assert [
+        t.user_text for t in await repo.turns_since(conversation.conversation_id, 1)
+    ] == ["q1", "q2"]
     messages = await repo.messages(conversation.conversation_id, limit=3)
     assert [m.content for m in messages] == ["a1", "q2", "a2"]
-    assert messages[0].citations[0].chunk_id == "c1" and messages[0].usage == {"llm_calls": 5}
-    older = await repo.messages(conversation.conversation_id, limit=10, before=messages[0].created_at)
+    assert messages[0].citations[0].chunk_id == "c1" and messages[0].usage == {
+        "llm_calls": 5
+    }
+    older = await repo.messages(
+        conversation.conversation_id, limit=10, before=messages[0].created_at
+    )
     assert [m.content for m in older] == ["q0", "a0", "q1"]
 
     async with database.sessions() as session:
         run = (await session.execute(select(RetrievalRunTable))).scalar_one()
-        assert run.corpus_version == "thesis_chunks_qwen3_embedding_4b_fp16" and run.round == 1
+        assert (
+            run.corpus_version == "thesis_chunks_qwen3_embedding_4b_fp16"
+            and run.round == 1
+        )
         hit = (await session.execute(select(RetrievalHitTable))).scalar_one()
         assert hit.cited is True and hit.rerank_score == 0.9
 
 
-async def test_append_turn_rolls_back_when_conversation_is_missing(database: Database) -> None:
+async def test_append_turn_rolls_back_when_conversation_is_missing(
+    database: Database,
+) -> None:
     repo = repository(database)
     owner = await make_user(database)
     ghost = Conversation.start(user_id=owner, first_message="hi", now=NOW)
@@ -1456,7 +1605,9 @@ async def test_append_turn_rolls_back_when_conversation_is_missing(database: Dat
     with pytest.raises(ConversationRowMissing):
         await repo.append_turn(ghost, user_msg, assistant_msg, AUDIT)
     async with database.sessions() as session:
-        assert (await session.execute(select(func.count()).select_from(RetrievalRunTable))).scalar_one() == 0
+        assert (
+            await session.execute(select(func.count()).select_from(RetrievalRunTable))
+        ).scalar_one() == 0
 
 
 async def test_update_summary_does_not_overwrite_turn_count(database: Database) -> None:
@@ -1479,14 +1630,23 @@ async def test_update_summary_does_not_overwrite_turn_count(database: Database) 
 
     loaded = await repo.get(owner, conversation.conversation_id)
     assert loaded is not None
-    assert (loaded.turn_count, loaded.summarized_turns, loaded.summary, loaded.title) == (2, 2, "tóm tắt", "Tên mới")
+    assert (
+        loaded.turn_count,
+        loaded.summarized_turns,
+        loaded.summary,
+        loaded.title,
+    ) == (2, 2, "tóm tắt", "Tên mới")
 
 
-async def test_list_for_user_orders_by_recent_activity_and_deletes_cascade(database: Database) -> None:
+async def test_list_for_user_orders_by_recent_activity_and_deletes_cascade(
+    database: Database,
+) -> None:
     repo = repository(database)
     owner = await make_user(database)
     first = Conversation.start(user_id=owner, first_message="first", now=NOW)
-    second = Conversation.start(user_id=owner, first_message="second", now=NOW + timedelta(minutes=5))
+    second = Conversation.start(
+        user_id=owner, first_message="second", now=NOW + timedelta(minutes=5)
+    )
     await repo.create(first)
     await repo.create(second)
     user_msg, assistant_msg = turn(first.conversation_id, 10)
@@ -1495,11 +1655,16 @@ async def test_list_for_user_orders_by_recent_activity_and_deletes_cascade(datab
 
     listed = await repo.list_for_user(owner, limit=10)
     assert [c.title for c in listed] == ["first", "second"]
-    assert [c.title for c in await repo.list_for_user(owner, limit=10, before=listed[0].updated_at)] == ["second"]
+    assert [
+        c.title
+        for c in await repo.list_for_user(owner, limit=10, before=listed[0].updated_at)
+    ] == ["second"]
 
     assert await repo.delete(owner, first.conversation_id) is True
     async with database.sessions() as session:
-        assert (await session.execute(select(func.count()).select_from(RetrievalHitTable))).scalar_one() == 0
+        assert (
+            await session.execute(select(func.count()).select_from(RetrievalHitTable))
+        ).scalar_one() == 0
 ```
 
 Run: `uv run pytest -q -m integration tests/infrastructure/test_conversation_repository.py`
@@ -1693,7 +1858,9 @@ class PostgresConversationRepository:
             )
             if updated.first() is None:
                 raise ConversationRowMissing(conversation.conversation_id)
-            session.add_all([_message_row(user_message), _message_row(assistant_message)])
+            session.add_all(
+                [_message_row(user_message), _message_row(assistant_message)]
+            )
             await session.flush()
             for record in audit:
                 run_row = RetrievalRunTable(
@@ -1750,7 +1917,9 @@ class PostgresConversationRepository:
         async with self._sessions.begin() as session:
             await session.execute(
                 update(ConversationTable)
-                .where(ConversationTable.id == uuid.UUID(hex=conversation.conversation_id))
+                .where(
+                    ConversationTable.id == uuid.UUID(hex=conversation.conversation_id)
+                )
                 .values(**values)
             )
 ```
@@ -1809,7 +1978,11 @@ class InMemoryConversationRepository:
 
     async def get(self, user_id: str, conversation_id: str) -> Conversation | None:
         row = self.rows.get(conversation_id)
-        return row.model_copy(deep=True) if row is not None and row.user_id == user_id else None
+        return (
+            row.model_copy(deep=True)
+            if row is not None and row.user_id == user_id
+            else None
+        )
 
     async def list_for_user(
         self, user_id: str, *, limit: int, before: datetime | None = None
@@ -1853,7 +2026,9 @@ class InMemoryConversationRepository:
             raise LookupError(conversation.conversation_id)
         row.turn_count += 1
         row.updated_at = conversation.updated_at
-        self.message_log[conversation.conversation_id].extend([user_message, assistant_message])
+        self.message_log[conversation.conversation_id].extend(
+            [user_message, assistant_message]
+        )
         self.audit[assistant_message.message_id] = list(audit)
 
     async def recent_turns(self, conversation_id: str, limit: int) -> list[Turn]:
@@ -1907,19 +2082,34 @@ STRANGER = "b" * 32
 
 
 def scripted_turn(llm: FakeLlm, standalone: str) -> None:
-    llm.script(LlmRole.GUARDRAIL, LlmGuardVerdict(is_attack=False, in_scope=True, reason="ok"))
+    llm.script(
+        LlmRole.GUARDRAIL, LlmGuardVerdict(is_attack=False, in_scope=True, reason="ok")
+    )
     llm.script(
         LlmRole.REPHRASE,
-        RephraseResult(standalone_query=standalone, audience=Audience.GENERAL_PUBLIC, language=Language.VI, intent=Intent.PHARMA_QUESTION),
+        RephraseResult(
+            standalone_query=standalone,
+            audience=Audience.GENERAL_PUBLIC,
+            language=Language.VI,
+            intent=Intent.PHARMA_QUESTION,
+        ),
     )
     llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_ids=[]))
-    llm.script(LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ"))
+    llm.script(
+        LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
+    )
 
 
-def service_with(llm: FakeLlm, repo: InMemoryConversationRepository, rounds: int = 2) -> ChatService:
+def service_with(
+    llm: FakeLlm, repo: InMemoryConversationRepository, rounds: int = 2
+) -> ChatService:
     retriever = FakeRetriever(*[[make_hit(f"c{i}", fusion=0.9)] for i in range(rounds)])
-    runner = ChatTurnRunner(build_chat_graph(), build_deps(llm, retriever), BudgetLimits())
-    return ChatService(runner, repo, FixedClock(NOW), MemoryPolicy(context_turns=4, context_chars=4000))
+    runner = ChatTurnRunner(
+        build_chat_graph(), build_deps(llm, retriever), BudgetLimits()
+    )
+    return ChatService(
+        runner, repo, FixedClock(NOW), MemoryPolicy(context_turns=4, context_chars=4000)
+    )
 
 
 async def collect(events) -> list[ProgressEvent]:
@@ -1931,12 +2121,18 @@ async def test_new_conversation_turn_is_persisted_with_audit() -> None:
     scripted_turn(llm, "Liều paracetamol cho người lớn")
     service = service_with(llm, repo)
 
-    session = await service.open_turn(user_id=OWNER, message="Paracetamol uống bao nhiêu?", conversation_id=None)
+    session = await service.open_turn(
+        user_id=OWNER, message="Paracetamol uống bao nhiêu?", conversation_id=None
+    )
     events = await collect(session.events())
 
     first = events[0]
     assert first.type is EventType.CONVERSATION
-    assert first.data == {"conversation_id": session.conversation_id, "title": "Paracetamol uống bao nhiêu?", "created": True}
+    assert first.data == {
+        "conversation_id": session.conversation_id,
+        "title": "Paracetamol uống bao nhiêu?",
+        "created": True,
+    }
     done = next(e for e in events if e.type is EventType.DONE)
     assert done.data["conversation_id"] == session.conversation_id
     assert done.data["status"] == "completed" and done.data["message_id"]
@@ -1946,9 +2142,14 @@ async def test_new_conversation_turn_is_persisted_with_audit() -> None:
     assert stored.turn_count == 1 and stored.user_id == OWNER
     user_msg, assistant_msg = repo.message_log[session.conversation_id]
     assert user_msg.content == "Paracetamol uống bao nhiêu?"
-    assert assistant_msg.message_id == done.data["message_id"] and assistant_msg.citations
+    assert (
+        assistant_msg.message_id == done.data["message_id"] and assistant_msg.citations
+    )
     assert "answering" in assistant_msg.phases
-    assert repo.audit[assistant_msg.message_id][0].query_text == "Liều paracetamol cho người lớn"
+    assert (
+        repo.audit[assistant_msg.message_id][0].query_text
+        == "Liều paracetamol cho người lớn"
+    )
     assert session.result is not None and session.result.persisted is True
 
 
@@ -1958,13 +2159,22 @@ async def test_follow_up_turn_sends_previous_turn_to_rephrase() -> None:
     scripted_turn(llm, "Paracetamol có dùng cho trẻ em không")
     service = service_with(llm, repo)
 
-    first = await service.ask(user_id=OWNER, message="Paracetamol uống bao nhiêu?", conversation_id=None)
-    second_session = await service.open_turn(user_id=OWNER, message="Còn trẻ em thì sao?", conversation_id=first.conversation_id)
+    first = await service.ask(
+        user_id=OWNER, message="Paracetamol uống bao nhiêu?", conversation_id=None
+    )
+    second_session = await service.open_turn(
+        user_id=OWNER,
+        message="Còn trẻ em thì sao?",
+        conversation_id=first.conversation_id,
+    )
     events = await collect(second_session.events())
 
     assert events[0].data["created"] is False
     rephrase_prompt = llm.calls_for(LlmRole.REPHRASE)[1][1].content
-    assert "Paracetamol uống bao nhiêu?" in rephrase_prompt and "Còn trẻ em thì sao?" in rephrase_prompt
+    assert (
+        "Paracetamol uống bao nhiêu?" in rephrase_prompt
+        and "Còn trẻ em thì sao?" in rephrase_prompt
+    )
     assert repo.rows[first.conversation_id].turn_count == 2
 
 
@@ -1977,14 +2187,18 @@ async def test_unknown_or_foreign_conversation_is_not_found() -> None:
     with pytest.raises(ConversationNotFound):
         await service.open_turn(user_id=OWNER, message="hi", conversation_id="f" * 32)
     with pytest.raises(ConversationNotFound):
-        await service.open_turn(user_id=STRANGER, message="hi", conversation_id=owned.conversation_id)
+        await service.open_turn(
+            user_id=STRANGER, message="hi", conversation_id=owned.conversation_id
+        )
 
 
 async def test_persist_failure_reports_error_after_done() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     scripted_turn(llm, "Liều paracetamol")
     service = service_with(llm, repo)
-    session = await service.open_turn(user_id=OWNER, message="Paracetamol?", conversation_id=None)
+    session = await service.open_turn(
+        user_id=OWNER, message="Paracetamol?", conversation_id=None
+    )
     repo.fail_append = True
 
     events = await collect(session.events())
@@ -2043,7 +2257,11 @@ from pharma_agent.application.chat.runner import ChatTurnExecution, ChatTurnRunn
 from pharma_agent.application.errors import ConversationNotFound
 from pharma_agent.application.progress import EventType, ProgressEvent
 from pharma_agent.domain.conversation.context import context_for_rephrase
-from pharma_agent.domain.conversation.models import Citation, Conversation, ConversationContext
+from pharma_agent.domain.conversation.models import (
+    Citation,
+    Conversation,
+    ConversationContext,
+)
 from pharma_agent.domain.conversation.ports import ConversationRepository
 from pharma_agent.domain.conversation.turns import build_turn_messages
 from pharma_agent.domain.retrieval.audit import audit_from_run
@@ -2051,7 +2269,9 @@ from pharma_agent.domain.shared.clock import Clock
 
 logger = logging.getLogger(__name__)
 
-PERSIST_FAILED_MESSAGE = "Không lưu được lượt hội thoại này; câu trả lời vẫn hiển thị bình thường."
+PERSIST_FAILED_MESSAGE = (
+    "Không lưu được lượt hội thoại này; câu trả lời vẫn hiển thị bình thường."
+)
 
 
 class MemoryPolicy(BaseModel):
@@ -2142,7 +2362,9 @@ class ChatSession:
                 audit_from_run(outcome.run, outcome.citations),
             )
         except Exception:
-            logger.exception("failed to persist turn for conversation %s", self.conversation_id)
+            logger.exception(
+                "failed to persist turn for conversation %s", self.conversation_id
+            )
             persisted = False
         self.result = ChatTurnResult(
             conversation_id=self.conversation_id,
@@ -2266,14 +2488,20 @@ from tests.memory_repository import InMemoryConversationRepository
 OWNER = "a" * 32
 
 
-async def seeded(repo: InMemoryConversationRepository, statuses: list[str]) -> Conversation:
+async def seeded(
+    repo: InMemoryConversationRepository, statuses: list[str]
+) -> Conversation:
     conversation = Conversation.start(user_id=OWNER, first_message="hi", now=NOW)
     await repo.create(conversation)
     for index, status in enumerate(statuses):
         run = make_run(f"câu hỏi {index}")
         user_msg, assistant_msg = build_turn_messages(
-            conversation_id=conversation.conversation_id, run=run, answer_text=f"trả lời {index}",
-            citations=[], phases=[], now=NOW + timedelta(minutes=index),
+            conversation_id=conversation.conversation_id,
+            run=run,
+            answer_text=f"trả lời {index}",
+            citations=[],
+            phases=[],
+            now=NOW + timedelta(minutes=index),
         )
         user_msg = user_msg.model_copy(update={"status": status})
         assistant_msg = assistant_msg.model_copy(update={"status": status})
@@ -2282,23 +2510,40 @@ async def seeded(repo: InMemoryConversationRepository, statuses: list[str]) -> C
     return conversation
 
 
-def summarizer(llm: FakeLlm, repo: InMemoryConversationRepository) -> SummarizeConversation:
-    return SummarizeConversation(llm, repo, FixedClock(NOW + timedelta(hours=1)), every=2, max_chars=20)
+def summarizer(
+    llm: FakeLlm, repo: InMemoryConversationRepository
+) -> SummarizeConversation:
+    return SummarizeConversation(
+        llm, repo, FixedClock(NOW + timedelta(hours=1)), every=2, max_chars=20
+    )
 
 
 async def test_not_due_does_not_call_llm() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     conversation = await seeded(repo, ["completed"])
-    assert await summarizer(llm, repo).run_if_needed(user_id=OWNER, conversation_id=conversation.conversation_id) is False
+    assert (
+        await summarizer(llm, repo).run_if_needed(
+            user_id=OWNER, conversation_id=conversation.conversation_id
+        )
+        is False
+    )
     assert llm.calls == []
 
 
 async def test_due_summary_uses_usable_turns_and_is_truncated() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     conversation = await seeded(repo, ["completed", "blocked"])
-    llm.script(LlmRole.SUMMARIZER, ConversationSummary(summary="Người dùng hỏi về paracetamol và liều dùng."))
+    llm.script(
+        LlmRole.SUMMARIZER,
+        ConversationSummary(summary="Người dùng hỏi về paracetamol và liều dùng."),
+    )
 
-    assert await summarizer(llm, repo).run_if_needed(user_id=OWNER, conversation_id=conversation.conversation_id) is True
+    assert (
+        await summarizer(llm, repo).run_if_needed(
+            user_id=OWNER, conversation_id=conversation.conversation_id
+        )
+        is True
+    )
 
     prompt = llm.calls_for(LlmRole.SUMMARIZER)[0][1].content
     assert "câu hỏi 0" in prompt and "câu hỏi 1" not in prompt
@@ -2310,21 +2555,39 @@ async def test_due_summary_uses_usable_turns_and_is_truncated() -> None:
 async def test_only_excluded_turns_advance_without_llm() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     conversation = await seeded(repo, ["error", "timeout"])
-    assert await summarizer(llm, repo).run_if_needed(user_id=OWNER, conversation_id=conversation.conversation_id) is False
-    assert llm.calls == [] and repo.rows[conversation.conversation_id].summarized_turns == 2
+    assert (
+        await summarizer(llm, repo).run_if_needed(
+            user_id=OWNER, conversation_id=conversation.conversation_id
+        )
+        is False
+    )
+    assert (
+        llm.calls == []
+        and repo.rows[conversation.conversation_id].summarized_turns == 2
+    )
 
 
 async def test_llm_failure_keeps_previous_summary() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     conversation = await seeded(repo, ["completed", "completed"])
     llm.script(LlmRole.SUMMARIZER, LlmError("down"))
-    assert await summarizer(llm, repo).run_if_needed(user_id=OWNER, conversation_id=conversation.conversation_id) is False
+    assert (
+        await summarizer(llm, repo).run_if_needed(
+            user_id=OWNER, conversation_id=conversation.conversation_id
+        )
+        is False
+    )
     assert repo.rows[conversation.conversation_id].summarized_turns == 0
 
 
 async def test_missing_conversation_is_ignored() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
-    assert await summarizer(llm, repo).run_if_needed(user_id=OWNER, conversation_id="f" * 32) is False
+    assert (
+        await summarizer(llm, repo).run_if_needed(
+            user_id=OWNER, conversation_id="f" * 32
+        )
+        is False
+    )
 ```
 
 `backend/tests/application/test_queries.py`:
@@ -2350,11 +2613,18 @@ async def test_list_get_messages_rename_delete() -> None:
     repo = InMemoryConversationRepository()
     queries = ConversationQueries(repo, FixedClock(NOW + timedelta(days=1)))
     older = Conversation.start(user_id=OWNER, first_message="older", now=NOW)
-    newer = Conversation.start(user_id=OWNER, first_message="newer", now=NOW + timedelta(minutes=1))
+    newer = Conversation.start(
+        user_id=OWNER, first_message="newer", now=NOW + timedelta(minutes=1)
+    )
     await repo.create(older)
     await repo.create(newer)
     user_msg, assistant_msg = build_turn_messages(
-        conversation_id=older.conversation_id, run=make_run("q"), answer_text="a", citations=[], phases=["answering"], now=NOW
+        conversation_id=older.conversation_id,
+        run=make_run("q"),
+        answer_text="a",
+        citations=[],
+        phases=["answering"],
+        now=NOW,
     )
     older.record_turn(NOW + timedelta(minutes=2))
     await repo.append_turn(older, user_msg, assistant_msg, [])
@@ -2363,11 +2633,16 @@ async def test_list_get_messages_rename_delete() -> None:
     assert [c.title for c in listed] == ["older", "newer"] and listed[0].turn_count == 1
 
     messages = await queries.list_messages(OWNER, older.conversation_id, limit=10)
-    assert [(m.role, m.content) for m in messages] == [("user", "q"), ("assistant", "a")]
+    assert [(m.role, m.content) for m in messages] == [
+        ("user", "q"),
+        ("assistant", "a"),
+    ]
     assert messages[1].phases == ["answering"]
 
     renamed = await queries.rename(OWNER, older.conversation_id, "  Thuốc hạ sốt ")
-    assert renamed.title == "Thuốc hạ sốt" and renamed.updated_at == NOW + timedelta(days=1)
+    assert renamed.title == "Thuốc hạ sốt" and renamed.updated_at == NOW + timedelta(
+        days=1
+    )
 
     with pytest.raises(InvalidInput):
         await queries.rename(OWNER, older.conversation_id, " ")
@@ -2381,7 +2656,9 @@ async def test_list_get_messages_rename_delete() -> None:
             await call
 
     await queries.delete(OWNER, older.conversation_id)
-    assert [c.title for c in await queries.list_conversations(OWNER, limit=10)] == ["newer"]
+    assert [c.title for c in await queries.list_conversations(OWNER, limit=10)] == [
+        "newer"
+    ]
 ```
 
 Run: `uv run pytest -q tests/application/test_summarize.py tests/application/test_queries.py`
@@ -2443,14 +2720,20 @@ class SummarizeConversation:
         try:
             result, _ = await self._llm.structured(
                 LlmRole.SUMMARIZER,
-                summary_messages(conversation.summary, usable, max_chars=self._max_chars),
+                summary_messages(
+                    conversation.summary, usable, max_chars=self._max_chars
+                ),
                 ConversationSummary,
             )
         except LlmError:
-            logger.warning("summary failed for conversation %s", conversation_id, exc_info=True)
+            logger.warning(
+                "summary failed for conversation %s", conversation_id, exc_info=True
+            )
             return False
         conversation.apply_summary(
-            result.summary[: self._max_chars], covered_turns=covered, now=self._clock.now()
+            result.summary[: self._max_chars],
+            covered_turns=covered,
+            now=self._clock.now(),
         )
         await self._conversations.update_summary(conversation)
         return True
@@ -2526,10 +2809,14 @@ class ConversationQueries:
     async def list_conversations(
         self, user_id: str, *, limit: int, before: datetime | None = None
     ) -> list[ConversationView]:
-        rows = await self._conversations.list_for_user(user_id, limit=limit, before=before)
+        rows = await self._conversations.list_for_user(
+            user_id, limit=limit, before=before
+        )
         return [ConversationView.of(row) for row in rows]
 
-    async def get_conversation(self, user_id: str, conversation_id: str) -> ConversationView:
+    async def get_conversation(
+        self, user_id: str, conversation_id: str
+    ) -> ConversationView:
         return ConversationView.of(await self._owned(user_id, conversation_id))
 
     async def list_messages(
@@ -2541,10 +2828,14 @@ class ConversationQueries:
         before: datetime | None = None,
     ) -> list[MessageView]:
         await self._owned(user_id, conversation_id)
-        rows = await self._conversations.messages(conversation_id, limit=limit, before=before)
+        rows = await self._conversations.messages(
+            conversation_id, limit=limit, before=before
+        )
         return [MessageView.of(row) for row in rows]
 
-    async def rename(self, user_id: str, conversation_id: str, title: str) -> ConversationView:
+    async def rename(
+        self, user_id: str, conversation_id: str, title: str
+    ) -> ConversationView:
         conversation = await self._owned(user_id, conversation_id)
         try:
             conversation.rename(title, now=self._clock.now())
@@ -2604,7 +2895,9 @@ from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.agent.run import AgentRun
 from pharma_agent.domain.agent.schemas import JudgeDecision, JudgeOutcome
 from pharma_agent.domain.llm.models import LlmRole
-from pharma_agent.infrastructure.langgraph.checkpointer import open_postgres_checkpointer
+from pharma_agent.infrastructure.langgraph.checkpointer import (
+    open_postgres_checkpointer,
+)
 from tests.application.test_chat_graph import QUESTION, passing_llm
 from tests.domain.factories import make_hit
 from tests.fakes import FakeRetriever, build_deps
@@ -2613,19 +2906,35 @@ pytestmark = pytest.mark.integration
 
 
 async def test_graph_state_is_checkpointed_in_postgres(fresh_database_dsn: str) -> None:
-    conninfo = make_url(fresh_database_dsn).set(drivername="postgresql").render_as_string(hide_password=False)
+    conninfo = (
+        make_url(fresh_database_dsn)
+        .set(drivername="postgresql")
+        .render_as_string(hide_password=False)
+    )
     llm = passing_llm()
-    llm.script(LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ"))
+    llm.script(
+        LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
+    )
     async with open_postgres_checkpointer(conninfo, max_size=2) as saver:
         graph = build_chat_graph(checkpointer=saver)
-        runner = ChatTurnRunner(graph, build_deps(llm, FakeRetriever([make_hit("c1", fusion=0.9)])), BudgetLimits())
+        runner = ChatTurnRunner(
+            graph,
+            build_deps(llm, FakeRetriever([make_hit("c1", fusion=0.9)])),
+            BudgetLimits(),
+        )
         execution = runner.start(user_id="u1", message=QUESTION)
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             async for _ in execution.events():
                 pass
-            snapshot = await graph.aget_state({"configurable": {"thread_id": execution.run.run_id}})
-    run = snapshot.values["run"] if isinstance(snapshot.values, dict) else snapshot.values.run
+            snapshot = await graph.aget_state(
+                {"configurable": {"thread_id": execution.run.run_id}}
+            )
+    run = (
+        snapshot.values["run"]
+        if isinstance(snapshot.values, dict)
+        else snapshot.values.run
+    )
     assert isinstance(run, AgentRun) and run.status.value == "completed"
 ```
 
@@ -2640,7 +2949,9 @@ from pharma_agent.infrastructure.settings import Settings
 pytestmark = pytest.mark.integration
 
 
-async def test_container_without_llm_serves_queries_only(migrated_dsn: str, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_container_without_llm_serves_queries_only(
+    migrated_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("PHARMA_POSTGRES__DSN", migrated_dsn)
     monkeypatch.delenv("PHARMA_LLM__DEFAULT__API_KEY", raising=False)
     async with open_container(Settings(_env_file=None)) as container:
@@ -2649,7 +2960,9 @@ async def test_container_without_llm_serves_queries_only(migrated_dsn: str, monk
         assert await container.queries.list_conversations("a" * 32, limit=5) == []
 
 
-async def test_container_with_llm_builds_chat(migrated_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+async def test_container_with_llm_builds_chat(
+    migrated_dsn: str, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     monkeypatch.setenv("PHARMA_POSTGRES__DSN", migrated_dsn)
     monkeypatch.setenv("PHARMA_LLM__DEFAULT__API_KEY", "sk-test")
     monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
@@ -2710,7 +3023,9 @@ def build_application(
     settings: Settings, *, checkpointer: BaseCheckpointSaver | None = None
 ) -> Application:
     ...
-    runner = ChatTurnRunner(build_chat_graph(checkpointer=checkpointer), deps, settings.budget)
+    runner = ChatTurnRunner(
+        build_chat_graph(checkpointer=checkpointer), deps, settings.budget
+    )
 ```
 
 - [ ] **Step 4: Container**
@@ -2732,7 +3047,9 @@ from pharma_agent.application.memory.summarize import SummarizeConversation
 from pharma_agent.domain.retrieval.ports import RetrievalError
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.composition import Application, build_application
-from pharma_agent.infrastructure.langgraph.checkpointer import open_postgres_checkpointer
+from pharma_agent.infrastructure.langgraph.checkpointer import (
+    open_postgres_checkpointer,
+)
 from pharma_agent.infrastructure.persistence.postgres.conversation_repository import (
     AuditContext,
     PostgresConversationRepository,
@@ -2770,7 +3087,9 @@ def _qdrant_check(agent: Application, dimension: int) -> HealthCheck:
 @asynccontextmanager
 async def open_container(settings: Settings) -> AsyncIterator[Container]:
     database = Database(
-        settings.postgres.dsn, pool_size=settings.postgres.pool_size, echo=settings.postgres.echo
+        settings.postgres.dsn,
+        pool_size=settings.postgres.pool_size,
+        echo=settings.postgres.echo,
     )
     clock = SystemClock()
     repository = PostgresConversationRepository(
@@ -2870,7 +3189,12 @@ def test_routes_without_google() -> None:
     auth = build_auth(AuthSettings(jwt_secret=SecretStr(SECRET)), no_sessions)
     router = APIRouter()
     include_auth_routes(router, auth)
-    assert {"/auth/jwt/login", "/auth/jwt/logout", "/auth/register", "/users/me"} <= paths(router)
+    assert {
+        "/auth/jwt/login",
+        "/auth/jwt/logout",
+        "/auth/register",
+        "/users/me",
+    } <= paths(router)
     assert not any(path.startswith("/auth/google") for path in paths(router))
     assert auth.google is None
 
@@ -2914,12 +3238,19 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, schemas
-from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
+from fastapi_users.authentication import (
+    AuthenticationBackend,
+    BearerTransport,
+    JWTStrategy,
+)
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from httpx_oauth.clients.google import GoogleOAuth2
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from pharma_agent.infrastructure.persistence.postgres.tables import OAuthAccountTable, UserTable
+from pharma_agent.infrastructure.persistence.postgres.tables import (
+    OAuthAccountTable,
+    UserTable,
+)
 from pharma_agent.infrastructure.settings import AuthSettings
 
 LOGIN_URL = "/api/v1/auth/jwt/login"
@@ -2957,7 +3288,9 @@ class Auth:
     frontend_url: str
 
 
-def build_auth(settings: AuthSettings, resolve_sessions: SessionFactoryResolver) -> Auth:
+def build_auth(
+    settings: AuthSettings, resolve_sessions: SessionFactoryResolver
+) -> Auth:
     secret = settings.require_jwt_secret()
 
     async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -2975,7 +3308,9 @@ def build_auth(settings: AuthSettings, resolve_sessions: SessionFactoryResolver)
         yield UserManager(user_db, secret)
 
     def get_jwt_strategy() -> JWTStrategy[UserTable, uuid.UUID]:
-        return JWTStrategy(secret=secret, lifetime_seconds=settings.jwt_lifetime_seconds)
+        return JWTStrategy(
+            secret=secret, lifetime_seconds=settings.jwt_lifetime_seconds
+        )
 
     backend = AuthenticationBackend(
         name="jwt",
@@ -2984,7 +3319,11 @@ def build_auth(settings: AuthSettings, resolve_sessions: SessionFactoryResolver)
     )
     users = FastAPIUsers[UserTable, uuid.UUID](get_user_manager, [backend])
     google = None
-    if settings.google_enabled and settings.google_client_id and settings.google_client_secret:
+    if (
+        settings.google_enabled
+        and settings.google_client_id
+        and settings.google_client_secret
+    ):
         google = GoogleOAuth2(
             settings.google_client_id, settings.google_client_secret.get_secret_value()
         )
@@ -3003,10 +3342,14 @@ def include_auth_routes(router: APIRouter, auth: Auth) -> None:
         auth.users.get_auth_router(auth.backend), prefix="/auth/jwt", tags=["auth"]
     )
     router.include_router(
-        auth.users.get_register_router(UserRead, UserCreate), prefix="/auth", tags=["auth"]
+        auth.users.get_register_router(UserRead, UserCreate),
+        prefix="/auth",
+        tags=["auth"],
     )
     router.include_router(
-        auth.users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"]
+        auth.users.get_users_router(UserRead, UserUpdate),
+        prefix="/users",
+        tags=["users"],
     )
     if auth.google is not None:
         router.include_router(
@@ -3105,13 +3448,17 @@ def build_harness(
     repo = InMemoryConversationRepository()
     clock = SystemClock()
     retriever = FakeRetriever(*[[make_hit(f"c{i}", fusion=0.9)] for i in range(10)])
-    runner = ChatTurnRunner(build_chat_graph(), build_deps(llm, retriever), BudgetLimits())
+    runner = ChatTurnRunner(
+        build_chat_graph(), build_deps(llm, retriever), BudgetLimits()
+    )
     container = Container(
         settings=settings(),
         sessions=None,
         queries=ConversationQueries(repo, clock),
         chat=ChatService(runner, repo, clock, MemoryPolicy()) if agent else None,
-        summarizer=SummarizeConversation(llm, repo, clock, every=2, max_chars=500) if agent else None,
+        summarizer=SummarizeConversation(llm, repo, clock, every=2, max_chars=500)
+        if agent
+        else None,
         health_checks=health if health is not None else {"postgres": _ok},
     )
 
@@ -3168,20 +3515,31 @@ from tests.fakes import FakeLlm
 
 
 def script_turn(llm: FakeLlm) -> None:
-    llm.script(LlmRole.GUARDRAIL, LlmGuardVerdict(is_attack=False, in_scope=True, reason="ok"))
+    llm.script(
+        LlmRole.GUARDRAIL, LlmGuardVerdict(is_attack=False, in_scope=True, reason="ok")
+    )
     llm.script(
         LlmRole.REPHRASE,
-        RephraseResult(standalone_query="Liều paracetamol", audience=Audience.GENERAL_PUBLIC, language=Language.VI, intent=Intent.PHARMA_QUESTION),
+        RephraseResult(
+            standalone_query="Liều paracetamol",
+            audience=Audience.GENERAL_PUBLIC,
+            language=Language.VI,
+            intent=Intent.PHARMA_QUESTION,
+        ),
     )
     llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_ids=[]))
-    llm.script(LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ"))
+    llm.script(
+        LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
+    )
 
 
 def test_stream_emits_conversation_first_and_done_last() -> None:
     harness = build_harness()
     script_turn(harness.llm)
     with harness.client as client:
-        response = client.post("/api/v1/chat/stream", json={"message": "Paracetamol uống bao nhiêu?"})
+        response = client.post(
+            "/api/v1/chat/stream", json={"message": "Paracetamol uống bao nhiêu?"}
+        )
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
         events = parse_sse(response.text)
@@ -3191,7 +3549,11 @@ def test_stream_emits_conversation_first_and_done_last() -> None:
     assert {"phase", "evidence", "token", "citations"} <= set(names)
     done = events[-1][1]
     conversation_id = str(events[0][1]["conversation_id"])
-    assert done["status"] == "completed" and done["message_id"] and done["conversation_id"] == conversation_id
+    assert (
+        done["status"] == "completed"
+        and done["message_id"]
+        and done["conversation_id"] == conversation_id
+    )
     assert harness.repo.rows[conversation_id].user_id == OWNER.hex
 
 
@@ -3199,13 +3561,18 @@ def test_non_stream_chat_and_background_summary() -> None:
     harness = build_harness()
     script_turn(harness.llm)
     script_turn(harness.llm)
-    harness.llm.script(LlmRole.SUMMARIZER, ConversationSummary(summary="Hỏi về liều paracetamol."))
+    harness.llm.script(
+        LlmRole.SUMMARIZER, ConversationSummary(summary="Hỏi về liều paracetamol.")
+    )
     with harness.client as client:
         first = client.post("/api/v1/chat", json={"message": "Paracetamol?"})
         assert first.status_code == 200
         body = first.json()
         assert body["persisted"] is True and body["citations"]
-        second = client.post("/api/v1/chat", json={"message": "Còn trẻ em?", "conversation_id": body["conversation_id"]})
+        second = client.post(
+            "/api/v1/chat",
+            json={"message": "Còn trẻ em?", "conversation_id": body["conversation_id"]},
+        )
         assert second.status_code == 200
     stored = harness.repo.rows[body["conversation_id"]]
     assert stored.turn_count == 2 and stored.summary == "Hỏi về liều paracetamol."
@@ -3214,15 +3581,28 @@ def test_non_stream_chat_and_background_summary() -> None:
 def test_chat_errors() -> None:
     harness = build_harness()
     with harness.client as client:
-        missing = client.post("/api/v1/chat", json={"message": "hi", "conversation_id": "f" * 32})
-        assert missing.status_code == 404 and missing.json()["code"] == "CONVERSATION_NOT_FOUND"
-        assert client.post("/api/v1/chat", json={"message": "hi", "conversation_id": "nope"}).status_code == 422
+        missing = client.post(
+            "/api/v1/chat", json={"message": "hi", "conversation_id": "f" * 32}
+        )
+        assert (
+            missing.status_code == 404
+            and missing.json()["code"] == "CONVERSATION_NOT_FOUND"
+        )
+        assert (
+            client.post(
+                "/api/v1/chat", json={"message": "hi", "conversation_id": "nope"}
+            ).status_code
+            == 422
+        )
         assert client.post("/api/v1/chat", json={"message": ""}).status_code == 422
 
     unavailable = build_harness(agent=False)
     with unavailable.client as client:
         response = client.post("/api/v1/chat/stream", json={"message": "hi"})
-        assert response.status_code == 503 and response.json()["code"] == "AGENT_UNAVAILABLE"
+        assert (
+            response.status_code == 503
+            and response.json()["code"] == "AGENT_UNAVAILABLE"
+        )
 
     anonymous = build_harness(authenticated=False)
     with anonymous.client as client:
@@ -3245,7 +3625,9 @@ def test_conversation_endpoints() -> None:
     harness = build_harness()
     now = datetime.now(UTC)
     mine = Conversation.start(user_id=OWNER.hex, first_message="Paracetamol", now=now)
-    foreign = Conversation.start(user_id="b" * 32, first_message="Không phải của tôi", now=now)
+    foreign = Conversation.start(
+        user_id="b" * 32, first_message="Không phải của tôi", now=now
+    )
     with harness.client as client:
         import asyncio
 
@@ -3256,7 +3638,12 @@ def test_conversation_endpoints() -> None:
             run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=now)
             run.complete()
             user_msg, assistant_msg = build_turn_messages(
-                conversation_id=mine.conversation_id, run=run, answer_text="a", citations=[], phases=[], now=now + timedelta(seconds=1)
+                conversation_id=mine.conversation_id,
+                run=run,
+                answer_text="a",
+                citations=[],
+                phases=[],
+                now=now + timedelta(seconds=1),
             )
             mine.record_turn(now + timedelta(seconds=1))
             await harness.repo.append_turn(mine, user_msg, assistant_msg, [])
@@ -3270,16 +3657,37 @@ def test_conversation_endpoints() -> None:
         detail = client.get(f"/api/v1/conversations/{mine.conversation_id}")
         assert detail.json()["turn_count"] == 1
 
-        messages = client.get(f"/api/v1/conversations/{mine.conversation_id}/messages").json()
+        messages = client.get(
+            f"/api/v1/conversations/{mine.conversation_id}/messages"
+        ).json()
         assert [m["role"] for m in messages] == ["user", "assistant"]
 
-        renamed = client.patch(f"/api/v1/conversations/{mine.conversation_id}", json={"title": "Thuốc hạ sốt"})
+        renamed = client.patch(
+            f"/api/v1/conversations/{mine.conversation_id}",
+            json={"title": "Thuốc hạ sốt"},
+        )
         assert renamed.status_code == 200 and renamed.json()["title"] == "Thuốc hạ sốt"
-        assert client.patch(f"/api/v1/conversations/{mine.conversation_id}", json={"title": ""}).status_code == 422
+        assert (
+            client.patch(
+                f"/api/v1/conversations/{mine.conversation_id}", json={"title": ""}
+            ).status_code
+            == 422
+        )
 
-        assert client.get(f"/api/v1/conversations/{foreign.conversation_id}").status_code == 404
-        assert client.delete(f"/api/v1/conversations/{foreign.conversation_id}").status_code == 404
-        assert client.delete(f"/api/v1/conversations/{mine.conversation_id}").status_code == 204
+        assert (
+            client.get(f"/api/v1/conversations/{foreign.conversation_id}").status_code
+            == 404
+        )
+        assert (
+            client.delete(
+                f"/api/v1/conversations/{foreign.conversation_id}"
+            ).status_code
+            == 404
+        )
+        assert (
+            client.delete(f"/api/v1/conversations/{mine.conversation_id}").status_code
+            == 204
+        )
         assert client.get("/api/v1/conversations").json() == []
 ```
 
@@ -3302,13 +3710,23 @@ def test_health_ok_and_degraded() -> None:
     with ok.client as client:
         response = client.get("/api/v1/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok", "agent": True, "checks": {"postgres": True}}
+        assert response.json() == {
+            "status": "ok",
+            "agent": True,
+            "checks": {"postgres": True},
+        }
 
-    degraded = build_harness(authenticated=False, agent=False, health={"postgres": _up, "qdrant": _down})
+    degraded = build_harness(
+        authenticated=False, agent=False, health={"postgres": _up, "qdrant": _down}
+    )
     with degraded.client as client:
         response = client.get("/api/v1/health")
         assert response.status_code == 503
-        assert response.json() == {"status": "degraded", "agent": False, "checks": {"postgres": True, "qdrant": False}}
+        assert response.json() == {
+            "status": "degraded",
+            "agent": False,
+            "checks": {"postgres": True, "qdrant": False},
+        }
 ```
 
 Note: `test_conversation_endpoints` seeds the in-memory repository with `asyncio.run` before any request; the repository has no event-loop affinity, so this is safe.
@@ -3439,7 +3857,9 @@ def session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
 
 def require_chat(container: Container) -> ChatService:
     if container.chat is None:
-        raise AgentUnavailable("the agent is not configured (set PHARMA_LLM__DEFAULT__API_KEY)")
+        raise AgentUnavailable(
+            "the agent is not configured (set PHARMA_LLM__DEFAULT__API_KEY)"
+        )
     return container.chat
 
 
@@ -3472,7 +3892,9 @@ def build_health_router() -> APIRouter:
     @router.get("/health", response_model=HealthResponse)
     async def health(container: ContainerDep) -> JSONResponse:
         names = list(container.health_checks)
-        results = await asyncio.gather(*(container.health_checks[name]() for name in names))
+        results = await asyncio.gather(
+            *(container.health_checks[name]() for name in names)
+        )
         checks = dict(zip(names, results, strict=True))
         healthy = all(checks.values())
         body = HealthResponse(
@@ -3480,7 +3902,9 @@ def build_health_router() -> APIRouter:
             agent=container.chat is not None,
             checks=checks,
         )
-        return JSONResponse(status_code=200 if healthy else 503, content=body.model_dump())
+        return JSONResponse(
+            status_code=200 if healthy else 503, content=body.model_dump()
+        )
 
     return router
 ```
@@ -3554,7 +3978,10 @@ def build_chat_router(current_user_id: UserIdDependency) -> APIRouter:
             ping=15,
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             background=BackgroundTask(
-                summarize_quietly, container.summarizer, user_id, session.conversation_id
+                summarize_quietly,
+                container.summarizer,
+                user_id,
+                session.conversation_id,
             ),
         )
 
@@ -3587,7 +4014,9 @@ def build_conversations_router(current_user_id: UserIdDependency) -> APIRouter:
         limit: Annotated[int, Query(ge=1, le=100)] = 20,
         before: datetime | None = None,
     ) -> list[ConversationView]:
-        return await container.queries.list_conversations(user_id, limit=limit, before=before)
+        return await container.queries.list_conversations(
+            user_id, limit=limit, before=before
+        )
 
     @router.get("/{conversation_id}", response_model=ConversationView)
     async def get_conversation(
@@ -3650,7 +4079,9 @@ from pharma_agent.infrastructure.settings import Settings
 
 
 def create_app(
-    settings: Settings | None = None, *, container_factory: ContainerFactory = open_container
+    settings: Settings | None = None,
+    *,
+    container_factory: ContainerFactory = open_container,
 ) -> FastAPI:
     resolved = settings if settings is not None else Settings()
     auth = build_auth(resolved.auth, session_factory)
@@ -3712,7 +4143,10 @@ Append to `backend/tests/test_cli.py`:
 ```python
 def test_migrate_upgrades_to_head(monkeypatch) -> None:
     calls = []
-    monkeypatch.setattr("alembic.command.upgrade", lambda config, revision: calls.append((config, revision)))
+    monkeypatch.setattr(
+        "alembic.command.upgrade",
+        lambda config, revision: calls.append((config, revision)),
+    )
     result = CliRunner().invoke(cli.app, ["migrate"])
     assert result.exit_code == 0, result.output
     config, revision = calls[0]
@@ -3722,11 +4156,15 @@ def test_migrate_upgrades_to_head(monkeypatch) -> None:
 
 def test_serve_runs_uvicorn_factory(monkeypatch) -> None:
     calls = {}
-    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.update(app=app, **kwargs))
+    monkeypatch.setattr(
+        "uvicorn.run", lambda app, **kwargs: calls.update(app=app, **kwargs)
+    )
     monkeypatch.setenv("PHARMA_API__PORT", "9001")
     result = CliRunner().invoke(cli.app, ["serve", "--host", "0.0.0.0"])
     assert result.exit_code == 0, result.output
-    assert calls["app"] == "pharma_agent.api.app:create_app" and calls["factory"] is True
+    assert (
+        calls["app"] == "pharma_agent.api.app:create_app" and calls["factory"] is True
+    )
     assert (calls["host"], calls["port"]) == ("0.0.0.0", 9001)
 ```
 
@@ -3762,7 +4200,9 @@ def migrate(revision: str = typer.Argument("head", help="Alembic revision")) -> 
     """Áp dụng migration Postgres."""
     from alembic import command
 
-    from pharma_agent.infrastructure.persistence.postgres.alembic_config import alembic_config
+    from pharma_agent.infrastructure.persistence.postgres.alembic_config import (
+        alembic_config,
+    )
 
     command.upgrade(alembic_config(), revision)
 ```
@@ -3798,7 +4238,10 @@ from pharma_agent.infrastructure.persistence.postgres.conversation_repository im
     PostgresConversationRepository,
 )
 from pharma_agent.infrastructure.persistence.postgres.database import Database
-from pharma_agent.infrastructure.persistence.postgres.tables import MessageTable, RetrievalRunTable
+from pharma_agent.infrastructure.persistence.postgres.tables import (
+    MessageTable,
+    RetrievalRunTable,
+)
 from pharma_agent.infrastructure.settings import Settings
 from tests.api.harness import parse_sse
 from tests.api.test_chat_api import script_turn
@@ -3809,7 +4252,9 @@ pytestmark = pytest.mark.integration
 
 
 def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
-    settings = Settings(_env_file=None, auth={"jwt_secret": "s" * 40}, postgres={"dsn": migrated_dsn})
+    settings = Settings(
+        _env_file=None, auth={"jwt_secret": "s" * 40}, postgres={"dsn": migrated_dsn}
+    )
     llm = FakeLlm()
     script_turn(llm)
     database_holder: dict[str, Database] = {}
@@ -3819,10 +4264,13 @@ def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         database = Database(resolved.postgres.dsn, pool_size=2)
         database_holder["db"] = database
         repo = PostgresConversationRepository(
-            database.sessions, AuditContext(corpus_version="test", embedding_model="test")
+            database.sessions,
+            AuditContext(corpus_version="test", embedding_model="test"),
         )
         runner = ChatTurnRunner(
-            build_chat_graph(), build_deps(llm, FakeRetriever([make_hit("c1", fusion=0.9)])), BudgetLimits()
+            build_chat_graph(),
+            build_deps(llm, FakeRetriever([make_hit("c1", fusion=0.9)])),
+            BudgetLimits(),
         )
         clock = SystemClock()
         try:
@@ -3840,26 +4288,48 @@ def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
     email, password = f"{uuid4().hex[:10]}@example.com", "S3cure-password!"
     with TestClient(app) as client:
         assert client.post("/api/v1/chat", json={"message": "hi"}).status_code == 401
-        registered = client.post("/api/v1/auth/register", json={"email": email, "password": password, "display_name": "An"})
+        registered = client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": password, "display_name": "An"},
+        )
         assert registered.status_code == 201, registered.text
-        token = client.post("/api/v1/auth/jwt/login", data={"username": email, "password": password}).json()["access_token"]
+        token = client.post(
+            "/api/v1/auth/jwt/login", data={"username": email, "password": password}
+        ).json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        assert client.get("/api/v1/users/me", headers=headers).json()["display_name"] == "An"
+        assert (
+            client.get("/api/v1/users/me", headers=headers).json()["display_name"]
+            == "An"
+        )
 
-        response = client.post("/api/v1/chat/stream", json={"message": "Paracetamol uống bao nhiêu?"}, headers=headers)
+        response = client.post(
+            "/api/v1/chat/stream",
+            json={"message": "Paracetamol uống bao nhiêu?"},
+            headers=headers,
+        )
         events = parse_sse(response.text)
         conversation_id = str(events[0][1]["conversation_id"])
         assert events[-1][0] == "done" and events[-1][1]["message_id"]
 
         listed = client.get("/api/v1/conversations", headers=headers).json()
         assert [item["id"] for item in listed] == [conversation_id]
-        messages = client.get(f"/api/v1/conversations/{conversation_id}/messages", headers=headers).json()
+        messages = client.get(
+            f"/api/v1/conversations/{conversation_id}/messages", headers=headers
+        ).json()
         assert [m["role"] for m in messages] == ["user", "assistant"]
 
         async def count_rows() -> tuple[int, int]:
             async with database_holder["db"].sessions() as session:
-                message_count = (await session.execute(select(func.count()).select_from(MessageTable))).scalar_one()
-                audit_count = (await session.execute(select(func.count()).select_from(RetrievalRunTable))).scalar_one()
+                message_count = (
+                    await session.execute(
+                        select(func.count()).select_from(MessageTable)
+                    )
+                ).scalar_one()
+                audit_count = (
+                    await session.execute(
+                        select(func.count()).select_from(RetrievalRunTable)
+                    )
+                ).scalar_one()
             return message_count, audit_count
 
         message_count, audit_count = client.portal.call(count_rows)

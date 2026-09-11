@@ -175,3 +175,34 @@ _PROBE_HIT = Hit(
     chunk_text="Người lớn 500 mg",
     embedding_text="Paracetamol > Liều dùng\n\nNgười lớn 500 mg",
 )
+
+
+@app.command()
+def serve(
+    host: str | None = typer.Option(None, help="Bind address (default from settings)"),
+    port: int | None = typer.Option(None, help="Port (default from settings)"),
+    reload: bool = typer.Option(False, help="Auto-reload on code changes"),
+) -> None:
+    """Chạy HTTP API (FastAPI + SSE)."""
+    import uvicorn
+
+    settings = Settings()
+    uvicorn.run(
+        "pharma_agent.api.app:create_app",
+        factory=True,
+        host=host or settings.api.host,
+        port=port or settings.api.port,
+        reload=reload,
+    )
+
+
+@app.command()
+def migrate(revision: str = typer.Argument("head", help="Alembic revision")) -> None:
+    """Áp dụng migration Postgres."""
+    from alembic import command
+
+    from pharma_agent.infrastructure.persistence.postgres.alembic_config import (
+        alembic_config,
+    )
+
+    command.upgrade(alembic_config(), revision)

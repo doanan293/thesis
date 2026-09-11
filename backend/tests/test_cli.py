@@ -69,3 +69,30 @@ def test_ask_json_output(monkeypatch) -> None:
     payload = json.loads(result.output)
     assert payload["status"] == "completed" and payload["citations"][0]["index"] == 1
     assert payload["trace"]["usage"]["llm_calls"] == 5
+
+
+def test_migrate_upgrades_to_head(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        "alembic.command.upgrade",
+        lambda config, revision: calls.append((config, revision)),
+    )
+    result = CliRunner().invoke(cli.app, ["migrate"])
+    assert result.exit_code == 0, result.output
+    config, revision = calls[0]
+    assert revision == "head"
+    assert config.get_main_option("script_location").endswith(":migrations")
+
+
+def test_serve_runs_uvicorn_factory(monkeypatch) -> None:
+    calls = {}
+    monkeypatch.setattr(
+        "uvicorn.run", lambda app, **kwargs: calls.update(app=app, **kwargs)
+    )
+    monkeypatch.setenv("PHARMA_API__PORT", "9001")
+    result = CliRunner().invoke(cli.app, ["serve", "--host", "0.0.0.0"])
+    assert result.exit_code == 0, result.output
+    assert (
+        calls["app"] == "pharma_agent.api.app:create_app" and calls["factory"] is True
+    )
+    assert (calls["host"], calls["port"]) == ("0.0.0.0", 9001)

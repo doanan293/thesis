@@ -22,6 +22,41 @@ uv run pharma-agent ask "Paracetamol người lớn uống bao nhiêu?"
 uv run pharma-agent ask "..." --json           # kèm trace đầy đủ
 ```
 
+## Chạy HTTP API
+
+```bash
+docker compose up -d postgres qdrant llama-embedding llama-reranker   # chạy từ repo root
+cd backend
+uv run pharma-agent migrate
+uv run pharma-agent serve            # http://127.0.0.1:8000/docs
+```
+
+Cần thêm `PHARMA_AUTH__JWT_SECRET` (ít nhất 32 ký tự) trong `.env`. Không có
+`PHARMA_LLM__DEFAULT__API_KEY` thì API vẫn chạy, riêng `/chat` trả 503.
+
+Thử nhanh bằng curl:
+
+```bash
+curl -s -X POST localhost:8000/api/v1/auth/register -H 'content-type: application/json' \
+  -d '{"email":"an@example.com","password":"S3cure-password!"}'
+TOKEN=$(curl -s -X POST localhost:8000/api/v1/auth/jwt/login \
+  -d 'username=an@example.com&password=S3cure-password!' \
+  | python -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+curl -N -X POST localhost:8000/api/v1/chat/stream -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"message":"Paracetamol người lớn uống bao nhiêu?"}'
+```
+
+Luồng SSE lần lượt gồm `conversation`, `phase`, `skills_selected`, `evidence`, `token`,
+`citations`, `done`. Nếu không lưu được lượt hội thoại thì có thêm `error` với mã `PERSIST_FAILED`.
+
+| Endpoint | Mô tả |
+| --- | --- |
+| `POST /api/v1/auth/register`, `/auth/jwt/login`, `/auth/google/*` | Đăng ký, đăng nhập (JWT), Google OAuth khi đã cấu hình |
+| `GET /api/v1/users/me` | Người dùng hiện tại |
+| `POST /api/v1/chat`, `/chat/stream` | Hỏi đáp một lượt (JSON hoặc SSE) |
+| `GET/PATCH/DELETE /api/v1/conversations/{id}`, `GET .../messages` | Lịch sử hội thoại |
+| `GET /api/v1/health` | Postgres, Qdrant, trạng thái agent |
+
 ## Kiểm tra
 
 ```bash
