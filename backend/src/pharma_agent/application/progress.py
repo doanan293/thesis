@@ -17,6 +17,7 @@ class Phase(StrEnum):
 
 
 class EventType(StrEnum):
+    CONVERSATION = "conversation"
     PHASE = "phase"
     SKILLS_SELECTED = "skills_selected"
     EVIDENCE = "evidence"
