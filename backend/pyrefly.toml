@@ -4,6 +4,11 @@ search-path = ["src", "."]
 python-version = "3.12"
 ignore-errors-in-generated-code = true
 
+# An `# pyrefly: ignore` that no longer suppresses anything is an error, so
+# workarounds for upstream bugs expire on their own.
+[errors]
+unused-ignore = true
+
 [[sub-config]]
 matches = "**/tests/**"
 
