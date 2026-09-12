@@ -6,7 +6,8 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from fastapi.testclient import TestClient
+import httpx
+from fastapi import FastAPI
 
 from pharma_agent.api.app import create_app
 from pharma_agent.application.chat.graph import build_chat_graph
@@ -19,6 +20,7 @@ from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.container import Container
 from pharma_agent.infrastructure.persistence.postgres.tables import UserTable
 from pharma_agent.infrastructure.settings import Settings
+from tests.api.asgi import running
 from tests.domain.factories import make_hit
 from tests.fakes import FakeLlm, FakeRetriever, build_deps
 from tests.memory_repository import InMemoryConversationRepository
@@ -28,10 +30,15 @@ OWNER = uuid.UUID(hex="a" * 32)
 
 @dataclass
 class Harness:
-    client: TestClient
+    app: FastAPI
     llm: FakeLlm
     repo: InMemoryConversationRepository
     container: Container
+
+    @asynccontextmanager
+    async def client(self) -> AsyncGenerator[httpx.AsyncClient]:
+        async with running(self.app) as client:
+            yield client
 
 
 def settings() -> Settings:
@@ -72,7 +79,7 @@ def build_harness(
         app.dependency_overrides[auth.current_active_user] = lambda: UserTable(
             id=OWNER, email="owner@example.com", hashed_password="x", is_active=True
         )
-    return Harness(client=TestClient(app), llm=llm, repo=repo, container=container)
+    return Harness(app=app, llm=llm, repo=repo, container=container)
 
 
 async def _ok() -> bool:

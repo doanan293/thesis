@@ -33,11 +33,11 @@ def script_turn(llm: FakeLlm) -> None:
     )
 
 
-def test_stream_emits_conversation_first_and_done_last() -> None:
+async def test_stream_emits_conversation_first_and_done_last() -> None:
     harness = build_harness()
     script_turn(harness.llm)
-    with harness.client as client:
-        response = client.post(
+    async with harness.client() as client:
+        response = await client.post(
             "/api/v1/chat/stream", json={"message": "Paracetamol uống bao nhiêu?"}
         )
         assert response.status_code == 200
@@ -57,19 +57,19 @@ def test_stream_emits_conversation_first_and_done_last() -> None:
     assert harness.repo.rows[conversation_id].user_id == OWNER.hex
 
 
-def test_non_stream_chat_and_background_summary() -> None:
+async def test_non_stream_chat_and_background_summary() -> None:
     harness = build_harness()
     script_turn(harness.llm)
     script_turn(harness.llm)
     harness.llm.script(
         LlmRole.SUMMARIZER, ConversationSummary(summary="Hỏi về liều paracetamol.")
     )
-    with harness.client as client:
-        first = client.post("/api/v1/chat", json={"message": "Paracetamol?"})
+    async with harness.client() as client:
+        first = await client.post("/api/v1/chat", json={"message": "Paracetamol?"})
         assert first.status_code == 200
         body = first.json()
         assert body["persisted"] is True and body["citations"]
-        second = client.post(
+        second = await client.post(
             "/api/v1/chat",
             json={"message": "Còn trẻ em?", "conversation_id": body["conversation_id"]},
         )
@@ -78,27 +78,26 @@ def test_non_stream_chat_and_background_summary() -> None:
     assert stored.turn_count == 2 and stored.summary == "Hỏi về liều paracetamol."
 
 
-def test_chat_errors() -> None:
+async def test_chat_errors() -> None:
     harness = build_harness()
-    with harness.client as client:
-        missing = client.post(
+    async with harness.client() as client:
+        missing = await client.post(
             "/api/v1/chat", json={"message": "hi", "conversation_id": "f" * 32}
         )
         assert (
             missing.status_code == 404
             and missing.json()["code"] == "CONVERSATION_NOT_FOUND"
         )
-        assert (
-            client.post(
-                "/api/v1/chat", json={"message": "hi", "conversation_id": "nope"}
-            ).status_code
-            == 422
+        invalid_id = await client.post(
+            "/api/v1/chat", json={"message": "hi", "conversation_id": "nope"}
         )
-        assert client.post("/api/v1/chat", json={"message": ""}).status_code == 422
+        assert invalid_id.status_code == 422
+        empty = await client.post("/api/v1/chat", json={"message": ""})
+        assert empty.status_code == 422
 
     unavailable = build_harness(agent=False)
-    with unavailable.client as client:
-        response = client.post("/api/v1/chat/stream", json={"message": "hi"})
+    async with unavailable.client() as client:
+        response = await client.post("/api/v1/chat/stream", json={"message": "hi"})
         assert (
             response.status_code == 503
             and response.json()["code"] == "AGENT_UNAVAILABLE"

@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from pharma_agent.api.app import create_app
@@ -26,6 +25,7 @@ from pharma_agent.infrastructure.persistence.postgres.tables import (
     RetrievalRunTable,
 )
 from pharma_agent.infrastructure.settings import Settings
+from tests.api.asgi import running
 from tests.api.harness import parse_sse
 from tests.api.test_chat_api import script_turn
 from tests.domain.factories import make_hit
@@ -34,7 +34,7 @@ from tests.fakes import FakeLlm, FakeRetriever, build_deps
 pytestmark = pytest.mark.integration
 
 
-def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
+async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
     settings = Settings(
         _env_file=None, auth={"jwt_secret": "s" * 40}, postgres={"dsn": migrated_dsn}
     )
@@ -69,23 +69,22 @@ def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
 
     app = create_app(settings, container_factory=factory)
     email, password = f"{uuid4().hex[:10]}@example.com", "S3cure-password!"
-    with TestClient(app) as client:
-        assert client.post("/api/v1/chat", json={"message": "hi"}).status_code == 401
-        registered = client.post(
+    async with running(app) as client:
+        anonymous = await client.post("/api/v1/chat", json={"message": "hi"})
+        assert anonymous.status_code == 401
+        registered = await client.post(
             "/api/v1/auth/register",
             json={"email": email, "password": password, "display_name": "An"},
         )
         assert registered.status_code == 201, registered.text
-        token = client.post(
+        login = await client.post(
             "/api/v1/auth/jwt/login", data={"username": email, "password": password}
-        ).json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
-        assert (
-            client.get("/api/v1/users/me", headers=headers).json()["display_name"]
-            == "An"
         )
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        me = await client.get("/api/v1/users/me", headers=headers)
+        assert me.json()["display_name"] == "An"
 
-        response = client.post(
+        response = await client.post(
             "/api/v1/chat/stream",
             json={"message": "Paracetamol uống bao nhiêu?"},
             headers=headers,
@@ -94,26 +93,20 @@ def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         conversation_id = str(events[0][1]["conversation_id"])
         assert events[-1][0] == "done" and events[-1][1]["message_id"]
 
-        listed = client.get("/api/v1/conversations", headers=headers).json()
-        assert [item["id"] for item in listed] == [conversation_id]
-        messages = client.get(
+        listed = await client.get("/api/v1/conversations", headers=headers)
+        assert [item["id"] for item in listed.json()] == [conversation_id]
+        messages = await client.get(
             f"/api/v1/conversations/{conversation_id}/messages", headers=headers
-        ).json()
-        assert [m["role"] for m in messages] == ["user", "assistant"]
+        )
+        assert [m["role"] for m in messages.json()] == ["user", "assistant"]
 
-        async def count_rows() -> tuple[int, int]:
-            async with database_holder["db"].sessions() as session:
-                message_count = (
-                    await session.execute(
-                        select(func.count()).select_from(MessageTable)
-                    )
-                ).scalar_one()
-                audit_count = (
-                    await session.execute(
-                        select(func.count()).select_from(RetrievalRunTable)
-                    )
-                ).scalar_one()
-            return message_count, audit_count
-
-        message_count, audit_count = client.portal.call(count_rows)
+        async with database_holder["db"].sessions() as session:
+            message_count = (
+                await session.execute(select(func.count()).select_from(MessageTable))
+            ).scalar_one()
+            audit_count = (
+                await session.execute(
+                    select(func.count()).select_from(RetrievalRunTable)
+                )
+            ).scalar_one()
         assert message_count >= 2 and audit_count >= 1
