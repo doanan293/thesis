@@ -92,3 +92,11 @@ async def test_limit_applies_to_catalog(database: Database) -> None:
     repo = PostgresSkillRepository(database.sessions)
     await repo.upsert_system([skill(f"s-{i}") for i in range(5)])
     assert len(await repo.list_catalog(None, limit=3)) == 3
+
+
+async def test_list_system_excludes_user_skills(database: Database) -> None:
+    repo = PostgresSkillRepository(database.sessions)
+    owner = await make_user(database, "a@example.com")
+    await repo.upsert_system([skill("b-skill"), skill("a-skill")])
+    await repo.create(skill("mine-ab12cd", owner))
+    assert [s.skill_id for s in await repo.list_system()] == ["a-skill", "b-skill"]

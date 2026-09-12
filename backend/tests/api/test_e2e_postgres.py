@@ -1,5 +1,6 @@
 """HTTP → auth → ChatService → Postgres repository, with the fake LLM/retriever of Plan 1."""
 
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -12,6 +13,9 @@ from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.application.chat.runner import ChatTurnRunner
 from pharma_agent.application.chat.service import ChatService, MemoryPolicy
 from pharma_agent.application.conversation.queries import ConversationQueries
+from pharma_agent.application.feedback.service import FeedbackService
+from pharma_agent.application.skill.service import SkillService
+from pharma_agent.application.tracing import NullTracing
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.container import Container
@@ -20,7 +24,14 @@ from pharma_agent.infrastructure.persistence.postgres.conversation_repository im
     PostgresConversationRepository,
 )
 from pharma_agent.infrastructure.persistence.postgres.database import Database
+from pharma_agent.infrastructure.persistence.postgres.feedback_repository import (
+    PostgresFeedbackRepository,
+)
+from pharma_agent.infrastructure.persistence.postgres.skill_repository import (
+    PostgresSkillRepository,
+)
 from pharma_agent.infrastructure.persistence.postgres.tables import (
+    FeedbackTable,
     MessageTable,
     RetrievalRunTable,
 )
@@ -62,6 +73,13 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
                 sessions=database.sessions,
                 queries=ConversationQueries(repo, clock),
                 chat=ChatService(runner, repo, clock, MemoryPolicy()),
+                skills=SkillService(PostgresSkillRepository(database.sessions)),
+                feedback=FeedbackService(
+                    repo,
+                    PostgresFeedbackRepository(database.sessions),
+                    NullTracing(),
+                    clock,
+                ),
                 health_checks={"postgres": database.ping},
             )
         finally:
@@ -110,3 +128,33 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
                 )
             ).scalar_one()
         assert message_count >= 2 and audit_count >= 1
+
+        skill_file = (
+            "---\nname: Ghi chú thuốc bổ\ndescription: Dùng khi hỏi về vitamin.\n---\n\n"
+            "## Trả lời\n- Ngắn gọn.\n"
+        ).encode()
+        uploaded = await client.post(
+            "/api/v1/skills",
+            headers=headers,
+            files={"file": ("SKILL.md", skill_file, "text/markdown")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        visible = await client.get("/api/v1/skills", headers=headers)
+        assert uploaded.json()["id"] in {item["id"] for item in visible.json()}
+
+        message_id = str(events[-1][1]["message_id"])
+        rated = await client.post(
+            f"/api/v1/messages/{message_id}/feedback",
+            headers=headers,
+            json={"rating": "up", "note": "đúng"},
+        )
+        assert rated.status_code == 201, rated.text
+        async with database_holder["db"].sessions() as session:
+            feedback_rows = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(FeedbackTable)
+                    .where(FeedbackTable.message_id == uuid.UUID(hex=message_id))
+                )
+            ).scalar_one()
+        assert feedback_rows == 1

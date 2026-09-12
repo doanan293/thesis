@@ -132,6 +132,12 @@ class InMemorySkillRepository:
     async def get_by_ids(self, skill_ids: Sequence[str]) -> list[Skill]:
         return [self.rows[i].model_copy(deep=True) for i in skill_ids if i in self.rows]
 
+    async def list_system(self) -> list[Skill]:
+        return sorted(
+            (s.model_copy(deep=True) for s in self.rows.values() if s.is_system),
+            key=lambda s: s.skill_id,
+        )
+
     async def list_for_user(self, user_id: str) -> list[Skill]:
         return sorted(
             (

@@ -56,6 +56,24 @@ Luồng SSE lần lượt gồm `conversation`, `phase`, `skills_selected`, `evi
 | `POST /api/v1/chat`, `/chat/stream` | Hỏi đáp một lượt (JSON hoặc SSE) |
 | `GET/PATCH/DELETE /api/v1/conversations/{id}`, `GET .../messages` | Lịch sử hội thoại |
 | `GET /api/v1/health` | Postgres, Qdrant, trạng thái agent |
+| `GET/POST /api/v1/skills`, `PATCH/DELETE /api/v1/skills/{id}` | Skill hệ thống và skill tự tải lên (`SKILL.md` tối đa 64 KB) |
+| `POST /api/v1/messages/{id}/feedback` | Đánh giá câu trả lời (`up`/`down`), gửi thêm score sang Langfuse |
+
+## Quan sát và dọn dẹp
+
+Đặt `PHARMA_LANGFUSE__PUBLIC_KEY`, `PHARMA_LANGFUSE__SECRET_KEY` và `PHARMA_LANGFUSE__HOST`
+để bật Langfuse. Mỗi lượt hỏi đáp là một trace tên `chat_turn`, gắn `session` là hội thoại
+và `user` là người dùng. Các bước của graph và mọi lời gọi LLM nằm trong trace đó. Feedback
+của người dùng được ghi thành score `user_feedback` (1 là up, 0 là down) trên cùng trace.
+
+Skill hệ thống trong `skills/` được đồng bộ vào Postgres mỗi lần service khởi động.
+
+Checkpoint LangGraph cũ hơn `PHARMA_CHECKPOINTS__RETENTION_DAYS` ngày (mặc định 7) được xóa
+một lần khi service khởi động. Có thể chạy tay:
+
+```bash
+uv run pharma-agent cleanup-checkpoints --days 7
+```
 
 ## Kiểm tra
 

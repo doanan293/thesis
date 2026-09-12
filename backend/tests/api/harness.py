@@ -14,7 +14,9 @@ from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.application.chat.runner import ChatTurnRunner
 from pharma_agent.application.chat.service import ChatService, MemoryPolicy
 from pharma_agent.application.conversation.queries import ConversationQueries
+from pharma_agent.application.feedback.service import FeedbackService
 from pharma_agent.application.memory.summarize import SummarizeConversation
+from pharma_agent.application.skill.service import SkillService
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.container import Container
@@ -23,9 +25,21 @@ from pharma_agent.infrastructure.settings import Settings
 from tests.api.asgi import running
 from tests.domain.factories import make_hit
 from tests.fakes import FakeLlm, FakeRetriever, build_deps
-from tests.memory_repository import InMemoryConversationRepository
+from tests.memory_repository import (
+    InMemoryConversationRepository,
+    InMemoryFeedbackRepository,
+    InMemorySkillRepository,
+)
 
 OWNER = uuid.UUID(hex="a" * 32)
+
+
+class RecordingScoreSink:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str]] = []
+
+    def record_feedback(self, *, run_id: str, rating: str, note: str) -> None:
+        self.calls.append((run_id, rating, note))
 
 
 @dataclass
@@ -34,6 +48,9 @@ class Harness:
     llm: FakeLlm
     repo: InMemoryConversationRepository
     container: Container
+    skill_repo: InMemorySkillRepository
+    feedback_repo: InMemoryFeedbackRepository
+    sink: RecordingScoreSink
 
     @asynccontextmanager
     async def client(self) -> AsyncGenerator[httpx.AsyncClient]:
@@ -58,6 +75,9 @@ def build_harness(
     runner = ChatTurnRunner(
         build_chat_graph(), build_deps(llm, retriever), BudgetLimits()
     )
+    skill_repo = InMemorySkillRepository()
+    feedback_repo = InMemoryFeedbackRepository()
+    sink = RecordingScoreSink()
     container = Container(
         settings=settings(),
         sessions=None,
@@ -66,6 +86,8 @@ def build_harness(
         summarizer=SummarizeConversation(llm, repo, clock, every=2, max_chars=500)
         if agent
         else None,
+        skills=SkillService(skill_repo),
+        feedback=FeedbackService(repo, feedback_repo, sink, clock),
         health_checks=health if health is not None else {"postgres": _ok},
     )
 
@@ -79,7 +101,15 @@ def build_harness(
         app.dependency_overrides[auth.current_active_user] = lambda: UserTable(
             id=OWNER, email="owner@example.com", hashed_password="x", is_active=True
         )
-    return Harness(app=app, llm=llm, repo=repo, container=container)
+    return Harness(
+        app=app,
+        llm=llm,
+        repo=repo,
+        container=container,
+        skill_repo=skill_repo,
+        feedback_repo=feedback_repo,
+        sink=sink,
+    )
 
 
 async def _ok() -> bool:

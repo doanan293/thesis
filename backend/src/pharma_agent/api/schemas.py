@@ -3,6 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 CONVERSATION_ID_PATTERN = r"^[0-9a-f]{32}$"
+MESSAGE_ID_PATTERN = CONVERSATION_ID_PATTERN
+SKILL_ID_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
 
 class ChatRequest(BaseModel):
@@ -23,3 +25,12 @@ class HealthResponse(BaseModel):
 class ErrorResponse(BaseModel):
     code: str
     message: str
+
+
+class EnableSkillRequest(BaseModel):
+    enabled: bool
+
+
+class FeedbackRequest(BaseModel):
+    rating: Literal["up", "down"]
+    note: str = Field(default="", max_length=2000)

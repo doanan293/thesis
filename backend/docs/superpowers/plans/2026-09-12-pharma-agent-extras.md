@@ -115,19 +115,32 @@ async def make_user(database: Database, email: str) -> str:
 
 def skill(skill_id: str, owner: str | None = None, version: str = "v1") -> Skill:
     return Skill(
-        skill_id=skill_id, owner_user_id=owner, name=skill_id.title(), description=f"d {version}",
-        search_guidance="s", answer_guidance="a", version=version,
+        skill_id=skill_id,
+        owner_user_id=owner,
+        name=skill_id.title(),
+        description=f"d {version}",
+        search_guidance="s",
+        answer_guidance="a",
+        version=version,
     )
 
 
-async def test_system_upsert_is_idempotent_and_updates_changed_versions(database: Database) -> None:
+async def test_system_upsert_is_idempotent_and_updates_changed_versions(
+    database: Database,
+) -> None:
     repo = PostgresSkillRepository(database.sessions)
     await repo.upsert_system([skill("drug-monograph"), skill("plain-language")])
-    await repo.upsert_system([skill("drug-monograph", version="v2"), skill("plain-language")])
+    await repo.upsert_system(
+        [skill("drug-monograph", version="v2"), skill("plain-language")]
+    )
     catalog = await repo.list_catalog(None, limit=10)
     assert sorted(m.skill_id for m in catalog) == ["drug-monograph", "plain-language"]
     loaded = await repo.get_by_ids(["drug-monograph"])
-    assert loaded[0].version == "v2" and loaded[0].description == "d v2" and loaded[0].is_system
+    assert (
+        loaded[0].version == "v2"
+        and loaded[0].description == "d v2"
+        and loaded[0].is_system
+    )
 
 
 async def test_catalog_mixes_system_and_own_enabled_skills(database: Database) -> None:
@@ -139,15 +152,23 @@ async def test_catalog_mixes_system_and_own_enabled_skills(database: Database) -
     await repo.create(skill("theirs-ab12cd", other))
     disabled = await repo.set_enabled(owner, "my-notes-ab12cd", False)
     assert disabled is not None and disabled.enabled is False
-    assert [m.skill_id for m in await repo.list_catalog(owner, limit=10)] == ["drug-monograph"]
+    assert [m.skill_id for m in await repo.list_catalog(owner, limit=10)] == [
+        "drug-monograph"
+    ]
     await repo.set_enabled(owner, "my-notes-ab12cd", True)
-    assert sorted(m.skill_id for m in await repo.list_catalog(owner, limit=10)) == ["drug-monograph", "my-notes-ab12cd"]
+    assert sorted(m.skill_id for m in await repo.list_catalog(owner, limit=10)) == [
+        "drug-monograph",
+        "my-notes-ab12cd",
+    ]
     assert [s.skill_id for s in await repo.list_for_user(owner)] == ["my-notes-ab12cd"]
     assert await repo.get_owned(other, "my-notes-ab12cd") is None
     assert await repo.set_enabled(other, "my-notes-ab12cd", False) is None
     assert await repo.delete_owned(other, "my-notes-ab12cd") is False
     assert await repo.delete_owned(owner, "my-notes-ab12cd") is True
-    assert await repo.get_by_ids(["my-notes-ab12cd", "drug-monograph"]) and len(await repo.get_by_ids(["my-notes-ab12cd"])) == 0
+    assert (
+        await repo.get_by_ids(["my-notes-ab12cd", "drug-monograph"])
+        and len(await repo.get_by_ids(["my-notes-ab12cd"])) == 0
+    )
 
 
 async def test_limit_applies_to_catalog(database: Database) -> None:
@@ -177,7 +198,9 @@ def slugify(text: str) -> str:
     ascii_text = (
         unicodedata.normalize("NFKD", folded).encode("ascii", "ignore").decode("ascii")
     )
-    slug = _NON_ALNUM.sub("-", ascii_text.lower()).strip("-")[:MAX_SLUG_CHARS].strip("-")
+    slug = (
+        _NON_ALNUM.sub("-", ascii_text.lower()).strip("-")[:MAX_SLUG_CHARS].strip("-")
+    )
     return slug or "skill"
 ```
 
@@ -197,7 +220,9 @@ class SkillRepository(SkillCatalog, Protocol):
 
     async def get_owned(self, user_id: str, skill_id: str) -> Skill | None: ...
 
-    async def set_enabled(self, user_id: str, skill_id: str, enabled: bool) -> Skill | None: ...
+    async def set_enabled(
+        self, user_id: str, skill_id: str, enabled: bool
+    ) -> Skill | None: ...
 
     async def delete_owned(self, user_id: str, skill_id: str) -> bool: ...
 ```
@@ -217,10 +242,16 @@ class SkillTable(Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    search_guidance: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
-    answer_guidance: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    search_guidance: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    answer_guidance: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
     version: Mapped[str] = mapped_column(String(64), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -268,7 +299,9 @@ def _skill(row: SkillTable) -> Skill:
 def _values(skill: Skill) -> dict[str, object]:
     return {
         "skill_id": skill.skill_id,
-        "owner_user_id": uuid.UUID(hex=skill.owner_user_id) if skill.owner_user_id else None,
+        "owner_user_id": uuid.UUID(hex=skill.owner_user_id)
+        if skill.owner_user_id
+        else None,
         "name": skill.name,
         "description": skill.description,
         "search_guidance": skill.search_guidance,
@@ -305,7 +338,9 @@ class PostgresSkillRepository:
         async with self._sessions.begin() as session:
             session.add(SkillTable(**_values(skill)))
 
-    async def list_catalog(self, user_id: str | None, limit: int) -> list[SkillMetadata]:
+    async def list_catalog(
+        self, user_id: str | None, limit: int
+    ) -> list[SkillMetadata]:
         owner = _uuid(user_id) if user_id else None
         visible = SkillTable.owner_user_id.is_(None)
         if owner is not None:
@@ -325,8 +360,16 @@ class PostgresSkillRepository:
             return []
         async with self._sessions() as session:
             rows = (
-                await session.execute(select(SkillTable).where(SkillTable.skill_id.in_(list(skill_ids))))
-            ).scalars().all()
+                (
+                    await session.execute(
+                        select(SkillTable).where(
+                            SkillTable.skill_id.in_(list(skill_ids))
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
         return [_skill(row) for row in rows]
 
     async def list_for_user(self, user_id: str) -> list[Skill]:
@@ -335,10 +378,16 @@ class PostgresSkillRepository:
             return []
         async with self._sessions() as session:
             rows = (
-                await session.execute(
-                    select(SkillTable).where(SkillTable.owner_user_id == owner).order_by(SkillTable.name)
+                (
+                    await session.execute(
+                        select(SkillTable)
+                        .where(SkillTable.owner_user_id == owner)
+                        .order_by(SkillTable.name)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         return [_skill(row) for row in rows]
 
     async def get_owned(self, user_id: str, skill_id: str) -> Skill | None:
@@ -348,12 +397,17 @@ class PostgresSkillRepository:
         async with self._sessions() as session:
             row = (
                 await session.execute(
-                    select(SkillTable).where(SkillTable.skill_id == skill_id, SkillTable.owner_user_id == owner)
+                    select(SkillTable).where(
+                        SkillTable.skill_id == skill_id,
+                        SkillTable.owner_user_id == owner,
+                    )
                 )
             ).scalar_one_or_none()
         return _skill(row) if row is not None else None
 
-    async def set_enabled(self, user_id: str, skill_id: str, enabled: bool) -> Skill | None:
+    async def set_enabled(
+        self, user_id: str, skill_id: str, enabled: bool
+    ) -> Skill | None:
         owner = _uuid(user_id)
         if owner is None:
             return None
@@ -361,7 +415,10 @@ class PostgresSkillRepository:
             row = (
                 await session.execute(
                     update(SkillTable)
-                    .where(SkillTable.skill_id == skill_id, SkillTable.owner_user_id == owner)
+                    .where(
+                        SkillTable.skill_id == skill_id,
+                        SkillTable.owner_user_id == owner,
+                    )
                     .values(enabled=enabled, updated_at=func.now())
                     .returning(SkillTable)
                 )
@@ -375,7 +432,9 @@ class PostgresSkillRepository:
         async with self._sessions.begin() as session:
             result = await session.execute(
                 delete(SkillTable)
-                .where(SkillTable.skill_id == skill_id, SkillTable.owner_user_id == owner)
+                .where(
+                    SkillTable.skill_id == skill_id, SkillTable.owner_user_id == owner
+                )
                 .returning(SkillTable.skill_id)
             )
             return result.first() is not None
@@ -406,7 +465,9 @@ Add to `backend/tests/memory_repository.py`:
 ```python
 class InMemorySkillRepository:
     def __init__(self, *skills: Skill) -> None:
-        self.rows: dict[str, Skill] = {s.skill_id: s.model_copy(deep=True) for s in skills}
+        self.rows: dict[str, Skill] = {
+            s.skill_id: s.model_copy(deep=True) for s in skills
+        }
 
     async def upsert_system(self, skills: Sequence[Skill]) -> None:
         for skill in skills:
@@ -417,9 +478,12 @@ class InMemorySkillRepository:
             raise ValueError(f"duplicate skill_id {skill.skill_id}")
         self.rows[skill.skill_id] = skill.model_copy(deep=True)
 
-    async def list_catalog(self, user_id: str | None, limit: int) -> list[SkillMetadata]:
+    async def list_catalog(
+        self, user_id: str | None, limit: int
+    ) -> list[SkillMetadata]:
         visible = [
-            s for s in self.rows.values()
+            s
+            for s in self.rows.values()
             if s.enabled and (s.owner_user_id is None or s.owner_user_id == user_id)
         ]
         visible.sort(key=lambda s: (s.owner_user_id is not None, s.skill_id))
@@ -430,15 +494,25 @@ class InMemorySkillRepository:
 
     async def list_for_user(self, user_id: str) -> list[Skill]:
         return sorted(
-            (s.model_copy(deep=True) for s in self.rows.values() if s.owner_user_id == user_id),
+            (
+                s.model_copy(deep=True)
+                for s in self.rows.values()
+                if s.owner_user_id == user_id
+            ),
             key=lambda s: s.name,
         )
 
     async def get_owned(self, user_id: str, skill_id: str) -> Skill | None:
         skill = self.rows.get(skill_id)
-        return skill.model_copy(deep=True) if skill and skill.owner_user_id == user_id else None
+        return (
+            skill.model_copy(deep=True)
+            if skill and skill.owner_user_id == user_id
+            else None
+        )
 
-    async def set_enabled(self, user_id: str, skill_id: str, enabled: bool) -> Skill | None:
+    async def set_enabled(
+        self, user_id: str, skill_id: str, enabled: bool
+    ) -> Skill | None:
         skill = self.rows.get(skill_id)
         if skill is None or skill.owner_user_id != user_id:
             return None
@@ -461,7 +535,11 @@ from pathlib import Path
 import pytest
 
 from pharma_agent.application.errors import InvalidInput
-from pharma_agent.application.skill.service import MAX_SKILL_BYTES, SkillNotFound, SkillService
+from pharma_agent.application.skill.service import (
+    MAX_SKILL_BYTES,
+    SkillNotFound,
+    SkillService,
+)
 from pharma_agent.domain.shared.clock import FixedClock
 from tests.fakes import NOW
 from tests.memory_repository import InMemorySkillRepository
@@ -478,7 +556,9 @@ description: D\xc3\xb9ng khi h\xe1\xbb\x8fi v\xe1\xbb\x81 thu\xe1\xbb\x91c b\xe1
 """
 
 
-def service(repo: InMemorySkillRepository | None = None) -> tuple[SkillService, InMemorySkillRepository]:
+def service(
+    repo: InMemorySkillRepository | None = None,
+) -> tuple[SkillService, InMemorySkillRepository]:
     repo = repo or InMemorySkillRepository()
     return SkillService(repo, FixedClock(NOW)), repo
 
@@ -493,7 +573,10 @@ async def test_upload_creates_slugged_unique_skill_and_lists_it() -> None:
     svc, repo = service()
     first = await svc.upload(OWNER, "SKILL.md", VALID)
     second = await svc.upload(OWNER, "skill.md", VALID)
-    assert first.id.startswith("ghi-chu-cua-toi-") and len(first.id) == len("ghi-chu-cua-toi-") + 6
+    assert (
+        first.id.startswith("ghi-chu-cua-toi-")
+        and len(first.id) == len("ghi-chu-cua-toi-") + 6
+    )
     assert first.id != second.id and first.is_system is False and first.enabled is True
     listed = await svc.list_for_user(OWNER)
     assert [s.id for s in listed] == sorted([first.id, second.id]) or len(listed) == 2
@@ -542,7 +625,9 @@ from pharma_agent.domain.skill.models import Skill
 from pharma_agent.domain.skill.parser import SkillParseError, parse_skill_markdown
 from pharma_agent.domain.skill.ports import SkillRepository
 from pharma_agent.domain.skill.slug import slugify
-from pharma_agent.infrastructure.skills.filesystem_catalog import load_system_skills  # NO: application must not import infrastructure
+from pharma_agent.infrastructure.skills.filesystem_catalog import (
+    load_system_skills,
+)  # NO: application must not import infrastructure
 
 MAX_SKILL_BYTES = 64 * 1024
 ```
@@ -626,7 +711,9 @@ class SkillService:
         await self._skills.create(skill)
         return SkillView.of(skill)
 
-    async def set_enabled(self, user_id: str, skill_id: str, enabled: bool) -> SkillView:
+    async def set_enabled(
+        self, user_id: str, skill_id: str, enabled: bool
+    ) -> SkillView:
         skill = await self._skills.set_enabled(user_id, skill_id, enabled)
         if skill is None:
             raise SkillNotFound(skill_id)
@@ -884,3 +971,14 @@ Routes (all authenticated): `GET /api/v1/skills` → `list[SkillView]` (system +
 ## Done when
 
 `uv run pytest -q`, `uv run pytest -q -m integration`, and `uv run --project backend pre-commit run --all-files` are green; the spec's sections 8.3 (skills), feedback, and 11 (Langfuse) are implemented; README documents Langfuse env vars and the new endpoints.
+
+## As built (differences from the plan above)
+
+- Migrations are split: `0002_skills.py` creates `skills`, `0003_feedback.py` creates `feedback` with the unique constraint `uq_feedback_user_message`.
+- `load_system_skills` moved from `infrastructure/skills/filesystem_catalog.py` to `domain/skill/files.py`, so `SkillService` does not import infrastructure. `SkillService` takes only the repository (no clock).
+- `SkillRepository` also has `list_system()`, and `SkillService.list_visible(user_id)` backs `GET /skills` (system skills first, then the user's own, enabled or not).
+- Oversized uploads raise `PayloadTooLarge(InvalidInput)` and map to HTTP 413; other upload problems stay 422.
+- `ConversationRepository.get_message(user_id, message_id)` was added for `FeedbackService`.
+- `application/tracing.py` defines `Tracing(TurnTracer, ScoreSink)` so the container holds one object for both roles.
+- Langfuse keeps one resource manager per public key for the whole process and `shutdown()` closes it; the tracing tests give every client a unique public key.
+- Checkpoint cleanup deletes orphaned blobs in a second statement of the same transaction, because CTEs share one snapshot. The service runs it once in the background at startup.

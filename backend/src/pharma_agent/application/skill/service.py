@@ -3,7 +3,11 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from pharma_agent.application.errors import ApplicationError, InvalidInput
+from pharma_agent.application.errors import (
+    ApplicationError,
+    InvalidInput,
+    PayloadTooLarge,
+)
 from pharma_agent.domain.skill.files import load_system_skills
 from pharma_agent.domain.skill.models import Skill
 from pharma_agent.domain.skill.parser import SkillParseError, parse_skill_markdown
@@ -49,11 +53,19 @@ class SkillService:
     async def list_for_user(self, user_id: str) -> list[SkillView]:
         return [SkillView.of(s) for s in await self._skills.list_for_user(user_id)]
 
+    async def list_visible(self, user_id: str) -> list[SkillView]:
+        """System skills first, then the user's own skills (enabled or not)."""
+        system = await self._skills.list_system()
+        own = await self._skills.list_for_user(user_id)
+        return [SkillView.of(skill) for skill in (*system, *own)]
+
     async def upload(self, user_id: str, filename: str, content: bytes) -> SkillView:
         if Path(filename).name.lower() != "skill.md":
             raise InvalidInput("the uploaded file must be named SKILL.md")
         if len(content) > MAX_SKILL_BYTES:
-            raise InvalidInput(f"SKILL.md must be at most {MAX_SKILL_BYTES // 1024} KB")
+            raise PayloadTooLarge(
+                f"SKILL.md must be at most {MAX_SKILL_BYTES // 1024} KB"
+            )
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError as exc:

@@ -21,6 +21,10 @@ class SkillRepository(SkillCatalog, Protocol):
 
     async def create(self, skill: Skill) -> None: ...
 
+    async def list_system(self) -> list[Skill]:
+        """All system skills (owner None), enabled or not, ordered by skill_id."""
+        ...
+
     async def list_for_user(self, user_id: str) -> list[Skill]:
         """All skills owned by the user, enabled or not, ordered by name."""
         ...

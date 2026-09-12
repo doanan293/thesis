@@ -73,3 +73,17 @@ async def test_enable_disable_delete_are_owner_scoped() -> None:
     await svc.delete(OWNER, created.id)
     with pytest.raises(SkillNotFound):
         await svc.delete(OWNER, created.id)
+
+
+async def test_list_visible_returns_system_then_own_skills() -> None:
+    svc, _ = service()
+    await svc.sync_system(SKILLS_DIR)
+    mine = await svc.upload(OWNER, "SKILL.md", VALID)
+    await svc.upload(STRANGER, "SKILL.md", VALID)
+
+    visible = await svc.list_visible(OWNER)
+
+    system_ids = [view.id for view in visible if view.is_system]
+    assert len(system_ids) == 5 and system_ids == sorted(system_ids)
+    assert [view.id for view in visible if not view.is_system] == [mine.id]
+    assert all(view.is_system for view in visible[:5])

@@ -10,5 +10,9 @@ class InvalidInput(ApplicationError):
     code = "INVALID_INPUT"
 
 
+class PayloadTooLarge(InvalidInput):
+    code = "PAYLOAD_TOO_LARGE"
+
+
 class AgentUnavailable(ApplicationError):
     code = "AGENT_UNAVAILABLE"

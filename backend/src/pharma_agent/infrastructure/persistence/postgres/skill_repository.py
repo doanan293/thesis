@@ -105,6 +105,16 @@ class PostgresSkillRepository:
             )
         return [_skill(row) for row in rows]
 
+    async def list_system(self) -> list[Skill]:
+        query = (
+            select(SkillTable)
+            .where(SkillTable.owner_user_id.is_(None))
+            .order_by(SkillTable.skill_id)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(query)).scalars().all()
+        return [_skill(row) for row in rows]
+
     async def list_for_user(self, user_id: str) -> list[Skill]:
         owner = _uuid(user_id)
         if owner is None:

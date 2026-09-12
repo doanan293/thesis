@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from pharma_agent.application.chat.service import ChatService
 from pharma_agent.application.errors import AgentUnavailable
+from pharma_agent.application.feedback.service import FeedbackService
+from pharma_agent.application.skill.service import SkillService
 from pharma_agent.infrastructure.auth.users import Auth
 from pharma_agent.infrastructure.container import Container
 from pharma_agent.infrastructure.persistence.postgres.tables import UserTable
@@ -36,6 +38,18 @@ def require_chat(container: Container) -> ChatService:
             "the agent is not configured (set PHARMA_LLM__DEFAULT__API_KEY)"
         )
     return container.chat
+
+
+def require_skills(container: Container) -> SkillService:
+    if container.skills is None:
+        raise HTTPException(status_code=503, detail="skills are not configured")
+    return container.skills
+
+
+def require_feedback(container: Container) -> FeedbackService:
+    if container.feedback is None:
+        raise HTTPException(status_code=503, detail="feedback is not configured")
+    return container.feedback
 
 
 def user_id_dependency(auth: Auth) -> UserIdDependency:
