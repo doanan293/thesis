@@ -236,6 +236,21 @@ class PostgresConversationRepository:
             rows = (await session.execute(query)).scalars().all()
         return [_message(row) for row in reversed(rows)]
 
+    async def get_message(self, user_id: str, message_id: str) -> Message | None:
+        owner, key = _uuid(user_id), _uuid(message_id)
+        if owner is None or key is None:
+            return None
+        query = (
+            select(MessageTable)
+            .join(
+                ConversationTable, ConversationTable.id == MessageTable.conversation_id
+            )
+            .where(MessageTable.id == key, ConversationTable.user_id == owner)
+        )
+        async with self._sessions() as session:
+            row = (await session.execute(query)).scalar_one_or_none()
+        return _message(row) if row is not None else None
+
     async def _update(self, conversation: Conversation, **values: object) -> None:
         async with self._sessions.begin() as session:
             await session.execute(

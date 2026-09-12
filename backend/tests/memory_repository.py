@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pharma_agent.domain.conversation.models import Conversation, Message, Turn
 from pharma_agent.domain.conversation.turns import pair_turns
+from pharma_agent.domain.feedback.models import Feedback
 from pharma_agent.domain.retrieval.audit import RetrievalRunRecord
 from pharma_agent.domain.skill.models import Skill, SkillMetadata
 
@@ -91,6 +92,16 @@ class InMemoryConversationRepository:
         ]
         return items[-limit:]
 
+    async def get_message(self, user_id: str, message_id: str) -> Message | None:
+        for conversation_id, messages in self.message_log.items():
+            row = self.rows.get(conversation_id)
+            if row is None or row.user_id != user_id:
+                continue
+            for message in messages:
+                if message.message_id == message_id:
+                    return message
+        return None
+
 
 class InMemorySkillRepository:
     def __init__(self, *skills: Skill) -> None:
@@ -154,3 +165,14 @@ class InMemorySkillRepository:
             return False
         del self.rows[skill_id]
         return True
+
+
+class InMemoryFeedbackRepository:
+    def __init__(self) -> None:
+        self.rows: dict[tuple[str, str], Feedback] = {}
+
+    async def save(self, feedback: Feedback) -> None:
+        self.rows[(feedback.user_id, feedback.message_id)] = feedback
+
+    async def get(self, user_id: str, message_id: str) -> Feedback | None:
+        return self.rows.get((user_id, message_id))

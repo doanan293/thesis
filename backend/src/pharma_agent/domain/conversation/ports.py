@@ -52,3 +52,7 @@ class ConversationRepository(Protocol):
     ) -> list[Message]:
         """Newest `limit` messages strictly before `before`, returned oldest first."""
         ...
+
+    async def get_message(self, user_id: str, message_id: str) -> Message | None:
+        """A message, only if it belongs to one of the user's conversations."""
+        ...
