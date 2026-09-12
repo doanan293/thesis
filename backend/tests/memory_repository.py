@@ -4,6 +4,7 @@ from datetime import datetime
 from pharma_agent.domain.conversation.models import Conversation, Message, Turn
 from pharma_agent.domain.conversation.turns import pair_turns
 from pharma_agent.domain.retrieval.audit import RetrievalRunRecord
+from pharma_agent.domain.skill.models import Skill, SkillMetadata
 
 
 class InMemoryConversationRepository:
@@ -89,3 +90,67 @@ class InMemoryConversationRepository:
             if before is None or message.created_at < before
         ]
         return items[-limit:]
+
+
+class InMemorySkillRepository:
+    def __init__(self, *skills: Skill) -> None:
+        self.rows: dict[str, Skill] = {
+            s.skill_id: s.model_copy(deep=True) for s in skills
+        }
+
+    async def upsert_system(self, skills: Sequence[Skill]) -> None:
+        for skill in skills:
+            self.rows[skill.skill_id] = skill.model_copy(deep=True)
+
+    async def create(self, skill: Skill) -> None:
+        if skill.skill_id in self.rows:
+            raise ValueError(f"duplicate skill_id {skill.skill_id}")
+        self.rows[skill.skill_id] = skill.model_copy(deep=True)
+
+    async def list_catalog(
+        self, user_id: str | None, limit: int
+    ) -> list[SkillMetadata]:
+        visible = [
+            s
+            for s in self.rows.values()
+            if s.enabled and (s.owner_user_id is None or s.owner_user_id == user_id)
+        ]
+        visible.sort(key=lambda s: (s.owner_user_id is not None, s.skill_id))
+        return [s.metadata() for s in visible[:limit]]
+
+    async def get_by_ids(self, skill_ids: Sequence[str]) -> list[Skill]:
+        return [self.rows[i].model_copy(deep=True) for i in skill_ids if i in self.rows]
+
+    async def list_for_user(self, user_id: str) -> list[Skill]:
+        return sorted(
+            (
+                s.model_copy(deep=True)
+                for s in self.rows.values()
+                if s.owner_user_id == user_id
+            ),
+            key=lambda s: s.name,
+        )
+
+    async def get_owned(self, user_id: str, skill_id: str) -> Skill | None:
+        skill = self.rows.get(skill_id)
+        return (
+            skill.model_copy(deep=True)
+            if skill and skill.owner_user_id == user_id
+            else None
+        )
+
+    async def set_enabled(
+        self, user_id: str, skill_id: str, enabled: bool
+    ) -> Skill | None:
+        skill = self.rows.get(skill_id)
+        if skill is None or skill.owner_user_id != user_id:
+            return None
+        skill.enabled = enabled
+        return skill.model_copy(deep=True)
+
+    async def delete_owned(self, user_id: str, skill_id: str) -> bool:
+        skill = self.rows.get(skill_id)
+        if skill is None or skill.owner_user_id != user_id:
+            return False
+        del self.rows[skill_id]
+        return True
