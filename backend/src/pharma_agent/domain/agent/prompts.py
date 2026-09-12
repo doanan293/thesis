@@ -44,15 +44,18 @@ _LANGUAGE_RULES = {
 }
 
 
-def _skill_block(run: AgentRun, field: str) -> str:
+def _skill_block(run: AgentRun) -> str:
     blocks = [
-        f"[{skill.name}]\n{getattr(skill, field).strip()}"
+        f"[{skill.title} | {skill.name}]\n{skill.instructions.strip()}"
         for skill in run.skills
-        if getattr(skill, field).strip()
+        if skill.instructions.strip()
     ]
     if not blocks:
         return ""
-    return "\n\nHướng dẫn bổ sung từ skill:\n" + "\n\n".join(blocks)
+    return (
+        "\n\nHướng dẫn từ skill đã chọn (chỉ áp dụng phần liên quan tới bước hiện tại):\n"
+        + "\n\n".join(blocks)
+    )
 
 
 # ----- rephrase ----------------------------------------------------------
@@ -87,15 +90,15 @@ def rephrase_messages(
 
 # ----- skill selection ---------------------------------------------------
 
-SKILL_SELECT_SYSTEM = """Bạn chọn playbook (skill) phù hợp cho một câu hỏi về thuốc.
-Cho danh sách skill gồm id và mô tả. Trả về JSON {"skill_ids": [...]} với tối đa 3 id, xếp theo mức phù hợp giảm dần.
-Chỉ chọn skill có mô tả khớp rõ ràng với câu hỏi. Nếu không skill nào phù hợp, trả về danh sách rỗng. Chỉ dùng id có trong danh sách."""
+SKILL_SELECT_SYSTEM = """Bạn chọn skill phù hợp cho một câu hỏi về thuốc.
+Cho danh sách skill, mỗi dòng gồm name và description. Trả về JSON {"skill_names": [...]} với tối đa 3 name, xếp theo mức phù hợp giảm dần.
+Chỉ chọn skill có description khớp rõ ràng với câu hỏi. Nếu không skill nào phù hợp, trả về danh sách rỗng. Chỉ dùng name có trong danh sách."""
 
 
 def skill_selection_messages(
     query: str, catalog: Sequence[SkillMetadata]
 ) -> list[ChatMessage]:
-    listing = "\n".join(f"- {m.skill_id}: {m.description}" for m in catalog)
+    listing = "\n".join(f"- {m.name}: {m.description}" for m in catalog)
     return [
         system(SKILL_SELECT_SYSTEM),
         user(f"Câu hỏi: {query}\n\nSkill khả dụng:\n{listing}"),
@@ -120,7 +123,7 @@ def judge_messages(run: AgentRun, evidence_summary: str) -> list[ChatMessage]:
         f"Câu hỏi: {run.standalone_query}\n"
         f"Đối tượng hỏi: {run.audience.value}\n\n"
         f"Evidence hiện có:\n{evidence_summary}"
-        f"{_skill_block(run, 'search_guidance')}"
+        f"{_skill_block(run)}"
     )
     return [system(JUDGE_SYSTEM), user(content)]
 
@@ -151,7 +154,7 @@ def refine_messages(
         f"Ý còn thiếu:\n{gap_lines}\n\n"
         f"Truy vấn đã dùng (không lặp lại):\n{used}\n\n"
         f"Gợi ý thuật ngữ từ evidence: {hints}"
-        f"{_skill_block(run, 'search_guidance')}"
+        f"{_skill_block(run)}"
     )
     return [system(REFINE_SYSTEM), user(content)]
 
@@ -202,7 +205,7 @@ def answer_messages(
     if plan.mode is AnswerMode.GROUNDED and plan.partial:
         system_parts.append(_PARTIAL_NOTE)
     if plan.mode is AnswerMode.GROUNDED:
-        guidance = _skill_block(run, "answer_guidance")
+        guidance = _skill_block(run)
         if guidance:
             system_parts.append(guidance.strip())
     user_parts = [f"Câu hỏi: {run.standalone_query}"]

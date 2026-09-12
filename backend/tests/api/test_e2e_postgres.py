@@ -130,8 +130,9 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         assert message_count >= 2 and audit_count >= 1
 
         skill_file = (
-            "---\nname: Ghi chú thuốc bổ\ndescription: Dùng khi hỏi về vitamin.\n---\n\n"
-            "## Trả lời\n- Ngắn gọn.\n"
+            "---\nname: ghi-chu-thuoc-bo\n"
+            "description: Ghi chú thuốc bổ. Dùng khi hỏi về vitamin.\n---\n\n"
+            "# Ghi chú thuốc bổ\n\nTrả lời ngắn gọn.\n"
         ).encode()
         uploaded = await client.post(
             "/api/v1/skills",
@@ -140,7 +141,7 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         )
         assert uploaded.status_code == 201, uploaded.text
         visible = await client.get("/api/v1/skills", headers=headers)
-        assert uploaded.json()["id"] in {item["id"] for item in visible.json()}
+        assert uploaded.json()["name"] in {item["name"] for item in visible.json()}
 
         message_id = str(events[-1][1]["message_id"])
         rated = await client.post(

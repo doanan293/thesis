@@ -3,10 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Path, Response, UploadFile
 
 from pharma_agent.api.deps import ContainerDep, UserIdDependency, require_skills
-from pharma_agent.api.schemas import SKILL_ID_PATTERN, EnableSkillRequest
+from pharma_agent.api.schemas import EnableSkillRequest
 from pharma_agent.application.skill.service import MAX_SKILL_BYTES, SkillView
 
-SkillId = Annotated[str, Path(pattern=SKILL_ID_PATTERN, max_length=80)]
+# Agent Skills `name`; the full naming rules are enforced by the skill parser.
+SkillName = Annotated[str, Path(min_length=1, max_length=64)]
 
 
 def build_skills_router(current_user_id: UserIdDependency) -> APIRouter:
@@ -30,22 +31,20 @@ def build_skills_router(current_user_id: UserIdDependency) -> APIRouter:
             user_id, file.filename or "", content
         )
 
-    @router.patch("/{skill_id}", response_model=SkillView)
+    @router.patch("/{name}", response_model=SkillView)
     async def set_skill_enabled(
-        skill_id: SkillId,
+        name: SkillName,
         body: EnableSkillRequest,
         user_id: UserId,
         container: ContainerDep,
     ) -> SkillView:
-        return await require_skills(container).set_enabled(
-            user_id, skill_id, body.enabled
-        )
+        return await require_skills(container).set_enabled(user_id, name, body.enabled)
 
-    @router.delete("/{skill_id}", status_code=204)
+    @router.delete("/{name}", status_code=204)
     async def delete_skill(
-        skill_id: SkillId, user_id: UserId, container: ContainerDep
+        name: SkillName, user_id: UserId, container: ContainerDep
     ) -> Response:
-        await require_skills(container).delete(user_id, skill_id)
+        await require_skills(container).delete(user_id, name)
         return Response(status_code=204)
 
     return router

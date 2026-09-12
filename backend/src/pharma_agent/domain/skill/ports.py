@@ -8,31 +8,38 @@ class SkillCatalog(Protocol):
     async def list_catalog(
         self, user_id: str | None, limit: int
     ) -> list[SkillMetadata]:
-        """Enabled system skills plus the user's enabled skills, at most `limit` entries."""
+        """Enabled system skills, then the user's enabled skills, at most `limit`.
+
+        When a user skill has the same name as a system skill, only the system one is listed.
+        """
         ...
 
-    async def get_by_ids(self, skill_ids: Sequence[str]) -> list[Skill]: ...
+    async def get_by_names(
+        self, user_id: str | None, names: Sequence[str]
+    ) -> list[Skill]:
+        """Enabled skills visible to the user with those names (system skills win)."""
+        ...
 
 
 class SkillRepository(SkillCatalog, Protocol):
-    async def upsert_system(self, skills: Sequence[Skill]) -> None:
-        """Insert or update system skills (owner None) by skill_id."""
+    async def replace_system(self, skills: Sequence[Skill]) -> None:
+        """Make the stored system skills exactly `skills`: insert, update, delete."""
         ...
 
-    async def create(self, skill: Skill) -> None: ...
+    async def create(self, skill: Skill) -> None:
+        """Store a user skill. Raises DuplicateSkillName if the owner already has the name."""
+        ...
 
     async def list_system(self) -> list[Skill]:
-        """All system skills (owner None), enabled or not, ordered by skill_id."""
+        """All system skills, ordered by name."""
         ...
 
     async def list_for_user(self, user_id: str) -> list[Skill]:
         """All skills owned by the user, enabled or not, ordered by name."""
         ...
 
-    async def get_owned(self, user_id: str, skill_id: str) -> Skill | None: ...
-
     async def set_enabled(
-        self, user_id: str, skill_id: str, enabled: bool
+        self, user_id: str, name: str, enabled: bool
     ) -> Skill | None: ...
 
-    async def delete_owned(self, user_id: str, skill_id: str) -> bool: ...
+    async def delete_owned(self, user_id: str, name: str) -> bool: ...

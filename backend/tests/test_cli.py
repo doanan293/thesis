@@ -36,7 +36,7 @@ def fake_application() -> SimpleNamespace:
             intent=Intent.PHARMA_QUESTION,
         ),
     )
-    llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_ids=["drug-monograph"]))
+    llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=["drug-monograph"]))
     llm.script(
         LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
     )

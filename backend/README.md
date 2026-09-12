@@ -90,6 +90,6 @@ uv run pytest -q -m integration  # cần Docker (Qdrant thật)
   skill, guardrail, prompt.
 - `src/pharma_agent/application`: vòng lặp agentic RAG trên LangGraph và progress events.
 - `src/pharma_agent/infrastructure`: OpenAI, Qdrant, llama.cpp, settings, composition root.
-- `skills/`: SKILL.md hệ thống (`## Tìm kiếm` cho bước judge/refine, `## Trả lời` cho bước answer).
+- `skills/`: skill hệ thống theo [Agent Skills specification](https://agentskills.io/specification): `skills/<name>/SKILL.md`, `name` trùng tên thư mục, `name` chỉ gồm chữ thường a-z, số và gạch nối, body là hướng dẫn tự do. Kiểm tra bằng `uv run agentskills validate skills/<name>` (CLI của thư viện tham chiếu `skills-ref`).
 
 Quy tắc phụ thuộc được kiểm tra bởi `tests/architecture/test_layering.py`.

@@ -44,7 +44,7 @@ def passing_llm(intent: Intent = Intent.PHARMA_QUESTION) -> FakeLlm:
         ),
     )
     llm.script(
-        LlmRole.SKILL_SELECTOR, SkillSelection(skill_ids=["drug-monograph", "ghost"])
+        LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=["drug-monograph", "ghost"])
     )
     return llm
 
@@ -89,7 +89,7 @@ async def test_grounded_answer_in_one_round() -> None:
     assert [e.type for e in events if e.type is EventType.SKILLS_SELECTED] == [
         EventType.SKILLS_SELECTED
     ]
-    assert outcome.run.skills[0].skill_id == "drug-monograph"
+    assert outcome.run.skills[0].name == "drug-monograph"
     evidence_event = next(e for e in events if e.type is EventType.EVIDENCE)
     assert [i["index"] for i in evidence_event.data["items"]] == [1, 2]
     assert tokens(events) == outcome.answer_text and "[1]" in outcome.answer_text

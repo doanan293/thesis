@@ -90,10 +90,9 @@ class ErrorCode(StrEnum):
 class SelectedSkill(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    skill_id: str
     name: str
-    search_guidance: str = ""
-    answer_guidance: str = ""
+    title: str
+    instructions: str = ""
 
 
 _FINAL_STATUS = {
@@ -265,7 +264,7 @@ class AgentRun(BaseModel):
             ActionKind.RESOLVE_SKILLS,
             now,
             outcome="failed" if failed else ("ok" if skills else "none"),
-            payload={"skill_ids": [s.skill_id for s in skills]},
+            payload={"skill_names": [s.name for s in skills]},
         )
 
     def record_search(
@@ -388,7 +387,7 @@ class AgentRun(BaseModel):
             "audience": self.audience.value,
             "intent": self.intent.value,
             "standalone_query": self.standalone_query,
-            "skills": [s.skill_id for s in self.skills],
+            "skills": [s.name for s in self.skills],
             "actions": [a.model_dump(mode="json") for a in self.actions.entries],
         }
 

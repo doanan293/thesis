@@ -1,30 +1,37 @@
-"""System skills shipped in the repo: <root>/<skill-id>/SKILL.md."""
+"""System skills shipped in the repo: <root>/<name>/SKILL.md."""
 
 from pathlib import Path
 
 from pharma_agent.domain.skill.models import Skill
-from pharma_agent.domain.skill.parser import parse_skill_markdown
+from pharma_agent.domain.skill.parser import SkillParseError
+
+SKILL_FILE_NAMES = ("SKILL.md", "skill.md")
 
 
 def load_system_skills(root: Path) -> list[Skill]:
+    """Load every skill folder, validated like `skills-ref validate <root>/<name>`.
+
+    Invalid skills fail loudly with every problem listed, prefixed by folder name.
+    """
     skills: list[Skill] = []
+    problems: list[str] = []
     if not root.exists():
         return skills
-    for folder in sorted(p for p in root.iterdir() if p.is_dir()):
-        file = folder / "SKILL.md"
-        if not file.exists():
-            continue
-        parsed = parse_skill_markdown(file.read_text(encoding="utf-8"))
-        skills.append(
-            Skill(
-                skill_id=folder.name,
-                owner_user_id=None,
-                name=parsed.name,
-                description=parsed.description,
-                search_guidance=parsed.search_guidance,
-                answer_guidance=parsed.answer_guidance,
-                version=parsed.version,
-                enabled=True,
-            )
+    for folder in sorted(path for path in root.iterdir() if path.is_dir()):
+        file = next(
+            (folder / name for name in SKILL_FILE_NAMES if (folder / name).exists()),
+            None,
         )
+        if file is None:
+            continue
+        try:
+            skills.append(
+                Skill.from_markdown(
+                    file.read_text(encoding="utf-8"), directory_name=folder.name
+                )
+            )
+        except SkillParseError as exc:
+            problems.extend(f"{folder.name}: {error}" for error in exc.errors)
+    if problems:
+        raise SkillParseError(problems)
     return skills

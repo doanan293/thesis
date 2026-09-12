@@ -1,4 +1,4 @@
-"""System skills shipped in the repo: backend/skills/<skill-id>/SKILL.md."""
+"""System skills shipped in the repo: backend/skills/<name>/SKILL.md."""
 
 from collections.abc import Sequence
 from pathlib import Path
@@ -16,6 +16,8 @@ class FileSystemSkillCatalog:
     ) -> list[SkillMetadata]:
         return [s.metadata() for s in self._skills if s.enabled][:limit]
 
-    async def get_by_ids(self, skill_ids: Sequence[str]) -> list[Skill]:
-        wanted = set(skill_ids)
-        return [s for s in self._skills if s.skill_id in wanted]
+    async def get_by_names(
+        self, user_id: str | None, names: Sequence[str]
+    ) -> list[Skill]:
+        wanted = set(names)
+        return [s for s in self._skills if s.enabled and s.name in wanted]

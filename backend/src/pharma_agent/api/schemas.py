@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 
 CONVERSATION_ID_PATTERN = r"^[0-9a-f]{32}$"
 MESSAGE_ID_PATTERN = CONVERSATION_ID_PATTERN
-SKILL_ID_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
 
 class ChatRequest(BaseModel):

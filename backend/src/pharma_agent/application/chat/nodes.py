@@ -133,15 +133,16 @@ async def resolve_skills_node(
     except (LlmError, BudgetExhausted):
         run.record_skills([], now=now, failed=True)
         return {"run": run}
-    ids = resolve_selected(catalog, selection.skill_ids)
-    skills = await deps.skills.get_by_ids(ids) if ids else []
-    selected = [s.to_selected() for s in skills]
+    names = resolve_selected(catalog, selection.skill_names)
+    found = await deps.skills.get_by_names(run.user_id, names) if names else []
+    by_name = {skill.name: skill for skill in found}
+    selected = [by_name[name].to_selected() for name in names if name in by_name]
     run.record_skills(selected, now=now)
     if selected:
         _emit(
             ProgressEvent(
                 type=EventType.SKILLS_SELECTED,
-                data={"skills": [{"id": s.skill_id, "name": s.name} for s in selected]},
+                data={"skills": [{"name": s.name, "title": s.title} for s in selected]},
             )
         )
     return {"run": run}

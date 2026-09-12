@@ -40,7 +40,7 @@ class RephraseResult(BaseModel):
 class SkillSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    skill_ids: list[str]
+    skill_names: list[str]
 
 
 class JudgeDecision(BaseModel):

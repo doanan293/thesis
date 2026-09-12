@@ -10,6 +10,8 @@
 
 **Spec:** `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md` (sections 8.3, 8.5 feedback row, 11). Builds on Plans 1 and 2.
 
+> **Superseded skill format:** the skill tasks below were written with a custom format (`skill_id`, slugs, `## Tìm kiếm` / `## Trả lời` sections). That format was wrong; the as-built notes at the end describe the Agent Skills specification version that replaced it.
+
 ## Global Constraints
 
 - Same tooling standard as Plan 2: shared `ruff.toml`, strict `pyrefly.toml` (`0 diagnostics` at `--min-severity warn`, `unused-ignore = true`), `filterwarnings = ["error"]`, no new suppressions. Every task ends with `uv run ruff check src tests && uv run ruff format --check src tests && uv run pyrefly check --min-severity warn && uv run pytest -q` green; tasks touching Postgres also run `uv run pytest -q -m integration`.
@@ -982,3 +984,4 @@ Routes (all authenticated): `GET /api/v1/skills` → `list[SkillView]` (system +
 - `application/tracing.py` defines `Tracing(TurnTracer, ScoreSink)` so the container holds one object for both roles.
 - Langfuse keeps one resource manager per public key for the whole process and `shutdown()` closes it; the tracing tests give every client a unique public key.
 - Checkpoint cleanup deletes orphaned blobs in a second statement of the same transaction, because CTEs share one snapshot. The service runs it once in the background at startup.
+- Correction after review: the first skill format was wrong. Skills now follow the Agent Skills specification and are parsed and validated with the reference library `skills-ref` (frontmatter `name` equals the folder name, optional spec fields accepted, free-form body). Skills are identified by `name`, unique per owner (`uq_skills_owner_name`, `NULLS NOT DISTINCT`), migration `0004_agent_skills_spec` recreates the table, uploads that reuse a name return 409, and `slugify` was removed. Names are further restricted to ASCII `a-z0-9-` (also a database CHECK) for portability across clients. Every system skill is checked with `agentskills validate` in tests and in pre-commit.

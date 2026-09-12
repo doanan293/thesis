@@ -1,23 +1,40 @@
+"""SKILL.md parsing and validation, delegated to the Agent Skills reference library.
+
+`skills-ref` implements https://agentskills.io/specification; using it keeps this parser
+consistent with `agentskills validate` instead of re-implementing the rules. Anything this
+parser accepts, the reference validator accepts too.
+"""
+
 import hashlib
 import re
+import unicodedata
+from pathlib import Path
 
-import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from skills_ref.errors import ParseError
+from skills_ref.parser import parse_frontmatter
+from skills_ref.validator import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_SKILL_NAME_LENGTH,
+    validate_metadata,
+)
 
 from pharma_agent.domain.shared.errors import DomainError
 
-_FRONTMATTER_KEYS = {"name", "description"}
-_HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
-_SECTION_ALIASES = {
-    "tìm kiếm": "search",
-    "search": "search",
-    "trả lời": "answer",
-    "answer": "answer",
-}
+MAX_NAME_CHARS: int = MAX_SKILL_NAME_LENGTH
+MAX_DESCRIPTION_CHARS: int = MAX_DESCRIPTION_LENGTH
+# The specification's portable subset: skills-ref also accepts non-ASCII lowercase letters,
+# but other Agent Skills clients only accept a-z, 0-9 and hyphens, so names stay in this set.
+PORTABLE_NAME_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
+_PORTABLE_NAME = re.compile(PORTABLE_NAME_PATTERN)
 
 
 class SkillParseError(DomainError):
     code = "SKILL_PARSE_ERROR"
+
+    def __init__(self, errors: list[str]) -> None:
+        super().__init__("; ".join(errors))
+        self.errors = list(errors)
 
 
 class ParsedSkill(BaseModel):
@@ -25,65 +42,52 @@ class ParsedSkill(BaseModel):
 
     name: str
     description: str
-    search_guidance: str
-    answer_guidance: str
+    instructions: str
+    license: str | None = None
+    compatibility: str | None = None
+    allowed_tools: str | None = None
+    metadata: dict[str, str] = Field(default_factory=dict)
     version: str
 
 
-def parse_skill_markdown(text: str) -> ParsedSkill:
-    """Parse a SKILL.md: YAML frontmatter (name, description) + '## Tìm kiếm' / '## Trả lời' sections."""
-    lines = text.strip().splitlines()
-    if not lines or lines[0].strip() != "---":
-        raise SkillParseError("SKILL.md must start with a '---' frontmatter block")
+def _optional_text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def parse_skill_markdown(
+    content: str, *, directory_name: str | None = None
+) -> ParsedSkill:
+    """Parse and validate a SKILL.md: `agentskills validate` rules plus an ASCII-only name.
+
+    `directory_name` is the folder holding the file; when given, `name` must match it.
+    The markdown body is free-form and returned as `instructions`.
+    """
     try:
-        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
-    except StopIteration as exc:
-        raise SkillParseError("frontmatter block is not closed with '---'") from exc
-
-    try:
-        frontmatter = yaml.safe_load("\n".join(lines[1:end])) or {}
-    except yaml.YAMLError as exc:
-        raise SkillParseError(f"invalid YAML frontmatter: {exc}") from exc
-    if not isinstance(frontmatter, dict):
-        raise SkillParseError("frontmatter must be a mapping")
-    extra = set(frontmatter) - _FRONTMATTER_KEYS
-    missing = _FRONTMATTER_KEYS - set(frontmatter)
-    if extra or missing:
-        raise SkillParseError(
-            f"frontmatter keys must be exactly name and description (extra={sorted(extra)}, missing={sorted(missing)})"
+        frontmatter, body = parse_frontmatter(content)
+    except ParseError as exc:
+        raise SkillParseError([str(exc)]) from exc
+    skill_dir = Path(directory_name) if directory_name else None
+    errors = validate_metadata(frontmatter, skill_dir)
+    metadata = frontmatter.get("metadata", {})
+    if not isinstance(metadata, dict):
+        errors.append(
+            "Field 'metadata' must be a mapping from string keys to string values"
         )
-    name = str(frontmatter["name"] or "").strip()
-    description = str(frontmatter["description"] or "").strip()
-    if not name or not description:
-        raise SkillParseError("name and description must be non-empty")
-
-    body = "\n".join(lines[end + 1 :])
-    sections = _split_sections(body)
-    search_guidance = sections.get("search", "")
-    answer_guidance = sections.get("answer", "")
-    if not search_guidance and not answer_guidance:
-        raise SkillParseError(
-            "SKILL.md needs at least one of '## Tìm kiếm' or '## Trả lời'"
+    name = unicodedata.normalize("NFKC", str(frontmatter.get("name", "")).strip())
+    if not errors and not _PORTABLE_NAME.fullmatch(name):
+        errors.append(
+            f"Skill name '{name}' may only contain lowercase letters a-z, digits "
+            "and single hyphens"
         )
-
-    version = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    if errors:
+        raise SkillParseError(errors)
     return ParsedSkill(
         name=name,
-        description=description,
-        search_guidance=search_guidance,
-        answer_guidance=answer_guidance,
-        version=version,
+        description=str(frontmatter["description"]).strip(),
+        instructions=body,
+        license=_optional_text(frontmatter.get("license")),
+        compatibility=_optional_text(frontmatter.get("compatibility")),
+        allowed_tools=_optional_text(frontmatter.get("allowed-tools")),
+        metadata={str(key): str(value) for key, value in metadata.items()},
+        version=hashlib.sha256(content.encode("utf-8")).hexdigest()[:12],
     )
-
-
-def _split_sections(body: str) -> dict[str, str]:
-    matches = list(_HEADING.finditer(body))
-    sections: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        key = _SECTION_ALIASES.get(match.group(1).strip().rstrip(":").lower())
-        if key is None:
-            continue
-        start = match.end()
-        stop = matches[index + 1].start() if index + 1 < len(matches) else len(body)
-        sections[key] = body[start:stop].strip()
-    return sections

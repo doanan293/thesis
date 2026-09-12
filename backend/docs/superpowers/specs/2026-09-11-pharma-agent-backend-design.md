@@ -188,21 +188,28 @@ Method và invariant:
 
 ### 5.5 Skill
 
-- `Skill(skill_id, owner_user_id | None, name, description, search_guidance,
-  answer_guidance, version, enabled, created_at, updated_at)`. `skill_id` kebab-case,
-  `version` là sha256 rút gọn của nội dung SKILL.md.
-- Parser SKILL.md: frontmatter YAML giữa `---` với `name`, `description`
-  (`extra=forbid`); body markdown tách theo heading `## Tìm kiếm` và `## Trả lời`,
-  thiếu mục nào thì mục đó rỗng, thiếu cả hai thì lỗi `SkillParseError`.
-- `SkillResolver.resolve(catalog_metadata, selected_ids, max_selected=3)`: hàm thuần
-  loại id không có trong catalog, giữ thứ tự, cắt ở 3.
-- Port `SkillRepository`: `upsert_system(skills)`, `create_user_skill`,
-  `list_catalog(user_id, limit)` (hệ thống bật + của user bật), `get_by_ids`,
-  `set_enabled`, `delete_user_skill`.
-- Skill hệ thống ban đầu (5): tra cứu chuyên luận thuốc (mục chỉ định, liều, chống
-  chỉ định, tác dụng phụ), tương tác thuốc, liều theo đối tượng (trẻ em, thai kỳ,
-  suy gan/thận, người cao tuổi), biệt dược → hoạt chất (dữ liệu An Khang), diễn giải
-  cho người dân.
+Skill tuân theo **Agent Skills specification** (https://agentskills.io/specification).
+Việc parse và validate dùng thư viện tham chiếu `skills-ref` (CLI `agentskills validate`).
+Backend chặt hơn một điểm: `name` chỉ gồm a-z, 0-9 và gạch nối (không nhận chữ Unicode),
+để skill dùng được ở mọi client Agent Skills. Mọi thứ backend nhận, `agentskills validate`
+cũng nhận.
+
+- Frontmatter: `name` bắt buộc (1-64 ký tự, chữ thường, số và gạch nối, không bắt đầu,
+  kết thúc hay lặp gạch nối, **trùng tên thư mục**), `description` bắt buộc (1-1024 ký
+  tự, nói skill làm gì và khi nào dùng). Các trường tùy chọn `license`, `compatibility`
+  (tối đa 500 ký tự), `metadata` (map chuỗi-chuỗi), `allowed-tools` được chấp nhận.
+- Body markdown là hướng dẫn tự do, không có mục bắt buộc. Tiêu đề hiển thị lấy từ
+  heading `#` đầu tiên, không có thì dùng `name`.
+- `Skill(name, owner_user_id | None, description, instructions, content, version,
+  enabled)`; `content` là nguyên văn SKILL.md, `version` là sha256 rút gọn của nó.
+- `name` là định danh: duy nhất trong phạm vi một owner (skill hệ thống có owner None).
+  Người dùng không được đặt trùng tên skill hệ thống.
+- `resolve_selected(catalog_metadata, selected_names, max_selected=3)`: hàm thuần loại
+  name không có trong catalog, giữ thứ tự, cắt ở 3.
+- Port `SkillCatalog`: `list_catalog(user_id, limit)` (skill hệ thống bật, rồi skill bật
+  của user, trùng tên thì chỉ giữ skill hệ thống), `get_by_names(user_id, names)`.
+  `SkillRepository` thêm `replace_system`, `create`, `list_system`, `list_for_user`,
+  `set_enabled`, `delete_owned`.
 
 ### 5.6 Guardrail
 
@@ -223,7 +230,7 @@ Method và invariant:
 - Schema structured output (pydantic, `extra=forbid`, enum ngắn):
   - `LlmGuardVerdict(is_attack: bool, in_scope: bool, reason: str)`
   - `RephraseResult(standalone_query: str, audience, language, intent)`
-  - `SkillSelection(skill_ids: list[str])`
+  - `SkillSelection(skill_names: list[str])`
   - `JudgeDecision(decision: answer | search_more, gaps: list[str], reason: str)`
   - `RefineResult(queries: list[str])` (1-3 phần tử, validator cắt về 3)
   - `ConversationSummary(summary: str)`
@@ -264,7 +271,7 @@ Routing là hàm thuần đọc `run.allowed_actions()` và `run.status`, không
 | rephrase | rephrase (nano) | input: summary + tối đa 4 lượt gần nhất (≤ 4.000 ký tự) + câu hỏi. Output `RephraseResult` | lỗi hoặc không đủ budget → `standalone_query = original`, audience `unknown`, intent `pharma_question` |
 | resolve_skills | skill_selector (nano) | catalog metadata (id + description) → `SkillSelection` → `SkillResolver` → nạp body | lỗi, catalog rỗng, catalog > 30, không đủ budget → không skill |
 | search | không | lần đầu: `[standalone_query]`; các lần sau: `pending_queries` từ refine. Gọi `RetrievalService.search`, `run.record_search`, ghi audit | lỗi → ghi action lỗi, sang judge với evidence hiện có |
-| judge | judge (mini) | input: câu hỏi, audience, `search_guidance` của skill, `EvidenceSet.summary_view()` (E1..En, title/section/trang, snippet ≤ 300 ký tự, term hints). Output `JudgeDecision` | retry 1; lỗi → `record_judge(answer)` (partial) |
+| judge | judge (mini) | input: câu hỏi, audience, body hướng dẫn của skill đã chọn, `EvidenceSet.summary_view()` (E1..En, title/section/trang, snippet ≤ 300 ký tự, term hints). Output `JudgeDecision` | retry 1; lỗi → `record_judge(answer)` (partial) |
 | refine | refine (mini) | input: câu hỏi, `gaps`, query đã dùng, term hints (`colloquial_mapping.aliases/product_names`, `term_annotations.vi/en`). Output `RefineResult` | lỗi hoặc toàn query trùng → `ANSWER` partial |
 | answer | answer (mini, stream) | prompt theo mode (xem 6.3); citation `[n]`; sanitizer; `run.submit_plan` trước khi stream | lỗi giữa stream → fallback |
 | fallback | không | text deterministic theo `error_code`/`timeout`, status `error` hoặc `timeout` | không thể lỗi |
@@ -279,7 +286,7 @@ tắc theo `audience` (người dân: ngắn, dễ hiểu, giải thích thuật
 đầy đủ, đúng thuật ngữ, ghi liều/đơn vị chính xác), quy tắc citation (chỉ trích dẫn
 `[n]` có trong danh sách, mọi khẳng định về liều/chống chỉ định/tương tác phải có
 `[n]`), quy tắc không có evidence (nói rõ không tìm thấy trong Dược thư, gợi ý
-cách hỏi lại, không đoán), `answer_guidance` của skill. **Không có** disclaimer y tế.
+cách hỏi lại, không đoán), body hướng dẫn của skill đã chọn. **Không có** disclaimer y tế.
 
 Mode:
 
@@ -380,11 +387,13 @@ Checkpoint cleanup: task lúc khởi động xóa checkpoint có `thread_id` c�
 
 ### 8.3 Skills
 
-Khởi động: đọc `backend/skills/*/SKILL.md`, parse, `upsert_system` theo `skill_id`
-= tên thư mục; version đổi thì cập nhật. Upload: multipart một file tên `SKILL.md`
-≤ 64 KB, parse cùng parser, `skill_id` = slug của `name` + hậu tố ngắn nếu trùng,
-owner = user. Catalog khi resolve: `list_catalog(user_id, limit=31)`; > 30 thì bỏ
-qua skill với `SKILL_RESOLUTION_FAILED` (catalog quá lớn).
+Khởi động: đọc `backend/skills/<name>/SKILL.md`, validate theo spec (tên thư mục phải trùng
+`name`), rồi `replace_system` để Postgres chứa đúng bộ skill hệ thống trong repo. Upload:
+multipart một file `SKILL.md` tối đa 64 KB (lớn hơn trả 413), validate cùng parser (sai
+trả 422 kèm thông điệp của validator), trùng tên skill của chính user hoặc skill hệ thống
+trả 409. Catalog khi resolve: `list_catalog(user_id, limit=31)`; hơn 30 thì bỏ qua skill
+với `SKILL_RESOLUTION_FAILED`. Nội dung body của skill được chọn đưa vào prompt judge,
+refine và answer.
 
 ### 8.4 Auth
 

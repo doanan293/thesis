@@ -119,20 +119,32 @@ class FakeSkillCatalog:
     ) -> list[SkillMetadata]:
         return [s.metadata() for s in self.skills if s.enabled][:limit]
 
-    async def get_by_ids(self, skill_ids: Sequence[str]) -> list[Skill]:
-        wanted = list(skill_ids)
-        return [s for s in self.skills if s.skill_id in wanted]
+    async def get_by_names(
+        self, user_id: str | None, names: Sequence[str]
+    ) -> list[Skill]:
+        wanted = set(names)
+        return [s for s in self.skills if s.enabled and s.name in wanted]
+
+
+MONOGRAPH_SKILL_MD = """---
+name: drug-monograph
+description: Tra cứu chuyên luận thuốc. Dùng khi hỏi liều, chỉ định, chống chỉ định của một thuốc.
+---
+
+# Tra cứu chuyên luận thuốc
+
+## Khi tìm kiếm
+
+- Tìm mục Liều dùng của chuyên luận.
+
+## Khi trả lời
+
+- Ghi liều kèm đơn vị và khoảng cách dùng.
+"""
 
 
 def monograph_skill() -> Skill:
-    return Skill(
-        skill_id="drug-monograph",
-        name="Tra cứu chuyên luận thuốc",
-        description="Dùng khi hỏi liều, chỉ định, chống chỉ định của một thuốc.",
-        search_guidance="Tìm mục Liều dùng của chuyên luận.",
-        answer_guidance="Ghi liều kèm đơn vị và khoảng cách dùng.",
-        version="v1",
-    )
+    return Skill.from_markdown(MONOGRAPH_SKILL_MD, directory_name="drug-monograph")
 
 
 def build_deps(

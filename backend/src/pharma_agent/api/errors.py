@@ -9,13 +9,14 @@ from pharma_agent.application.errors import (
     PayloadTooLarge,
 )
 from pharma_agent.application.feedback.service import MessageNotFound
-from pharma_agent.application.skill.service import SkillNotFound
+from pharma_agent.application.skill.service import SkillNameTaken, SkillNotFound
 
 # Subclasses must come before their base class: the first isinstance match wins.
 STATUS_BY_ERROR: dict[type[ApplicationError], int] = {
     ConversationNotFound: 404,
     MessageNotFound: 404,
     SkillNotFound: 404,
+    SkillNameTaken: 409,
     PayloadTooLarge: 413,
     InvalidInput: 422,
     AgentUnavailable: 503,
