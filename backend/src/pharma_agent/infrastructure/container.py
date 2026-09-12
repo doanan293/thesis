@@ -103,7 +103,7 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
             corpus_version=settings.retrieval.collection_alias,
             embedding_model=settings.retrieval.embedding.model,
             retriever_config=settings.retrieval.model_dump(
-                mode="json", exclude={"embedding": {"api_key"}}
+                mode="json", exclude={"embedding": {"api_key"}, "rerank": {"api_key"}}
             ),
         ),
     )

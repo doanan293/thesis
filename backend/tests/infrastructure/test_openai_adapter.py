@@ -88,6 +88,7 @@ async def test_structured_uses_parse_with_role_model_and_schema() -> None:
     kwargs = client.completions.parse_kwargs
     assert kwargs["model"] == "gpt-5-nano"
     assert kwargs["response_format"] is Verdict
+    assert kwargs["reasoning_effort"] == "minimal"
     assert kwargs["messages"] == [
         {"role": "system", "content": "s"},
         {"role": "user", "content": "u"},
@@ -103,6 +104,8 @@ async def test_stream_yields_text_then_usage_and_uses_role_endpoint() -> None:
     assert client.completions.create_kwargs["model"] == "qwen"
     assert client.completions.create_kwargs["stream"] is True
     assert client.completions.create_kwargs["stream_options"] == {"include_usage": True}
+    # A custom model gets no reasoning_effort unless configured, so any server accepts the call.
+    assert "reasoning_effort" not in client.completions.create_kwargs
 
 
 async def test_clients_are_shared_per_endpoint() -> None:
@@ -209,3 +212,7 @@ async def test_real_sdk_client_against_mocked_http() -> None:
     assert "".join(d.text for d in deltas) == "Xin chào"
     assert deltas[-1].usage == LlmUsage(prompt_tokens=3, completion_tokens=2)
     assert calls[1]["model"] == "gpt-5-mini"
+    assert (calls[0]["reasoning_effort"], calls[1]["reasoning_effort"]) == (
+        "minimal",
+        "low",
+    )

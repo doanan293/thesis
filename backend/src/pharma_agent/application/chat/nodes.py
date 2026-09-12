@@ -157,7 +157,11 @@ async def search_node(
         Query(text=run.standalone_query, origin=QueryOrigin.INITIAL)
     ]
     _emit(ProgressEvent.phase(Phase.SEARCHING, round=run.usage.search_rounds + 1))
-    result = await deps.retrieval.search(queries, rerank_query=run.standalone_query)
+    result = await deps.retrieval.search(
+        queries,
+        rerank_query=run.standalone_query,
+        known_scores=run.evidence.rerank_scores(),
+    )
     run.record_search(queries, result, now=deps.clock.now())
     if result.items:
         _emit(ProgressEvent.phase(Phase.READING))

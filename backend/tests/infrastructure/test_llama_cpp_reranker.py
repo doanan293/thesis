@@ -137,3 +137,23 @@ def test_build_reranker_switches_on_protocol() -> None:
         build_reranker(RerankSettings(protocol="completion_logprobs")),
         LlamaCppCompletionReranker,
     )
+
+
+@respx.mock(base_url=BASE)
+async def test_build_reranker_sends_the_api_key_only_when_configured(
+    respx_mock: respx.MockRouter,
+) -> None:
+    route = respx_mock.post("/v1/rerank").mock(
+        return_value=httpx.Response(
+            200, json={"results": [{"index": 0, "relevance_score": 0.5}]}
+        )
+    )
+    for api_key in ("rerank-secret", None):
+        reranker = build_reranker(
+            RerankSettings(protocol="native_rerank", base_url=BASE, api_key=api_key)
+        )
+        assert isinstance(reranker, NativeReranker)
+        await reranker.rerank("Q", [make_hit("a")], top_n=1)
+        await reranker.aclose()
+    assert route.calls[0].request.headers["Authorization"] == "Bearer rerank-secret"
+    assert "Authorization" not in route.calls[1].request.headers

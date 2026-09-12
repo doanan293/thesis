@@ -24,7 +24,7 @@ LiteLLM.
 | Giọng trả lời | Trả lời thẳng, chính xác nhất có thể, **không** disclaimer "không thay thế bác sĩ" |
 | Orchestration | LangGraph 1.2 (ưu tiên thư viện có cộng đồng, không tự viết state machine) |
 | LLM | OpenAI SDK gọi thẳng, **Chat Completions API** (không Responses) để đổi được sang server self-host; mỗi role một endpoint |
-| Model mặc định | `gpt-5-nano` cho guard/rephrase/chọn skill/tóm tắt; `gpt-5-mini` cho judge/refine/answer. Ràng buộc: chỉ dùng model rẻ, mọi bước LLM phải chạy ổn trên model yếu |
+| Model mặc định | `gpt-5-nano` cho guard/rephrase/chọn skill/tóm tắt; `gpt-5-mini` cho judge/refine/answer. `reasoning_effort` mặc định `minimal` cho nhóm nano và `low` cho judge/refine/answer, chỉ gửi khi role dùng model mặc định hoặc được cấu hình rõ. Ràng buộc: chỉ dùng model rẻ, mọi bước LLM phải chạy ổn trên model yếu |
 | Embedding | `qwen3-embedding:4b-fp16` qua llama.cpp `/v1/embeddings`, dimension 2560, phải khớp collection |
 | Retrieval | Qdrant hybrid dense + BM25 sparse, RRF, rerank `qwen3-reranker:4b-fp16` (protocol completion logprobs), cấu hình được |
 | Skills | Skill hệ thống trong repo + người dùng upload SKILL.md |
@@ -323,6 +323,10 @@ dưới 0,01 USD mỗi lượt với giá hiện tại của `gpt-5-nano` và `g
 | `retrieval.rerank.protocol` | `completion_logprobs` (`native_rerank`, `none` cũng hỗ trợ) |
 | `retrieval.rerank.model` | `qwen3-reranker:4b-fp16` |
 | `retrieval.rerank.top_n` | 8 |
+| `retrieval.rerank.max_candidates` | 40 ứng viên được chấm mỗi vòng search |
+| `retrieval.rerank.max_concurrent` | 2, đặt bằng số slot `--parallel` của llama-server |
+| `retrieval.rerank.api_key` | trống; khi đặt thì gửi header `Authorization: Bearer` |
+| `retrieval.embedding.timeout_seconds` / `max_retries` | 60 / 2 |
 | `retrieval.hydrate.window` | 1 chunk mỗi bên cho `chunk_window` |
 | `retrieval.max_concurrent_searches` | 3 |
 
@@ -337,7 +341,10 @@ size khác `dimension` cấu hình. Tên vector: dense `dense_vector` theo
 2. Mỗi query: `query_points` với `Prefetch(dense, limit=prefetch_k)` +
    `Prefetch(Document bm25, limit=prefetch_k)`, `RrfQuery(k=rrf_k)`, `limit=candidate_k`,
    `with_payload=True`. Semaphore `max_concurrent_searches`.
-3. Dedupe theo `chunk_id`.
+3. Gộp ứng viên xoay vòng theo thứ hạng của từng query và dedupe theo `chunk_id`; dừng
+   thêm chunk mới khi đủ `rerank.max_candidates`, nên một query đơn (30 ứng viên) vẫn
+   được chấm đủ như lúc đánh giá. Chunk đã có điểm rerank ở vòng trước của cùng lượt
+   (cùng `standalone_query`) dùng lại điểm đó, không gửi lại cho reranker.
 4. Rerank theo `standalone_query` trên `embedding_text`, protocol:
    - `completion_logprobs`: prompt `qwen3_yes_no_v1` (system "Judge whether the
      Document meets the requirements...", `<Instruct>` = "Given a Vietnamese medical
@@ -483,9 +490,11 @@ Bạn thử gửi lại sau ít phút." hoặc bản timeout tương ứng. Khô
 ## 11. Observability
 
 Langfuse 4.x: trace mỗi lượt (`session_id = conversation_id`, `user_id`,
-`metadata.run_id`), span cho mỗi node và mỗi search qua `@observe`, generation tự
-động từ wrapper `langfuse.openai` (LLM và embed), `CallbackHandler` truyền vào
-config LangGraph để thấy graph. Feedback → `score` trên trace của message. Log
+`metadata.run_id`), span cho mỗi node qua `CallbackHandler` truyền vào config
+LangGraph, generation cho LLM và observation `embedding` tự động từ integration
+`langfuse.openai` (cài khi dựng ứng dụng nên có từ lời gọi đầu tiên), observation
+`rerank` kiểu `retriever` (input: query, số ứng viên, top_n; output: chunk_id và điểm;
+lỗi ghi level `ERROR` rồi raise lại). Feedback → `score` trên trace của message. Log
 JSON (structlog hoặc logging chuẩn với formatter JSON) có `run_id`,
 `conversation_id`, `user_id`. Langfuse Cloud mặc định; self-host chỉ đổi `host`.
 

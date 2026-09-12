@@ -10,7 +10,7 @@ from pharma_agent.domain.guardrail.service import GuardrailService
 from pharma_agent.domain.llm.models import ChatMessage, LlmRole, LlmUsage, StreamDelta
 from pharma_agent.domain.llm.port import LlmError
 from pharma_agent.domain.retrieval.models import Chunk, Hit, HydrateStrategy, Query
-from pharma_agent.domain.retrieval.ports import RetrievalError
+from pharma_agent.domain.retrieval.ports import Reranker, RetrievalError
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
 from pharma_agent.domain.shared.clock import FixedClock
 from pharma_agent.domain.skill.models import Skill, SkillMetadata
@@ -88,7 +88,11 @@ class FakeRetriever:
 
 
 class FakeReranker:
+    def __init__(self) -> None:
+        self.received: list[list[str]] = []
+
     async def rerank(self, query: str, hits: Sequence[Hit], top_n: int) -> list[Hit]:
+        self.received.append([h.chunk_id for h in hits])
         ordered = sorted(hits, key=lambda h: h.fusion_score, reverse=True)[:top_n]
         return [
             h.model_copy(update={"rerank_score": round(1.0 - i * 0.1, 2)})
@@ -148,14 +152,17 @@ def monograph_skill() -> Skill:
 
 
 def build_deps(
-    llm: FakeLlm, retriever: FakeRetriever, catalog: FakeSkillCatalog | None = None
+    llm: FakeLlm,
+    retriever: FakeRetriever,
+    catalog: FakeSkillCatalog | None = None,
+    reranker: Reranker | None = None,
 ) -> TurnDeps:
     return TurnDeps(
         llm=llm,
         guardrail=GuardrailService(llm),
         retrieval=RetrievalService(
             retriever,
-            FakeReranker(),
+            reranker if reranker is not None else FakeReranker(),
             FakeHydrator(),
             RetrievalConfig(candidate_k=5, rerank_top_n=3),
         ),

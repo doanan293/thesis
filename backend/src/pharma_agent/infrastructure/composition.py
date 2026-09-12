@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 
+from langfuse import get_client
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient
@@ -21,6 +22,10 @@ from pharma_agent.infrastructure.llm.openai_adapter import (
     default_client_factory,
     langfuse_client_factory,
 )
+from pharma_agent.infrastructure.observability.langfuse_retrieval import (
+    LangfuseTracedReranker,
+)
+from pharma_agent.infrastructure.openai_client import build_async_openai
 from pharma_agent.infrastructure.retrieval.llama_cpp_reranker import build_reranker
 from pharma_agent.infrastructure.retrieval.qdrant_adapter import (
     OpenAiEmbedder,
@@ -67,11 +72,12 @@ def build_application(
     llm = OpenAiLlmAdapter(settings.llm, client_factory=client_factory)
 
     retrieval_settings = settings.retrieval
-    embed_client = AsyncOpenAI(
+    embed_client = build_async_openai(
         api_key=retrieval_settings.embedding.api_key,
         base_url=retrieval_settings.embedding.base_url,
-        timeout=60.0,
-        max_retries=2,
+        timeout=retrieval_settings.embedding.timeout_seconds,
+        max_retries=retrieval_settings.embedding.max_retries,
+        traced=settings.langfuse.enabled,
     )
     embedder = OpenAiEmbedder(
         embed_client,
@@ -99,6 +105,13 @@ def build_application(
         window=retrieval_settings.hydrate_window,
     )
     reranker = build_reranker(retrieval_settings.rerank)
+    if settings.langfuse.enabled:
+        reranker = LangfuseTracedReranker(
+            reranker,
+            get_client(public_key=settings.langfuse.public_key),
+            protocol=retrieval_settings.rerank.protocol,
+            model=retrieval_settings.rerank.model,
+        )
     retrieval = RetrievalService(
         retriever,
         reranker,
@@ -106,6 +119,7 @@ def build_application(
         RetrievalConfig(
             candidate_k=retrieval_settings.candidate_k,
             rerank_top_n=retrieval_settings.rerank.top_n,
+            rerank_candidates=retrieval_settings.rerank.max_candidates,
         ),
     )
 

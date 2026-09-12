@@ -286,6 +286,8 @@ class AgentRun(BaseModel):
                 "hits": len(result.items),
                 "active_evidence": len(active),
                 "rerank_failed": result.rerank_failed,
+                "rerank_scored": result.rerank_scored,
+                "rerank_reused": result.rerank_reused,
             },
         )
 

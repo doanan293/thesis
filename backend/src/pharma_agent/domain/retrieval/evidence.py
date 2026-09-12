@@ -45,6 +45,14 @@ class EvidenceSet(BaseModel):
             reverse=True,
         )
 
+    def rerank_scores(self) -> dict[str, float]:
+        """Rerank scores already computed in this run, superseded evidence included."""
+        return {
+            e.hit.chunk_id: e.hit.rerank_score
+            for e in self.items
+            if e.hit.rerank_score is not None
+        }
+
     def supersede_all(self) -> None:
         for evidence in self.items:
             evidence.superseded = True

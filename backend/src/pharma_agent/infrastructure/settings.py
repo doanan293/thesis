@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
+from openai.types import ReasoningEffort
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,11 +18,25 @@ DEFAULT_ROLE_MODELS: dict[LlmRole, str] = {
     LlmRole.ANSWER: "gpt-5-mini",
 }
 
+# Applied only while a role runs its built-in model: these are reasoning models whose default
+# effort ("medium") bills hidden reasoning tokens. Custom models get no reasoning_effort unless
+# it is set explicitly, because many OpenAI-compatible servers reject the parameter.
+DEFAULT_ROLE_REASONING: dict[LlmRole, ReasoningEffort] = {
+    LlmRole.GUARDRAIL: "minimal",
+    LlmRole.REPHRASE: "minimal",
+    LlmRole.SKILL_SELECTOR: "minimal",
+    LlmRole.SUMMARIZER: "minimal",
+    LlmRole.JUDGE: "low",
+    LlmRole.REFINE: "low",
+    LlmRole.ANSWER: "low",
+}
+
 
 class LlmEndpoint(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+    reasoning_effort: ReasoningEffort = None
 
 
 class ResolvedEndpoint(BaseModel):
@@ -30,6 +45,7 @@ class ResolvedEndpoint(BaseModel):
     base_url: str | None
     api_key: str
     model: str
+    reasoning_effort: ReasoningEffort = None
 
 
 class LlmSettings(BaseModel):
@@ -51,10 +67,16 @@ class LlmSettings(BaseModel):
             raise ValueError(
                 f"no api_key for LLM role {role.value}: set PHARMA_LLM__DEFAULT__API_KEY"
             )
+        model = override.model or self.default.model
+        effort = override.reasoning_effort or self.default.reasoning_effort
+        if model is None:
+            model = DEFAULT_ROLE_MODELS[role]
+            effort = effort or DEFAULT_ROLE_REASONING[role]
         return ResolvedEndpoint(
             base_url=override.base_url or self.default.base_url,
             api_key=api_key,
-            model=override.model or self.default.model or DEFAULT_ROLE_MODELS[role],
+            model=model,
+            reasoning_effort=effort,
         )
 
 
@@ -63,6 +85,8 @@ class EmbeddingSettings(BaseModel):
     api_key: str = "llama"
     model: str = "qwen3-embedding:4b-fp16"
     dimension: int = 2560
+    timeout_seconds: float = 60.0
+    max_retries: int = Field(default=2, ge=0)
 
 
 class RerankSettings(BaseModel):
@@ -70,10 +94,15 @@ class RerankSettings(BaseModel):
         "completion_logprobs"
     )
     base_url: str = "http://localhost:11435"
+    api_key: str | None = None
     model: str = "qwen3-reranker:4b-fp16"
     top_n: int = 8
+    # Candidates scored per search round, taken round-robin across queries by fused rank.
+    # A single query (candidate_k=30) is scored in full, like the evaluation.
+    max_candidates: int = Field(default=40, ge=1)
     timeout_seconds: float = 120.0
-    max_concurrent: int = 2
+    # Match the server's parallel slots (llama-server --parallel / LLAMA_RERANKER_PARALLEL).
+    max_concurrent: int = Field(default=2, ge=1)
 
 
 class RetrievalSettings(BaseModel):

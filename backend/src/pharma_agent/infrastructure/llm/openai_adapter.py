@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from pharma_agent.domain.llm.models import ChatMessage, LlmRole, LlmUsage, StreamDelta
 from pharma_agent.domain.llm.port import LlmError
+from pharma_agent.infrastructure.openai_client import build_async_openai
 from pharma_agent.infrastructure.settings import LlmSettings, ResolvedEndpoint
 
 T = TypeVar("T", bound=BaseModel)
@@ -17,27 +18,25 @@ ClientFactory = Callable[[ResolvedEndpoint, float, int], Any]
 def default_client_factory(
     endpoint: ResolvedEndpoint, timeout: float, max_retries: int
 ) -> Any:
-    from openai import AsyncOpenAI
-
-    return AsyncOpenAI(
+    return build_async_openai(
         api_key=endpoint.api_key,
         base_url=endpoint.base_url,
         timeout=timeout,
         max_retries=max_retries,
+        traced=False,
     )
 
 
 def langfuse_client_factory(
     endpoint: ResolvedEndpoint, timeout: float, max_retries: int
 ) -> Any:
-    """Drop-in wrapper: every call becomes a Langfuse generation with tokens and cost."""
-    from langfuse.openai import AsyncOpenAI
-
-    return AsyncOpenAI(
+    """Every call becomes a Langfuse generation with tokens and cost."""
+    return build_async_openai(
         api_key=endpoint.api_key,
         base_url=endpoint.base_url,
         timeout=timeout,
         max_retries=max_retries,
+        traced=True,
     )
 
 
@@ -74,6 +73,7 @@ class OpenAiLlmAdapter:
                 model=endpoint.model,
                 messages=_to_openai(messages),
                 response_format=schema,
+                **_options(endpoint),
             )
         except OpenAIError as exc:
             raise LlmError(f"{role.value}: {exc}") from exc
@@ -95,6 +95,7 @@ class OpenAiLlmAdapter:
                 messages=_to_openai(messages),
                 stream=True,
                 stream_options={"include_usage": True},
+                **_options(endpoint),
             )
             async for chunk in stream:
                 if chunk.choices:
@@ -105,6 +106,13 @@ class OpenAiLlmAdapter:
                     yield StreamDelta(usage=_usage(chunk.usage))
         except OpenAIError as exc:
             raise LlmError(f"{role.value}: {exc}") from exc
+
+
+def _options(endpoint: ResolvedEndpoint) -> dict[str, Any]:
+    """Optional request fields, sent only when set so any OpenAI-compatible server accepts the call."""
+    if endpoint.reasoning_effort is None:
+        return {}
+    return {"reasoning_effort": endpoint.reasoning_effort}
 
 
 def _to_openai(messages: Sequence[ChatMessage]) -> list[dict[str, str]]:

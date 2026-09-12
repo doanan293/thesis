@@ -63,7 +63,7 @@ Luồng SSE lần lượt gồm `conversation`, `phase`, `skills_selected`, `evi
 
 Đặt `PHARMA_LANGFUSE__PUBLIC_KEY`, `PHARMA_LANGFUSE__SECRET_KEY` và `PHARMA_LANGFUSE__HOST`
 để bật Langfuse. Mỗi lượt hỏi đáp là một trace tên `chat_turn`, gắn `session` là hội thoại
-và `user` là người dùng. Các bước của graph và mọi lời gọi LLM nằm trong trace đó. Feedback
+và `user` là người dùng. Các bước của graph, mọi lời gọi LLM và embedding, cùng bước rerank đều nằm trong trace đó. Feedback
 của người dùng được ghi thành score `user_feedback` (1 là up, 0 là down) trên cùng trace.
 
 Skill hệ thống trong `skills/` được đồng bộ vào Postgres mỗi lần service khởi động.

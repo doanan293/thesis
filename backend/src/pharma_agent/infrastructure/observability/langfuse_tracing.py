@@ -33,17 +33,23 @@ class _Handle:
 
 
 class LangfuseTracing:
-    def __init__(self, client: Langfuse) -> None:
+    def __init__(self, client: Langfuse, *, public_key: str) -> None:
+        # Langfuse integrations resolve their client by public key; without it they give up
+        # (and silently skip tracing) as soon as a process holds more than one client.
         self._client = client
+        self._public_key = public_key
 
     @classmethod
     def from_settings(cls, settings: LangfuseSettings) -> "LangfuseTracing":
+        if not settings.public_key:
+            raise ValueError("set PHARMA_LANGFUSE__PUBLIC_KEY to enable Langfuse")
         return cls(
             Langfuse(
                 public_key=settings.public_key,
                 secret_key=settings.secret_key,
                 base_url=settings.host,
-            )
+            ),
+            public_key=settings.public_key,
         )
 
     def trace_id_for(self, run_id: str) -> str:
@@ -68,7 +74,7 @@ class LangfuseTracing:
                     input={"query": run.original_query},
                 )
             )
-            yield _Handle(span, CallbackHandler())
+            yield _Handle(span, CallbackHandler(public_key=self._public_key))
 
     def trace_turn(self, run: AgentRun) -> AbstractContextManager[TraceHandle]:
         return self._trace(run)

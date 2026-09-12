@@ -171,3 +171,15 @@ def test_summary_view_lists_refs_snippets_and_hints() -> None:
     assert "E1 | Paracetamol > Liều dùng | trang 10-11" in view
     assert "paracetam…" in view  # 9 chars + ellipsis = snippet_chars
     assert "gợi ý thuật ngữ: Panadol" in view
+
+
+def test_rerank_scores_include_superseded_evidence() -> None:
+    evidence = EvidenceSet()
+    evidence.merge(
+        [
+            RetrievedItem(hit=make_hit("c1", rerank=0.8)),
+            RetrievedItem(hit=make_hit("c2")),
+        ]
+    )
+    evidence.supersede_all()
+    assert evidence.rerank_scores() == {"c1": 0.8}

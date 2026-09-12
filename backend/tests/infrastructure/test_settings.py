@@ -93,3 +93,41 @@ def test_short_jwt_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PHARMA_AUTH__JWT_SECRET", "short")
     with pytest.raises(ValueError, match="at least 32"):
         Settings(_env_file=None)
+
+
+def test_reasoning_effort_defaults_apply_only_to_built_in_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_LLM__DEFAULT__API_KEY", "sk-cloud")
+    monkeypatch.setenv("PHARMA_LLM__ROLES__ANSWER__MODEL", "qwen3-8b")
+    monkeypatch.setenv("PHARMA_LLM__ROLES__JUDGE__REASONING_EFFORT", "medium")
+    settings = Settings(_env_file=None)
+    assert settings.llm.resolve(LlmRole.GUARDRAIL).reasoning_effort == "minimal"
+    assert settings.llm.resolve(LlmRole.SUMMARIZER).reasoning_effort == "minimal"
+    assert settings.llm.resolve(LlmRole.REFINE).reasoning_effort == "low"
+    assert settings.llm.resolve(LlmRole.JUDGE).reasoning_effort == "medium"
+    assert settings.llm.resolve(LlmRole.ANSWER).reasoning_effort is None
+
+
+def test_embedding_and_rerank_connection_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults = Settings(_env_file=None).retrieval
+    assert (defaults.embedding.timeout_seconds, defaults.embedding.max_retries) == (
+        60.0,
+        2,
+    )
+    assert defaults.rerank.api_key is None
+    assert (defaults.rerank.max_candidates, defaults.rerank.max_concurrent) == (40, 2)
+
+    monkeypatch.setenv("PHARMA_RETRIEVAL__EMBEDDING__TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__EMBEDDING__MAX_RETRIES", "0")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__API_KEY", "rerank-secret")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__MAX_CANDIDATES", "20")
+    configured = Settings(_env_file=None).retrieval
+    assert (configured.embedding.timeout_seconds, configured.embedding.max_retries) == (
+        5.0,
+        0,
+    )
+    assert configured.rerank.api_key == "rerank-secret"
+    assert configured.rerank.max_candidates == 20

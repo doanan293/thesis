@@ -24,7 +24,7 @@ from pharma_agent.domain.llm.models import LlmRole
 from pharma_agent.domain.llm.port import LlmError
 from pharma_agent.domain.retrieval.ports import RetrievalError
 from tests.domain.factories import make_hit
-from tests.fakes import FakeLlm, FakeRetriever, build_deps
+from tests.fakes import FakeLlm, FakeReranker, FakeRetriever, build_deps
 
 QUESTION = "Paracetamol người lớn uống bao nhiêu?"
 
@@ -50,10 +50,17 @@ def passing_llm(intent: Intent = Intent.PHARMA_QUESTION) -> FakeLlm:
 
 
 async def run_turn(
-    llm: FakeLlm, retriever: FakeRetriever, limits: BudgetLimits | None = None
+    llm: FakeLlm,
+    retriever: FakeRetriever,
+    limits: BudgetLimits | None = None,
+    reranker: FakeReranker | None = None,
 ):
     graph = build_chat_graph(checkpointer=InMemorySaver(serde=checkpoint_serializer()))
-    runner = ChatTurnRunner(graph, build_deps(llm, retriever), limits or BudgetLimits())
+    runner = ChatTurnRunner(
+        graph,
+        build_deps(llm, retriever, reranker=reranker),
+        limits or BudgetLimits(),
+    )
     execution = runner.start(user_id="u1", message=QUESTION)
     events = [event async for event in execution.events()]
     assert execution.outcome is not None
@@ -125,16 +132,20 @@ async def test_search_more_then_refine_runs_second_search() -> None:
         ),
     )
     retriever = FakeRetriever(
-        [make_hit("c1", fusion=0.9)], [make_hit("c9", fusion=0.8)]
+        [make_hit("c1", fusion=0.9)],
+        [make_hit("c1", fusion=0.9), make_hit("c9", fusion=0.8)],
     )
+    reranker = FakeReranker()
 
-    events, outcome = await run_turn(llm, retriever)
+    events, outcome = await run_turn(llm, retriever, reranker=reranker)
 
     assert outcome.run.status is RunStatus.COMPLETED
     assert len(retriever.calls) == 2
     assert [q.text for q in retriever.calls[1]] == ["paracetamol liều tối đa mỗi ngày"]
     assert phases(events).count(Phase.SEARCHING) == 2
     assert outcome.run.usage.search_rounds == 2
+    # c1 was scored in round one for the same standalone query, so only c9 is scored again.
+    assert reranker.received == [["c1"], ["c9"]]
 
 
 async def test_smalltalk_skips_retrieval() -> None:

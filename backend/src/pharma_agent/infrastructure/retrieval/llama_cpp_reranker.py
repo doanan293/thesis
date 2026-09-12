@@ -220,8 +220,11 @@ class NoopReranker:
 def build_reranker(settings: RerankSettings) -> Reranker:
     if settings.protocol == "none":
         return NoopReranker()
+    headers = (
+        {"Authorization": f"Bearer {settings.api_key}"} if settings.api_key else None
+    )
     http = httpx.AsyncClient(
-        base_url=settings.base_url, timeout=settings.timeout_seconds
+        base_url=settings.base_url, timeout=settings.timeout_seconds, headers=headers
     )
     if settings.protocol == "native_rerank":
         return NativeReranker(
