@@ -159,3 +159,31 @@ class RetrievalHitTable(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     snippet: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+
+
+class SkillTable(Base):
+    __tablename__ = "skills"
+    __table_args__ = (Index("ix_skills_owner", "owner_user_id"),)
+
+    skill_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    search_guidance: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    answer_guidance: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
