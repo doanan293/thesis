@@ -153,6 +153,10 @@ class MemorySettings(BaseModel):
     summary_max_chars: int = 1500
 
 
+class CheckpointSettings(BaseModel):
+    retention_days: int = Field(default=7, ge=1)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PHARMA_",
@@ -171,4 +175,5 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
+    checkpoints: CheckpointSettings = Field(default_factory=CheckpointSettings)
     skills_dir: Path = Path("skills")

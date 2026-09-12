@@ -10,6 +10,7 @@ import typer
 from pharma_agent.application.progress import EventType, ProgressEvent
 from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy
 from pharma_agent.infrastructure.composition import build_application
+from pharma_agent.infrastructure.langgraph.cleanup import delete_expired_checkpoints
 from pharma_agent.infrastructure.settings import Settings
 
 app = typer.Typer(help="Pharma agent developer CLI", no_args_is_help=True)
@@ -206,3 +207,18 @@ def migrate(revision: str = typer.Argument("head", help="Alembic revision")) -> 
     )
 
     command.upgrade(alembic_config(), revision)
+
+
+@app.command("cleanup-checkpoints")
+def cleanup_checkpoints(
+    days: int | None = typer.Option(
+        None, min=1, help="Số ngày lưu giữ (mặc định lấy từ settings)"
+    ),
+) -> None:
+    """Xóa checkpoint LangGraph cũ hơn số ngày lưu giữ."""
+    settings = Settings()
+    retention = days if days is not None else settings.checkpoints.retention_days
+    deleted = asyncio.run(
+        delete_expired_checkpoints(settings.postgres.conninfo, retention_days=retention)
+    )
+    typer.echo(f"deleted {deleted} checkpoints older than {retention} days")

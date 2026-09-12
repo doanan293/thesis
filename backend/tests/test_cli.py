@@ -96,3 +96,28 @@ def test_serve_runs_uvicorn_factory(monkeypatch) -> None:
         calls["app"] == "pharma_agent.api.app:create_app" and calls["factory"] is True
     )
     assert (calls["host"], calls["port"]) == ("0.0.0.0", 9001)
+
+
+def test_cleanup_checkpoints_uses_settings_or_option(monkeypatch) -> None:
+    calls: list[tuple[str, int]] = []
+
+    async def fake_cleanup(conninfo: str, *, retention_days: int) -> int:
+        calls.append((conninfo, retention_days))
+        return 3
+
+    monkeypatch.setattr(cli, "delete_expired_checkpoints", fake_cleanup)
+    monkeypatch.setenv("PHARMA_CHECKPOINTS__RETENTION_DAYS", "14")
+    monkeypatch.setenv(
+        "PHARMA_POSTGRES__DSN", "postgresql+psycopg://u:p@db.example:5432/app"
+    )
+
+    default = CliRunner().invoke(cli.app, ["cleanup-checkpoints"])
+    assert default.exit_code == 0, default.output
+    assert "deleted 3 checkpoints older than 14 days" in default.output
+
+    explicit = CliRunner().invoke(cli.app, ["cleanup-checkpoints", "--days", "2"])
+    assert explicit.exit_code == 0, explicit.output
+    assert calls == [
+        ("postgresql://u:p@db.example:5432/app", 14),
+        ("postgresql://u:p@db.example:5432/app", 2),
+    ]
