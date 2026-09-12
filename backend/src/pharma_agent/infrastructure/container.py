@@ -8,18 +8,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from pharma_agent.application.chat.service import ChatService, MemoryPolicy
 from pharma_agent.application.conversation.queries import ConversationQueries
+from pharma_agent.application.feedback.service import FeedbackService
 from pharma_agent.application.memory.summarize import SummarizeConversation
+from pharma_agent.application.skill.service import SkillService
+from pharma_agent.application.tracing import NullTracing, Tracing
 from pharma_agent.domain.retrieval.ports import RetrievalError
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.composition import Application, build_application
 from pharma_agent.infrastructure.langgraph.checkpointer import (
     open_postgres_checkpointer,
 )
+from pharma_agent.infrastructure.observability.langfuse_tracing import LangfuseTracing
 from pharma_agent.infrastructure.persistence.postgres.conversation_repository import (
     AuditContext,
     PostgresConversationRepository,
 )
 from pharma_agent.infrastructure.persistence.postgres.database import Database
+from pharma_agent.infrastructure.persistence.postgres.feedback_repository import (
+    PostgresFeedbackRepository,
+)
+from pharma_agent.infrastructure.persistence.postgres.skill_repository import (
+    PostgresSkillRepository,
+)
 from pharma_agent.infrastructure.settings import Settings
 
 HealthCheck = Callable[[], Awaitable[bool]]
@@ -32,6 +42,9 @@ class Container:
     queries: ConversationQueries
     chat: ChatService | None = None
     summarizer: SummarizeConversation | None = None
+    skills: SkillService | None = None
+    feedback: FeedbackService | None = None
+    tracing: Tracing = field(default_factory=NullTracing)
     health_checks: dict[str, HealthCheck] = field(default_factory=dict)
 
 
@@ -67,19 +80,39 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
             ),
         ),
     )
+    tracing: Tracing = (
+        LangfuseTracing.from_settings(settings.langfuse)
+        if settings.langfuse.enabled
+        else NullTracing()
+    )
+    skill_repository = PostgresSkillRepository(database.sessions)
     container = Container(
         settings=settings,
         sessions=database.sessions,
         queries=ConversationQueries(repository, clock),
+        skills=SkillService(skill_repository),
+        feedback=FeedbackService(
+            repository, PostgresFeedbackRepository(database.sessions), tracing, clock
+        ),
+        tracing=tracing,
         health_checks={"postgres": database.ping},
     )
     try:
         async with AsyncExitStack() as stack:
+            if isinstance(tracing, LangfuseTracing):
+                stack.callback(tracing.shutdown)
+            if container.skills is not None:
+                await container.skills.sync_system(settings.skills_dir)
             if settings.llm.configured:
                 checkpointer = await stack.enter_async_context(
                     open_postgres_checkpointer(settings.postgres.conninfo)
                 )
-                agent = build_application(settings, checkpointer=checkpointer)
+                agent = build_application(
+                    settings,
+                    checkpointer=checkpointer,
+                    skills=skill_repository,
+                    tracer=tracing,
+                )
                 stack.push_async_callback(agent.aclose)
                 container.chat = ChatService(
                     agent.runner,

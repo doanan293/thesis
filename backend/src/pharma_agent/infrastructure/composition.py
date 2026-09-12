@@ -10,10 +10,12 @@ from qdrant_client import AsyncQdrantClient
 from pharma_agent.application.chat.context import TurnDeps
 from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.application.chat.runner import ChatTurnRunner
+from pharma_agent.application.tracing import TurnTracer
 from pharma_agent.domain.guardrail.service import GuardrailService
 from pharma_agent.domain.retrieval.ports import Reranker
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
 from pharma_agent.domain.shared.clock import SystemClock
+from pharma_agent.domain.skill.ports import SkillCatalog
 from pharma_agent.infrastructure.llm.openai_adapter import (
     OpenAiLlmAdapter,
     default_client_factory,
@@ -49,7 +51,11 @@ class Application:
 
 
 def build_application(
-    settings: Settings, *, checkpointer: BaseCheckpointSaver | None = None
+    settings: Settings,
+    *,
+    checkpointer: BaseCheckpointSaver | None = None,
+    skills: SkillCatalog | None = None,
+    tracer: TurnTracer | None = None,
 ) -> Application:
     if settings.langfuse.enabled:
         os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse.public_key or "")
@@ -107,11 +113,16 @@ def build_application(
         llm=llm,
         guardrail=GuardrailService(llm),
         retrieval=retrieval,
-        skills=FileSystemSkillCatalog(settings.skills_dir),
+        skills=skills
+        if skills is not None
+        else FileSystemSkillCatalog(settings.skills_dir),
         clock=SystemClock(),
     )
     runner = ChatTurnRunner(
-        build_chat_graph(checkpointer=checkpointer), deps, settings.budget
+        build_chat_graph(checkpointer=checkpointer),
+        deps,
+        settings.budget,
+        tracer=tracer,
     )
     return Application(
         settings=settings,

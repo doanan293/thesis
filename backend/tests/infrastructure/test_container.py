@@ -13,6 +13,9 @@ async def test_container_without_llm_serves_queries_only(
     monkeypatch.delenv("PHARMA_LLM__DEFAULT__API_KEY", raising=False)
     async with open_container(Settings(_env_file=None)) as container:
         assert container.chat is None and container.summarizer is None
+        assert container.skills is not None and container.feedback is not None
+        catalog = await container.skills.list_for_user("a" * 32)
+        assert catalog == []
         assert await container.health_checks["postgres"]() is True
         assert await container.queries.list_conversations("a" * 32, limit=5) == []
 

@@ -28,6 +28,10 @@ class ScoreSink(Protocol):
         ...
 
 
+class Tracing(TurnTracer, ScoreSink, Protocol):
+    """A tracer that can also score its own traces (Langfuse, or the null implementation)."""
+
+
 class _NullHandle:
     callbacks: Sequence[BaseCallbackHandler] = ()
 
