@@ -262,36 +262,39 @@ class KaggleCommandRunner:
             print("DRY RUN: " + " ".join(command), flush=True)
             return KaggleCommandResult(tuple(command), 0, "", "")
         if live_output:
-            completed = subprocess.Popen(
+            stdout_parts: list[str] = []
+            stderr_parts: list[str] = []
+            with subprocess.Popen(
                 command,
                 env=self.environment,
                 bufsize=0,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-            )
-            stdout_parts: list[str] = []
-            stderr_parts: list[str] = []
-            assert completed.stdout is not None
-            assert completed.stderr is not None
-            stdout_stream = io.TextIOWrapper(
-                completed.stdout, encoding="utf-8", errors="replace", newline=""
-            )
-            stderr_stream = io.TextIOWrapper(
-                completed.stderr, encoding="utf-8", errors="replace", newline=""
-            )
-            stdout_thread = threading.Thread(
-                target=_drain_and_tee,
-                args=(stdout_stream, sys.stdout, stdout_parts),
-            )
-            stderr_thread = threading.Thread(
-                target=_drain_and_tee,
-                args=(stderr_stream, sys.stderr, stderr_parts),
-            )
-            stdout_thread.start()
-            stderr_thread.start()
-            stdout_thread.join()
-            stderr_thread.join()
-            returncode = completed.wait()
+            ) as process:
+                assert process.stdout is not None
+                assert process.stderr is not None
+                # Closing the wrappers closes the pipes; Popen.__exit__ then waits.
+                with (
+                    io.TextIOWrapper(
+                        process.stdout, encoding="utf-8", errors="replace", newline=""
+                    ) as stdout_stream,
+                    io.TextIOWrapper(
+                        process.stderr, encoding="utf-8", errors="replace", newline=""
+                    ) as stderr_stream,
+                ):
+                    stdout_thread = threading.Thread(
+                        target=_drain_and_tee,
+                        args=(stdout_stream, sys.stdout, stdout_parts),
+                    )
+                    stderr_thread = threading.Thread(
+                        target=_drain_and_tee,
+                        args=(stderr_stream, sys.stderr, stderr_parts),
+                    )
+                    stdout_thread.start()
+                    stderr_thread.start()
+                    stdout_thread.join()
+                    stderr_thread.join()
+                returncode = process.wait()
             stdout = "".join(stdout_parts)
             stderr = "".join(stderr_parts)
         else:

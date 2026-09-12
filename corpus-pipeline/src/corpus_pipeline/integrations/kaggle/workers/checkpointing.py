@@ -54,13 +54,12 @@ class AppendOnlyJournal:
     def _load(self) -> None:
         if not self.path.is_file():
             return
-        nonempty_lines = [
-            line_number
-            for line_number, line in enumerate(
-                self.path.open(encoding="utf-8"), start=1
-            )
-            if line.strip()
-        ]
+        with self.path.open(encoding="utf-8") as handle:
+            nonempty_lines = [
+                line_number
+                for line_number, line in enumerate(handle, start=1)
+                if line.strip()
+            ]
         last_nonempty = nonempty_lines[-1] if nonempty_lines else None
         with self.path.open(encoding="utf-8") as handle:
             for line_number, line in enumerate(handle, start=1):
@@ -184,10 +183,11 @@ class CheckpointStore:
                     "checkpoint identity does not match current job"
                 )
         if self.data_path.is_file():
-            for line in self.data_path.open(encoding="utf-8"):
-                if line.strip():
-                    record = json.loads(line)
-                    self.records[self.key_fn(record)] = record
+            with self.data_path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        record = json.loads(line)
+                        self.records[self.key_fn(record)] = record
 
     def missing(self, records: Iterable[dict]) -> list[dict]:
         return [record for record in records if self.key_fn(record) not in self.records]

@@ -64,3 +64,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["integration: needs Docker (run with -m integration)"]
 addopts = ["--import-mode=importlib", "-m", "not integration"]
+filterwarnings = ["error"]
