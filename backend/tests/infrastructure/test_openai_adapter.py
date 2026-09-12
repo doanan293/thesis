@@ -216,3 +216,24 @@ async def test_real_sdk_client_against_mocked_http() -> None:
         "minimal",
         "low",
     )
+
+
+async def test_reasoning_tokens_reported_outside_completion_tokens_are_counted() -> (
+    None
+):
+    adapter, created = make_adapter()
+    await adapter.structured(LlmRole.GUARDRAIL, [user("warm up")], Verdict)
+    client = created[(None, "sk-cloud")]
+    original_parse = client.completions.parse
+
+    async def proxy_style_parse(**kwargs):
+        completion = await original_parse(**kwargs)
+        # Shape returned by a Gemini proxy: reasoning only in total and completion details.
+        completion.usage = SimpleNamespace(
+            prompt_tokens=33, completion_tokens=15, total_tokens=392
+        )
+        return completion
+
+    client.completions.parse = proxy_style_parse
+    _, usage = await adapter.structured(LlmRole.GUARDRAIL, [user("a")], Verdict)
+    assert usage == LlmUsage(prompt_tokens=33, completion_tokens=359)

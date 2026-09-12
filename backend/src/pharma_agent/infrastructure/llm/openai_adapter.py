@@ -122,7 +122,11 @@ def _to_openai(messages: Sequence[ChatMessage]) -> list[dict[str, str]]:
 def _usage(usage: Any) -> LlmUsage:
     if usage is None:
         return LlmUsage()
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion = int(getattr(usage, "completion_tokens", 0) or 0)
+    total = int(getattr(usage, "total_tokens", 0) or 0)
+    # OpenAI counts reasoning tokens inside completion_tokens; some OpenAI-compatible
+    # proxies report them only in total_tokens. The larger value bills them either way.
     return LlmUsage(
-        prompt_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
-        completion_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+        prompt_tokens=prompt, completion_tokens=max(completion, total - prompt)
     )
