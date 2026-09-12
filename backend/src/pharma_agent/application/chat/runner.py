@@ -17,6 +17,7 @@ from pharma_agent.application.chat.context import TurnContext, TurnDeps
 from pharma_agent.application.chat.graph import ChatGraph
 from pharma_agent.application.chat.state import ChatTurnState
 from pharma_agent.application.progress import EventType, ProgressEvent
+from pharma_agent.application.tracing import NullTracing, TraceHandle, TurnTracer
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.agent.prompts import fallback_text
 from pharma_agent.domain.agent.run import AgentRun, ErrorCode
@@ -37,6 +38,7 @@ class ChatTurnExecution:
         graph: ChatGraph,
         deps: TurnDeps,
         limits: BudgetLimits,
+        tracer: TurnTracer,
         *,
         user_id: str,
         message: str,
@@ -46,6 +48,7 @@ class ChatTurnExecution:
         self._graph = graph
         self._deps = deps
         self._limits = limits
+        self._tracer = tracer
         self._conversation = conversation
         self.run = AgentRun.start(
             user_id=user_id,
@@ -74,8 +77,22 @@ class ChatTurnExecution:
                     await task
 
     async def _produce(self, queue: asyncio.Queue[ProgressEvent | None]) -> None:
+        with self._tracer.trace_turn(self.run) as handle:
+            await self._run_graph(queue, handle)
+            if self.outcome is not None:
+                handle.finish(
+                    status=self.outcome.run.status.value,
+                    output=self.outcome.answer_text,
+                )
+
+    async def _run_graph(
+        self, queue: asyncio.Queue[ProgressEvent | None], handle: TraceHandle
+    ) -> None:
         final: ChatTurnState | None = None
-        config: RunnableConfig = {"configurable": {"thread_id": self.run.run_id}}
+        config: RunnableConfig = {
+            "configurable": {"thread_id": self.run.run_id},
+            "callbacks": list(handle.callbacks),
+        }
         modes: list[StreamMode] = ["custom", "values"]
         context = TurnContext(deps=self._deps, conversation=self._conversation)
         try:
@@ -153,10 +170,17 @@ def _done_event(run: AgentRun) -> ProgressEvent:
 
 
 class ChatTurnRunner:
-    def __init__(self, graph: ChatGraph, deps: TurnDeps, limits: BudgetLimits) -> None:
+    def __init__(
+        self,
+        graph: ChatGraph,
+        deps: TurnDeps,
+        limits: BudgetLimits,
+        tracer: TurnTracer | None = None,
+    ) -> None:
         self._graph = graph
         self._deps = deps
         self._limits = limits
+        self._tracer: TurnTracer = tracer if tracer is not None else NullTracing()
 
     def start(
         self,
@@ -170,6 +194,7 @@ class ChatTurnRunner:
             self._graph,
             self._deps,
             self._limits,
+            self._tracer,
             user_id=user_id,
             message=message,
             conversation=conversation or ConversationContext(),
