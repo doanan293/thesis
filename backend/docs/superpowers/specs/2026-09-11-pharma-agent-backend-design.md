@@ -38,7 +38,7 @@ LiteLLM.
 ## 3. Stack
 
 Python 3.12, uv, FastAPI, LangGraph 1.2 + langgraph-checkpoint-postgres, openai 3.x,
-qdrant-client 1.19 (extra `fastembed` cho BM25 sparse), SQLAlchemy 2 async + asyncpg +
+qdrant-client 1.19 (BM25 sparse do Qdrant server tự tính từ `models.Document`, không cần fastembed), SQLAlchemy 2 async + asyncpg +
 Alembic, fastapi-users (extra `sqlalchemy`, `oauth`), httpx, pydantic-settings,
 sse-starlette, langfuse 4.x, pytest + pytest-asyncio + respx + testcontainers, ruff,
 pyrefly. Chuẩn lint/format giống `corpus-pipeline`.

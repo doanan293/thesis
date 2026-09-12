@@ -22,6 +22,28 @@ uv run pharma-agent ask "Paracetamol người lớn uống bao nhiêu?"
 uv run pharma-agent ask "..." --json           # kèm trace đầy đủ
 ```
 
+## Chạy toàn bộ bằng Docker
+
+Chạy từ repo root. Cần `backend/.env` có LLM key và `PHARMA_AUTH__JWT_SECRET`. Port, file model
+và số luồng CPU đặt trong `.env` ở root, xem `.env.example`.
+
+```bash
+docker compose up -d --build
+docker compose ps                              # chờ mọi service healthy
+docker compose exec backend pharma-agent check
+docker compose exec backend pharma-agent ask "Paracetamol người lớn uống tối đa bao nhiêu một ngày?"
+```
+
+- Hai model 4B chạy trên CPU nên lần đầu nạp model mất vài phút; backend chỉ khởi động khi
+  embedding và reranker đã healthy.
+- `backend-migrate` chạy `pharma-agent migrate` một lần trước khi backend khởi động.
+- Backend dùng mạng host để gọi được proxy LLM đang lắng nghe `127.0.0.1` trên Windows
+  (WSL cần `networkingMode=mirrored`). Compose tự đặt URL Postgres, Qdrant, embedding và
+  reranker theo port ở `.env` root, nên `backend/.env` chỉ cần LLM, auth và Langfuse.
+- Đổi sang GGUF nhẹ hơn: đặt `LLAMA_EMBEDDING_MODEL` hoặc `LLAMA_RERANKER_MODEL` là tên file trong
+  `ai-models/gguf`, rồi `docker compose up -d`. Embedding phải vẫn là qwen3-embedding 4B để
+  khớp collection.
+
 ## Chạy HTTP API
 
 ```bash

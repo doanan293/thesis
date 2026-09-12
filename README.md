@@ -4,7 +4,7 @@
 | --- | --- |
 | `corpus-pipeline/` | Xây corpus Dược thư Quốc gia + An Khang, embedding, Qdrant, đánh giá retrieval |
 | `backend/` | Backend AI agent (LangGraph, OpenAI SDK, Qdrant, llama.cpp) |
-| `docker-compose.yml` | Qdrant, Postgres, llama.cpp embedding và reranker |
+| `docker-compose.yml` | Toàn bộ stack local: Qdrant, Postgres, llama.cpp embedding và reranker, backend |
 
 ## Chuẩn tooling chung
 
