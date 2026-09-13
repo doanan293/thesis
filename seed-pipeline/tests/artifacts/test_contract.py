@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from seed_pipeline.artifacts.contract import (
+    CONTRACT_SCHEMA_VERSION,
     ContractError,
     build_manifest,
     validate_contract_directory,
@@ -25,17 +26,6 @@ def _published(tmp_path: Path, *, block_section: str = "drug:a:b") -> Path:
         final_dir / "blocks.jsonl",
         [{"block_id": "block-000001", "section_id": block_section, "text": "Văn bản"}],
     )
-    _write_jsonl(
-        final_dir / "chunks.jsonl",
-        [
-            {
-                "chunk_id": "drug:a:b:chunk-001",
-                "section_id": "drug:a:b",
-                "chunk_text": "Văn bản",
-                "embedding_text": "Văn bản",
-            }
-        ],
-    )
     (final_dir / "validation_report.json").write_text(
         '{"ok": true}\n', encoding="utf-8"
     )
@@ -52,24 +42,27 @@ def _published(tmp_path: Path, *, block_section: str = "drug:a:b") -> Path:
     return final_dir
 
 
-def test_manifest_tracks_blocks_and_contract_validates(tmp_path: Path) -> None:
-    final_dir = _published(tmp_path)
+def test_manifest_tracks_sections_and_blocks(tmp_path: Path) -> None:
+    manifest = validate_contract_directory(_published(tmp_path))
 
-    manifest = validate_contract_directory(final_dir)
-
-    assert manifest["block_count"] == 1
+    assert manifest["schema_version"] == CONTRACT_SCHEMA_VERSION == "rag-final-v3"
+    assert (manifest["section_count"], manifest["block_count"]) == (1, 1)
+    assert "chunk_count" not in manifest
     assert set(manifest["files"]) == {
         "sections.jsonl",
         "blocks.jsonl",
-        "chunks.jsonl",
         "validation_report.json",
     }
 
 
-def test_contract_requires_blocks_file(tmp_path: Path) -> None:
+def test_contract_requires_blocks_and_rejects_leftover_chunks(tmp_path: Path) -> None:
     final_dir = _published(tmp_path)
-    (final_dir / "blocks.jsonl").unlink()
+    (final_dir / "chunks.jsonl").write_text("{}\n", encoding="utf-8")
 
+    with pytest.raises(ContractError, match="must contain exactly"):
+        validate_contract_directory(final_dir)
+    (final_dir / "chunks.jsonl").unlink()
+    (final_dir / "blocks.jsonl").unlink()
     with pytest.raises(ContractError, match="must contain exactly"):
         validate_contract_directory(final_dir)
 

@@ -1,35 +1,22 @@
-# Hướng Dẫn Vận Hành Downstream & Data Artifact Policy
+# Downstream và Data Artifact Policy
 
-Tài liệu này chi tiết các quy tắc vận hành tích hợp cho downstream RAG/Agent và chính sách quản lý artifact dữ liệu của dự án.
+## 1. Bàn giao cho backend
 
-Cả hai workflow Local + Kaggle GPU và Local CPU-only đều bàn giao vào policy
-chung này sau khi corpus, Qdrant collection và evaluation report đã hoàn tất.
-
----
-
-## 1. Vận Hành Downstream Agent
-
-1. `full.md` là provenance text từ PDF qua PyMuPDF.
-2. Docling table extraction toàn PDF mất nhiều thời gian; nếu `tables.curated.jsonl` còn tốt thì không cần chạy lại bước extract bảng.
-3. Production runtime dùng Qdrant để search dense hoặc hybrid dense + BM25 sparse. Qdrant trả chunk payload có `chunk_id`, `section_id`, `chunk_index`, `hydrate_strategy`, `source`, `title`, `section`, `start_page`, `end_page`, `context_header`, `payload.chunk_text`, `colloquial_mapping`, `term_annotations`, và `payload.embedding_text` để rerank/hydrate tại chỗ.
-4. Khi hydrate context, dùng `hydrate_strategy`:
-   - `full_section`: Fetch tất cả Qdrant points cùng `section_id` và sort theo `chunk_index`.
-   - `chunk_window`: Fetch chunk hit cộng một số chunk lân cận theo `section_id`/`chunk_index`.
-   - `search_only`: Dùng `payload.chunk_text` như evidence ngắn, không hydrate nguyên section.
-5. Các bảng được gắn vào section qua `table_ids`; section có bảng sẽ có `source_mix` gồm `pymupdf_text` và `docling_table`.
-6. Table chunk được embed/search như chunk thường; khi hit vào bảng, downstream vẫn hydrate theo `section_id` và có thể dùng `table_id` để ưu tiên hiển thị hoặc trích riêng bảng liên quan.
-7. Với `chunk_window`, policy downstream nên lấy chunk hit cộng 1-2 chunk trước/sau trong cùng `section_id` từ Qdrant nếu cần mở rộng context, tùy ngân sách token.
-8. Với `search_only`, không hydrate nguyên section. Trường hợp cần tra cứu biệt dược thì dùng chunk hit trong Qdrant làm evidence hoặc lookup theo dòng/index riêng.
-9. Luôn chạy `uv run seed validate` trước khi ingest corpus mới vào vector database.
-10. Postgres app chỉ dùng cho trạng thái ứng dụng như user/session/message/retrieval audit/feedback qua `src/seed_pipeline/integrations/postgres/schema/rag_app_schema.sql`; corpus text không được import vào Postgres production.
-
----
+1. Đầu ra bàn giao duy nhất của seed-pipeline là knowledge bundle `knowledge-bundle/v1` do `seed bundle export` tạo và `seed bundle embed` bổ sung vector: `manifest.json`, `documents.jsonl`, `sections.jsonl`, `glossary.json`, `colloquial_mappings.json`, `embeddings/<model_slug>.jsonl`. Định dạng và quy tắc validate: spec `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md` §5 và model `pharma_agent.domain.corpus.bundle`.
+2. Document key: `drug:<slug>`, `general:<slug>`, `leaflet:ankhang:<category>:<slug>` (`source.url` của tờ hướng dẫn trỏ về `https://www.nhathuocankhang.com/<category>/<slug>`). Section key giữ nguyên `section_id` cũ để bộ gold evaluation dùng tiếp.
+3. Block `kind` (`prose`, `table`, `list`, `index_entries`) và section `retrieval` (`default`, `index_only`) thay cho các ID viết cứng trước đây (`BRAND_INDEX_SECTION_ID`, `APPENDIX_LIST_SECTION_IDS`).
+4. Chia chunk, `context_header`, `embedding_text`, thuật ngữ và colloquial mapping do `chunk_section` của backend tính. seed-pipeline import backend như thư viện và không có chunker riêng.
+5. Vector được tính trước theo `(model, sha256(embedding_text))`. Backend chỉ dùng vector có model và số chiều khớp setting; phần thiếu backend tự embed qua endpoint đã cấu hình. Kernel Kaggle chỉ nhận text và hash, không import backend.
+6. Chạy `uv run seed validate` trước `seed bundle export`. Export và embed ghi bundle vào thư mục tạm, validate bằng `read_bundle`, rồi mới thay thư mục đích.
+7. Hydrate (`full_section`, `chunk_window`, `search_only`) là policy của backend (`pharma_agent.domain.corpus.hydrate`), không nằm trong bundle.
+8. Đổi thuật toán chunk trong backend thì backend tăng `CHUNKER_VERSION`; import lại bundle tạo release mới.
+9. Evaluation retrieval chạy qua `RetrievalService` của backend nên đo đúng retrieval lúc chạy; vector query lấy từ cache của `seed embed queries`, không embed lại; gold label vẫn theo section key.
+10. Corpus lúc chạy nằm trong schema `corpus` của backend (Postgres là nguồn chính, Qdrant là index dẫn xuất), nạp bằng `pharma-agent corpus import <bundle_dir> --collection formulary --publish`. seed-pipeline không ghi thẳng vào Postgres hay Qdrant.
 
 ## 2. Data Artifact Policy
 
-Quy định quản lý dữ liệu trong dự án:
-
-- **Source / Provenance Inputs**: Inputs nhỏ nằm trong `data/resources/`, source manifests trong `data/manifests/source/`, còn PDF/snapshot lớn nằm trong `data/heavy/raw/`.
-- **Rebuildable workspace outputs**: Nằm trong `data/heavy/.work/` trong lúc build và tự xoá sau publish; failed workspace được giữ dưới `.work/failed/`.
-- **Final Reproducible Contracts**: Payload nằm trong `data/heavy/processed/`, metadata snapshot nằm trong `data/manifests/corpus/`.
-- **Local Experiment Outputs**: Metadata/report nhỏ nằm trong `data/retrieval_eval/`; candidates, rerank bundles, per-query reports và caches nằm trong `data/heavy/`.
+- **Source / provenance inputs**: inputs nhỏ trong `data/resources/`, source manifests trong `data/manifests/source/`, PDF và snapshot lớn trong `data/heavy/raw/`.
+- **Rebuildable workspace**: `data/heavy/.work/` trong lúc build (tự xoá sau publish; workspace lỗi giữ ở `.work/failed/`), cùng input embedding `data/heavy/.work/bundle-embed/` và chunk evaluation `data/heavy/.work/evaluation-chunks/`.
+- **Final reproducible contracts**: `data/heavy/processed/rag-final/` (contract `rag-final-v3`), snapshot manifest trong `data/manifests/corpus/`, bundle trong `data/heavy/bundles/`.
+- **Caches**: `data/heavy/cache/text_embeddings/`, `query_embeddings/`, `rerank_scores/`; mỗi record có checksum.
+- **Local experiment outputs**: metadata/report nhỏ trong `data/retrieval_eval/`; candidates, rerank bundles và per-query reports trong `data/heavy/retrieval_eval/`.

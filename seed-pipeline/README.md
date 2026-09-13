@@ -1,47 +1,45 @@
-# Pipeline Xử Lý Dữ Liệu Hybrid PyMuPDF + Docling
+# seed-pipeline
 
-Pipeline chuẩn bị và tối ưu dữ liệu từ **Dược thư Quốc gia Việt Nam** cùng
-snapshot **An Khang** cho hệ thống Retrieval-Augmented Generation (RAG) và AI
-Agent y dược.
+Công cụ offline tạo dữ liệu gốc cho backend `pharma-agent` từ nguồn nội bộ: **Dược thư Quốc gia Việt Nam** (PDF) và snapshot tờ hướng dẫn sử dụng **An Khang**. Đầu ra là một knowledge bundle `knowledge-bundle/v1`; backend nạp bundle bằng `pharma-agent corpus import`. seed-pipeline không ghi thẳng vào Postgres hay Qdrant.
 
 ## Bắt đầu
 
-Mọi lệnh được chạy từ project root:
-
 ```bash
 cd /home/andv/personal/thesis/seed-pipeline
-uv sync
+uv sync    # cài luôn backend `pharma-agent` (path dependency, editable)
 ```
-
-Chọn đúng một workflow:
 
 | Trường hợp | Workflow |
 | --- | --- |
-| Máy local build corpus, vận hành Qdrant và tính metrics; Kaggle GPU chạy embedding/reranking | [Local + Kaggle GPU](docs/guides/workflow-local-kaggle.md) |
-| Không sử dụng Kaggle; toàn bộ model chạy local CPU | [Local CPU-only](docs/guides/workflow-local-only.md) |
+| Build ở local, Kaggle GPU embed bundle và chấm rerank | [Local + Kaggle GPU](docs/guides/workflow-local-kaggle.md) |
+| Không dùng Kaggle; mọi model chạy local | [Local CPU-only](docs/guides/workflow-local-only.md) |
+| Chuyển từ corpus-pipeline cũ (một lần, môi trường dev) | [Migration 2026-09](docs/guides/migration-2026-09.md) |
 
-Hai workflow đều bắt đầu từ resources nhỏ và heavy inputs đã có trong `data/`, chạy smoke test
-50 queries, sau đó mới mở rộng lên benchmark đầy đủ 10.000 queries. Workflow
-Local + Kaggle GPU là đường chạy chính khi cần embedding/reranking nhanh hơn.
+## Luồng dữ liệu
+
+```text
+seed build             PDF + snapshot An Khang -> data/heavy/processed/rag-final/ (sections + blocks)
+seed validate          kiểm tra contract rag-final-v3
+seed bundle export     rag-final -> data/heavy/bundles/formulary/ (knowledge-bundle/v1)
+seed bundle embed      chunk_section của backend -> embeddings/<model_slug>.jsonl (Kaggle hoặc local)
+pharma-agent corpus import ../seed-pipeline/data/heavy/bundles/formulary --collection formulary --publish   (chạy trong backend/)
+seed evaluation build  bundle -> bộ câu hỏi gold (section key)
+seed embed queries     bộ gold -> cache vector query (Kaggle hoặc local)
+seed retrieve          RetrievalService của backend -> candidate bundle của run
+seed rerank            chấm reranker trên candidate bundle (local hoặc Kaggle)
+seed metrics           Hit@K, MRR từ artifact đã đóng băng
+```
 
 ## Mental model cho retrieval evaluation
 
-- `--run` là tên workspace/thí nghiệm dùng chung cho retrieval, rerank và
-  metrics; tên này không chọn thuật toán.
-- `--retriever` chọn `bm25`, `dense` hoặc `hybrid`.
-- `--model` của `seed retrieve` chọn embedding model và Qdrant collection;
-  workflow baseline dùng `qwen3-embedding:0.6b-fp16`.
-- `--model` của `seed rerank` chọn reranker model; baseline dùng
-  `qwen3-reranker:0.6b-fp16`. `seed metrics` không chạy model.
-
-Ví dụ, run `dense-qwen06b-k30` là tên thí nghiệm, còn `--retriever dense` mới
-là lựa chọn thuật toán. Xem [CLI reference](docs/guides/cli-reference.md) để biết
-run identity và quy ước đặt tên đầy đủ.
+- `--run` là tên workspace/thí nghiệm dùng chung cho retrieve, rerank và metrics; tên này không chọn thuật toán.
+- `seed retrieve` gọi `build_retrieval_service(settings, embedder=...)` của backend trên Postgres và Qdrant dev đã import và publish release. Settings đọc từ `../backend/.env` (`--backend-env-file`). `--retriever` là `bm25`, `dense` hoặc `hybrid`; `--prefetch-k`, `--candidate-k`, `--rrf-k` được đưa vào cấu hình retrieval của backend. Với `dense` và `hybrid`, vector query lấy từ cache của `seed embed queries` (`--query-embeddings`); thiếu query nào thì lệnh dừng và báo, không embed lại qua endpoint.
+- Run identity ghi `release_id`, `chunker_version` và `embedding_model`; release khác thì dùng tên run mới.
+- `--model` của `seed rerank` là reranker model; `seed metrics` không chạy model.
 
 ### Re-judge metrics trên artifacts hiện có
 
-Khi chỉ sửa judgment mà không đổi query text, có thể chạy lại evaluation mà
-không embed, retrieve hoặc rerank lại. Lệnh dưới đây mặc định là dry-run:
+Khi chỉ sửa judgment mà không đổi query text, có thể chạy lại evaluation mà không retrieve hoặc rerank lại. Lệnh mặc định là dry-run:
 
 ```bash
 uv run seed evaluation rejudge-current \
@@ -49,61 +47,44 @@ uv run seed evaluation rejudge-current \
   --hybrid-run hybrid-qwen4b-p50-k30-rrf2
 ```
 
-Để áp dụng, dùng `--apply`. Lệnh sẽ thay evaluation dataset hiện tại, cập nhật
-evaluation hashes, xóa metrics reports cũ của hai run trên và tạo lại baseline
-cùng các rerank reports từ candidates/rerank scores đang có. Candidates,
-query embeddings và rerank scores được giữ nguyên; nếu metrics thất bại,
-evaluation, manifests và reports cũ được khôi phục.
+Thêm `--apply` để thay evaluation dataset, cập nhật hash, xoá metrics reports cũ của hai run và tạo lại baseline cùng rerank reports từ candidates/rerank scores đang có.
 
 ## Prerequisites chung
 
-- Python environment được quản lý bằng `uv`.
-- Docker và Docker Compose hoạt động.
-- Raw PDF và An Khang snapshot lớn đã có dưới `data/heavy/raw/`.
-- Mappings, glossary, curated tables, URL lists và danh sách âm tiết đã có dưới
-  `data/resources/`; source manifests nằm dưới `data/manifests/source/`.
-- GGUF baseline đã có dưới `../ai-models/gguf/`.
-- Workflow Kaggle cần credentials/owner hợp lệ trong `.env`.
+- `uv`, Docker và Docker Compose.
+- Raw PDF và snapshot An Khang dưới `data/heavy/raw/`; mappings, glossary, curated tables, URL lists và danh sách âm tiết dưới `data/resources/`; source manifests dưới `data/manifests/source/`.
+- GGUF dưới `../ai-models/gguf/`.
+- `backend/.env` cho `seed retrieve` và `pharma-agent corpus import`; `.env` của seed-pipeline cho Kaggle.
 
-Các guide có preflight command cụ thể để kiểm tra từng input trước khi chạy.
+## Đầu ra
 
-## Đầu ra cuối
+- `data/heavy/processed/rag-final/`: `sections.jsonl`, `blocks.jsonl`, `manifest.json`, `validation_report.json` (contract `rag-final-v3`); bản sao manifest nhỏ ở `data/manifests/corpus/`.
+- `data/heavy/bundles/formulary/`: knowledge bundle bàn giao cho backend.
+- `data/heavy/cache/text_embeddings/<model-slug>.jsonl`: cache embedding theo `sha256(embedding_text)`, dùng lại giữa các lần build.
+- `data/heavy/cache/query_embeddings/`, `data/heavy/cache/rerank_scores/`: cache của `seed embed queries` và `seed rerank`.
+- `data/retrieval_eval/<run>/` và `data/heavy/retrieval_eval/<run>/`: run metadata, candidates, rerank variants, reports.
 
-- `data/heavy/processed/`: final sections, chunks và evaluation dataset lớn.
-- `data/manifests/corpus/`: manifest và validation snapshot nhỏ; canonical copies
-  vẫn nằm cạnh payload trong `data/heavy/processed/rag-final/`.
-- `data/heavy/cache/`: các cache JSONL phẳng có thể resume/reuse và tự kiểm tra
-  checksum (`vector_embeddings/<model>.jsonl`,
-  `query_embeddings/<model>.jsonl`, `rerank_scores/<model>.jsonl`).
-- `data/retrieval_eval/`: run metadata, candidate manifests và Markdown summaries.
-- `data/heavy/retrieval_eval/`: candidates, rerank bundles và per-query reports.
-- `data/heavy/`: thư mục duy nhất cần zip/archive để chuyển sang Drive.
-- Qdrant collection theo embedding model, ví dụ
-  `thesis_chunks_qwen3_embedding_0_6b_fp16`.
-
-Sau khi pipeline hoàn tất, áp dụng
-[Downstream và Data Artifact Policy](docs/guides/downstream.md) khi tích hợp
-RAG/Agent.
+Chính sách bàn giao và artifact: [Downstream](docs/guides/downstream.md).
 
 ## Cấu trúc project
 
-- `src/seed_pipeline/orchestration/`: Build và atomic publish final corpus.
-- `src/seed_pipeline/corpus/`: Extraction, crawling, canonical blocks, tables và metadata.
-- `src/seed_pipeline/vector_store/`: Embedding cache và Qdrant ingest.
-- `src/seed_pipeline/integrations/kaggle/`: Kaggle reconciliation, checkpoint và workers.
-- `src/seed_pipeline/evaluation/`: Dataset generation, retrieval, reranking và metrics.
-- `src/seed_pipeline/corpus/validation/`: Final corpus quality gates.
-- `src/seed_pipeline/cli/`: Public typed command-line entrypoint.
-- `tests/`: Unit và integration contract tests.
+- `src/seed_pipeline/orchestration/`: build và atomic publish `rag-final`.
+- `src/seed_pipeline/corpus/`: trích xuất PDF, crawl An Khang, canonical blocks, bảng Docling, validation.
+- `src/seed_pipeline/bundle/`: export, parity, embed và evaluation chunks dựa trên `pharma_agent.domain.corpus`.
+- `src/seed_pipeline/embeddings/`: cache embedding theo hash và backend local/Kaggle.
+- `src/seed_pipeline/integrations/kaggle/`: reconciliation, checkpoint và worker trên Kaggle (worker không import backend).
+- `src/seed_pipeline/evaluation/`: dataset, retrieval qua backend, rerank, metrics.
+- `src/seed_pipeline/cli/`: entrypoint `uv run seed`.
 
 ## CLI
 
-Public command surface duy nhất là typed entrypoint `uv run seed`. Xem
-[CLI reference](docs/guides/cli-reference.md) để biết các stage và shared flags;
-dùng `uv run seed COMMAND --help` để xem default thực tế.
+Entrypoint duy nhất là `uv run seed`. Xem [CLI reference](docs/guides/cli-reference.md); `uv run seed COMMAND --help` cho default thực tế.
 
-## Kiểm tra hệ thống
+## Kiểm tra
 
 ```bash
+uv run ruff check src tests && uv run ruff format --check src tests
+uv run pyrefly check --min-severity warn
 uv run pytest -q
+uv run pytest -q -m data     # cần build thật dưới data/heavy (xem migration guide)
 ```

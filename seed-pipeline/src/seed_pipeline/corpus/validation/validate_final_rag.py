@@ -18,10 +18,6 @@ from seed_pipeline.config.paths import (
     RAG_FINAL_DIR,
     RAG_INTERIM_DIR,
 )
-from seed_pipeline.corpus.metadata.qdrant_payload_contract import (
-    QDRANT_RUNTIME_PAYLOAD_FIELDS,
-    validate_runtime_payload,
-)
 from seed_pipeline.corpus.processing.preprocess_rag_corpus import (
     OFFICIAL_GENERAL_MONOGRAPHS,
 )
@@ -329,10 +325,6 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-
-
-def chunk_record_id(record: dict[str, Any]) -> str:
-    return str(record.get("chunk_id") or record.get("id") or "")
 
 
 def chunk_record_text(record: dict[str, Any]) -> str:
@@ -1360,55 +1352,12 @@ def validate_final_rag(
     return report
 
 
-def validate_unified_chunks(path: Path) -> ValidationReport:
-    chunks = read_jsonl(Path(path))
-    errors: list[str] = []
-    warnings: list[str] = []
-    seen: set[str] = set()
-    for index, chunk in enumerate(chunks, start=1):
-        chunk_id = chunk_record_id(chunk)
-        if not chunk_id:
-            errors.append(f"Unified chunk row {index} is missing chunk_id")
-        elif chunk_id in seen:
-            errors.append(f"Duplicate unified chunk_id: {chunk_id}")
-        seen.add(chunk_id)
-        missing = [
-            field
-            for field in ("section_id", "chunk_text", "embedding_text")
-            if not str(chunk.get(field) or "").strip()
-        ]
-        if missing:
-            errors.append(f"Unified chunk {chunk_id or index} missing: {missing}")
-            continue
-        runtime = {
-            field: chunk[field]
-            for field in QDRANT_RUNTIME_PAYLOAD_FIELDS
-            if field in chunk
-        }
-        try:
-            validate_runtime_payload(runtime, label=f"Unified chunk {chunk_id}")
-        except ValueError as exc:
-            errors.append(str(exc))
-        if chunk.get("hydrate_strategy") not in HYDRATE_STRATEGIES:
-            errors.append(
-                f"Unified chunk {chunk_id} has invalid hydrate_strategy: "
-                f"{chunk.get('hydrate_strategy')}"
-            )
-    return ValidationReport(
-        ok=not errors,
-        errors=errors,
-        warnings=warnings,
-        metrics={"chunk_count": len(chunks)},
-    )
-
-
 def combine_validation_reports(
     *,
     source_report: dict[str, Any],
     deep_report: dict[str, Any],
-    unified_report: dict[str, Any],
 ) -> dict[str, Any]:
-    parts = (source_report, deep_report, unified_report)
+    parts = (source_report, deep_report)
     return {
         "ok": all(bool(part.get("ok")) for part in parts),
         "metrics": {
@@ -1419,11 +1368,7 @@ def combine_validation_reports(
         "errors": [error for part in parts for error in part.get("errors", [])],
         "warnings": [warning for part in parts for warning in part.get("warnings", [])],
         "findings": [finding for part in parts for finding in part.get("findings", [])],
-        "stages": {
-            "source_validation": source_report,
-            "deep_audit": deep_report,
-            "unified_contract": unified_report,
-        },
+        "stages": {"source_validation": source_report, "deep_audit": deep_report},
     }
 
 

@@ -6,21 +6,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+CONTRACT_SCHEMA_VERSION = "rag-final-v3"
 CONTRACT_FILES = frozenset(
-    {
-        "sections.jsonl",
-        "blocks.jsonl",
-        "chunks.jsonl",
-        "manifest.json",
-        "validation_report.json",
-    }
+    {"sections.jsonl", "blocks.jsonl", "manifest.json", "validation_report.json"}
 )
-TRACKED_FILES = (
-    "sections.jsonl",
-    "blocks.jsonl",
-    "chunks.jsonl",
-    "validation_report.json",
-)
+TRACKED_FILES = ("sections.jsonl", "blocks.jsonl", "validation_report.json")
 
 
 class ContractError(RuntimeError):
@@ -90,7 +80,6 @@ def build_manifest(
     final_dir = Path(final_dir)
     sections = _jsonl_records(final_dir / "sections.jsonl")
     blocks = _jsonl_records(final_dir / "blocks.jsonl")
-    chunks = _jsonl_records(final_dir / "chunks.jsonl")
     report = json.loads((final_dir / "validation_report.json").read_text("utf-8"))
     tracked_files = {
         name: {
@@ -100,7 +89,7 @@ def build_manifest(
         for name in TRACKED_FILES
     }
     return {
-        "schema_version": "rag-final-v2",
+        "schema_version": CONTRACT_SCHEMA_VERSION,
         "build_id": build_id,
         "source_pdf_sha256": source_pdf_sha256,
         "snapshot_id": snapshot_id,
@@ -109,7 +98,6 @@ def build_manifest(
         "config_digest": config_digest,
         "section_count": len(sections),
         "block_count": len(blocks),
-        "chunk_count": len(chunks),
         "validation_ok": bool(report.get("ok")),
         "files": tracked_files,
     }
@@ -126,15 +114,14 @@ def validate_contract_directory(path: Path) -> dict[str, Any]:
             f"found {sorted(actual)}"
         )
     manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != "rag-final-v2":
+    if manifest.get("schema_version") != CONTRACT_SCHEMA_VERSION:
         raise ContractError("Unsupported final contract schema")
     report = json.loads((path / "validation_report.json").read_text(encoding="utf-8"))
     if report.get("ok") is not True or manifest.get("validation_ok") is not True:
         raise ContractError("Final contract validation report is not successful")
     sections = _jsonl_records(path / "sections.jsonl")
     blocks = _jsonl_records(path / "blocks.jsonl")
-    chunks = _jsonl_records(path / "chunks.jsonl")
-    if not sections or not blocks or not chunks:
+    if not sections or not blocks:
         raise ContractError("Final contract JSONL files must not be empty")
     if any(not record.get("id") or not record.get("text") for record in sections):
         raise ContractError("Every section requires id and text")
@@ -142,16 +129,6 @@ def validate_contract_directory(path: Path) -> dict[str, Any]:
         not record.get("block_id") or not record.get("section_id") for record in blocks
     ):
         raise ContractError("Every block requires block_id and section_id")
-    if any(
-        not record.get("chunk_id")
-        or not record.get("section_id")
-        or not record.get("chunk_text")
-        or not record.get("embedding_text")
-        for record in chunks
-    ):
-        raise ContractError(
-            "Every unified chunk requires chunk_id, section_id, chunk_text, and embedding_text"
-        )
     section_ids = {record["id"] for record in sections}
     if len(section_ids) != len(sections):
         raise ContractError("Final sections contain duplicate IDs")
@@ -160,8 +137,6 @@ def validate_contract_directory(path: Path) -> dict[str, Any]:
     orphans = sorted({str(record["section_id"]) for record in blocks} - section_ids)
     if orphans:
         raise ContractError(f"Final blocks reference unknown sections: {orphans[:5]}")
-    if len({record["chunk_id"] for record in chunks}) != len(chunks):
-        raise ContractError("Final chunks contain duplicate IDs")
     for name in TRACKED_FILES:
         expected = manifest.get("files", {}).get(name, {})
         file_path = path / name
@@ -173,6 +148,4 @@ def validate_contract_directory(path: Path) -> dict[str, Any]:
         raise ContractError("Final section count mismatch")
     if int(manifest.get("block_count", -1)) != len(blocks):
         raise ContractError("Final block count mismatch")
-    if int(manifest.get("chunk_count", -1)) != len(chunks):
-        raise ContractError("Final chunk count mismatch")
     return manifest

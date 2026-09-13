@@ -3,14 +3,11 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from seed_pipeline.config.paths import PROCESSED_EVALUATION_DIR, PROJECT_ROOT
+from seed_pipeline.config.paths import PROCESSED_EVALUATION_DIR
 from seed_pipeline.evaluation.query_embedding_cache import (
     QueryEmbeddingCache,
     default_query_embedding_cache_path,
 )
-
-DEFAULT_COMPOSE_FILE = PROJECT_ROOT.parent / "docker-compose.yml"
-DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 
 DEFAULT_EVAL_JSONL = PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl"
 

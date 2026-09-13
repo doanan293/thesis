@@ -1,12 +1,10 @@
 # Local + Kaggle workflow
 
-Workflow này giữ build, Qdrant, retrieval và metrics ở local; Kaggle chỉ chạy
-các model-heavy stage. Với benchmark `hybrid + rerank`, local chuẩn bị hoàn tất
-candidate bundle trước rồi Kaggle chỉ chấm reranker trên 30 candidates/query.
+Build, import, retrieve và metrics chạy ở local; Kaggle chạy embedding (bundle và query) và reranker.
 
 ## 1. Kiểm tra môi trường
 
-Khai báo các profile Kaggle trong `.env`:
+Khai báo profile Kaggle trong `seed-pipeline/.env`:
 
 ```dotenv
 KAGGLE_ACCOUNT_DEFAULT=acc1
@@ -17,232 +15,75 @@ KAGGLE_ACC2_USERNAME=account_phu_2
 KAGGLE_ACC2_API_TOKEN=token_acc2
 ```
 
-Thêm account mới bằng cặp biến `KAGGLE_ACC3_USERNAME` và
-`KAGGLE_ACC3_API_TOKEN`. Runtime, model và corpus dùng chung từ
-`KAGGLE_SHARED_OWNER`; kernel, input và checkpoint thuộc account được chọn.
-Khi chạy ở profile mode, production stage tự quét mọi profile `accN` đã cấu
-hình và tìm checkpoint tương thích có nhiều record hoàn tất nhất. Nếu source
-tiến bộ hơn target, pipeline mirror checkpoint sang owner target, chờ trạng
-thái `READY`, validate lại rồi mới submit kernel; dataset source không bị sửa
-hoặc xóa.
-Kiểm tra từng account trước khi chạy:
-
 ```bash
 uv sync
 uv run seed doctor --backend kaggle --kaggle-account acc1
-uv run seed doctor --backend kaggle --kaggle-account acc2
-docker compose -f ../docker-compose.yml up -d qdrant
+docker compose -f ../docker-compose.yml up -d postgres qdrant llama-embedding
 ```
 
-## 2. Build và evaluation ở local
+Production stage ở profile mode tự tìm checkpoint tương thích trong mọi profile `accN` và mirror sang owner đích trước khi submit kernel.
+
+## 2. Build, validate và export bundle
 
 ```bash
 uv run seed build
 uv run seed validate
-uv run seed evaluation build
+uv run seed bundle export --output data/heavy/bundles/formulary --force
 ```
 
-## 3. Embed corpus trên Kaggle, upload vector ở local
-
-Dry-run để kiểm tra reconciliation:
+## 3. Embed bundle trên Kaggle
 
 ```bash
-uv run seed embed chunks \
-  --backend kaggle \
-  --model qwen3-embedding:4b-fp16 \
-  --dry-run
+uv run seed bundle embed --bundle data/heavy/bundles/formulary --backend kaggle \
+  --model qwen3-embedding:4b-fp16 --kaggle-account acc1 --dry-run
+uv run seed bundle embed --bundle data/heavy/bundles/formulary --backend kaggle \
+  --model qwen3-embedding:4b-fp16 --kaggle-account acc1
 ```
 
-Chạy thật bằng cùng command không có `--dry-run`; chạy lại để resume nếu job bị
-ngắt. Sau khi bundle corpus đã sync về local:
+Lệnh stream log kernel, tải artifact về và merge vào `data/heavy/cache/text_embeddings/qwen3_embedding_4b_fp16.jsonl`. Exit code 3 nghĩa là kernel chưa xong hoặc hết budget: chạy lại đúng lệnh để resume từ checkpoint. Khi cache đủ, lệnh ghi `embeddings/qwen3_embedding_4b_fp16.jsonl` vào bundle. `Ctrl-C` chỉ dừng theo dõi; kernel vẫn chạy và lần chạy sau tự attach.
+
+## 4. Import vào backend
 
 ```bash
-uv run seed vectors upload --model qwen3-embedding:4b-fp16
+cd ../backend
+uv run pharma-agent migrate
+uv run pharma-agent corpus import ../seed-pipeline/data/heavy/bundles/formulary --collection formulary --publish
+uv run pharma-agent corpus releases --collection formulary
+cd ../seed-pipeline
 ```
 
-## 4. Pre-embed query trên Kaggle
+## 5. Evaluation dataset và retrieval
 
 ```bash
-uv run seed embed queries \
-  --backend kaggle \
-  --model qwen3-embedding:4b-fp16
+uv run seed evaluation build --bundle data/heavy/bundles/formulary
+uv run seed embed queries --backend kaggle --model qwen3-embedding:4b-fp16 --kaggle-account acc1
+uv run seed retrieve --run backend-bm25-k30 --retriever bm25 --candidate-k 30
+uv run seed retrieve --run backend-hybrid-qwen4b-p50-k30-rrf2 --retriever hybrid \
+  --prefetch-k 50 --candidate-k 30 --rrf-k 2
+uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --top-k 30
 ```
 
-Lệnh này tự động stream Kaggle kernel logs qua SSE trong cùng terminal, chờ
-kernel hoàn tất, rồi tải artifact về local. Stream chỉ kết nối khi kernel bắt
-đầu chạy và tự reconnect khi Kaggle trả lỗi tạm thời; status polling vẫn tiếp
-tục độc lập. Không cần chạy riêng `kaggle kernels logs -f`.
+Thêm `--limit 50` và tên run `...-smoke50` để chạy thử trước.
 
-Có thể nhấn `Ctrl-C` bất kỳ lúc nào để dừng theo dõi ở máy local; kernel trên
-Kaggle vẫn chạy. Lệnh sẽ in lại chính command cần chạy để attach/recover. Chạy
-lại đúng command sau khi kernel hoàn tất sẽ tự nhận diện kernel theo identity,
-tải output về local và tiếp tục checkpoint nếu output còn partial. Không xóa
-kernel trên UI nếu muốn giữ khả năng recover.
-
-Checkpoint được lưu theo model/runtime lineage. Khi input thay đổi, các query
-hoặc candidate pair không đổi được tái sử dụng; record mới hoặc có hash thay
-đổi mới chạy inference, còn record đã bị xóa sẽ không xuất hiện trong artifact
-canonical. Journal là append-only nên resume không rewrite toàn bộ embedding
-file. Với model topology replicated, worker gửi work đồng thời tới cả hai
-server/GPU; topology sharded dùng một server thấy cả hai GPU.
-
-Progress log có các nhóm `reusable`, `changed_or_new`, `deleted`, cùng
-`recent_rate` và `average_rate`. Nếu kernel bị ngắt hoặc hết budget, lần chạy
-lại đúng command sẽ tiếp tục từ các record đã commit trong checkpoint.
-
-Model server Kaggle dùng policy theo workload. `--cache-ram 0` và
-`--no-cache-idle-slots` chỉ tắt snapshot prompt cross-slot trên host (nguồn
-phình RAM của rerank dài); chúng không tắt journal/cache kết quả của pipeline.
-Với Qwen completion rerank, worker luôn gửi `cache_prompt=true` để llama.cpp
-giữ prefix trong slot đang sống. Thay đổi policy sẽ làm runtime profile cũ mất
-hiệu lực và benchmark lại. Worker giám sát toàn bộ vòng đời
-server, ghi `server-<n>.log`, và phân biệt lỗi server recoverable với lỗi dữ
-liệu/model fatal. Với lỗi recoverable, artifact partial cùng journal được seal
-và checkpoint tự động; lần chạy sau chỉ xử lý phần còn thiếu. Nếu checkpoint
-không tăng số record hoàn thành, orchestrator dừng với lỗi rõ ràng thay vì lặp
-vô hạn.
-
-Worker cũng ghi diagnostic files cạnh artifact: `telemetry.json` chứa GPU
-utilization, process RSS peak theo replica, latency và retry counters;
-`server-<n>.log` chỉ giữ phần
-đuôi log trong giới hạn kích thước. Các file này không được merge vào cache
-embedding hoặc score.
-
-Sau khi query-embedding file đã merge vào
-`data/heavy/cache/query_embeddings/<model-slug>.jsonl`, file này được dùng lại cho
-dense và hybrid. BM25-only không cần query embeddings. Ba baseline retrieval
-(`bm25`, `dense`, `hybrid`) đều chạy local; xem đầy đủ command trong
-[local-only workflow](workflow-local-only.md).
-
-## 5. Chuẩn bị hybrid candidate bundle ở local
-
-Pipeline chuẩn cho rerank là:
-
-```text
-dense top 50 + BM25 top 50
-  -> RRF (rrf-k=2), giữ top 30
-  -> candidate bundle hoàn chỉnh ở local
-  -> Kaggle reranker inference trên 30 candidates/query
-  -> metrics baseline và reranked ở local
-```
-
-Chạy retrieval và baseline metrics:
+## 6. Rerank trên Kaggle và metrics
 
 ```bash
-uv run seed retrieve \
-  --run hybrid-qwen4b-p50-k30-rrf2 \
-  --retriever hybrid \
-  --model qwen3-embedding:4b-fp16 \
-  --prefetch-k 50 \
-  --candidate-k 30 \
-  --rrf-k 2
-
-uv run seed metrics \
-  --run hybrid-qwen4b-p50-k30-rrf2 \
-  --top-k 30
+uv run seed rerank --run backend-hybrid-qwen4b-p50-k30-rrf2 --backend kaggle \
+  --model qwen3-reranker:4b-fp16 --kaggle-account acc2 --dry-run
+uv run seed rerank --run backend-hybrid-qwen4b-p50-k30-rrf2 --backend kaggle \
+  --model qwen3-reranker:4b-fp16 --kaggle-account acc2
+uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --model qwen3-reranker:4b-fp16 --top-k 30
 ```
 
-Candidate artifact phải complete trước khi submit rerank. Kaggle không embed
-query, không truy cập Qdrant, không chạy lại RRF và không tính metrics.
-
-## 6. Chỉ chạy reranker trên Kaggle
-
-Kiểm tra dependency/checkpoint trước khi submit:
-
-```bash
-uv run seed rerank \
-  --run hybrid-qwen4b-p50-k30-rrf2 \
-  --backend kaggle \
-  --model qwen3-reranker:0.6b-fp16 \
-  --kaggle-account acc2 \
-  --dry-run
-```
-
-Chạy thật:
-
-```bash
-uv run seed rerank \
-  --run hybrid-qwen4b-p50-k30-rrf2 \
-  --backend kaggle \
-  --model qwen3-reranker:0.6b-fp16 \
-  --kaggle-account acc2
-```
-
-Ví dụ chuyển quota sang account thứ ba:
-
-```bash
-uv run seed rerank \
-  --run hybrid-qwen4b-p50-k30-rrf2 \
-  --backend kaggle \
-  --model qwen3-reranker:8b-fp16 \
-  --kaggle-account acc3
-```
-
-Không cần flag resume riêng. `--dry-run` báo source và mirror dự kiến nhưng
-không publish dataset hoặc submit kernel; `--force` bỏ qua cả checkpoint local,
-target và cross-account inheritance. Không chạy cùng một logical target ở hai
-terminal; job lock local chỉ cho phép một handoff/submission tại một thời điểm.
-
-Các terminal khác có thể chạy job/run khác đồng thời bằng `--kaggle-account
-acc1`, `acc2`, `acc3`, ...; không chạy cùng một logical target ở hai terminal.
-
-Rerank stage chỉ nhận candidate JSONL cùng manifest. Chạy lại cùng command để
-resume các pair còn thiếu; global cache được version theo model SHA/prompt
-contract, sau đó score được finalize thành variant bất biến trong run. Đổi sang
-model rerank khác sẽ tạo variant khác, không ghi đè candidates hoặc score cũ.
-
-Input của mỗi Kaggle stage hiện dùng contract version 2; riêng rerank dùng
-contract version 3. Với rerank, candidate
-JSONL và manifest được publish trong cùng một input bundle có fingerprint tổng
-hợp, nhưng worker vẫn kiểm tra SHA-256 riêng của từng file sau khi Kaggle mount
-dataset. Lần chạy đầu tiên sau khi cập nhật contract sẽ tự tạo lineage/job mới;
-không cần xóa dataset hoặc kernel cũ.
-
-Sau khi thay đổi runtime hoặc prompt contract, kernel đang chạy không tự nhận
-code mới. Hãy để kernel cũ hoàn tất hoặc dừng nó, rồi submit lại bằng command
-mới. Contract mới tạo lineage/variant mới; không trộn score từ contract cũ.
-
-## 7. Runtime profiling trên Kaggle
-
-Lệnh production tự benchmark workload tương ứng khi profile chưa tồn tại, sau
-đó lưu profile vào `data/heavy/runtime_kaggle_profiles/`. Các lần chạy sau dùng lại profile.
-
-```bash
-uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend kaggle --model qwen3-reranker:0.6b-fp16
-```
-
-Nếu benchmark không tạo được artifact hoàn chỉnh, lệnh production dừng với
-kernel reference và log tail để chẩn đoán; không dùng profile mặc định.
-
-## 8. Metrics offline ở local
-
-Sau khi score file đã merge về local:
-
-```bash
-uv run seed metrics \
-  --run hybrid-qwen4b-p50-k30-rrf2 \
-  --top-k 30
-```
-
-Lệnh trên tạo/reuse baseline và report cho mọi reranker variant hoàn chỉnh từ
-cùng 30 candidates. Dùng `--model MODEL` hoặc `--variant VARIANT_PREFIX` để
-chọn một nhóm/variant. Reports được lưu tự động theo model, variant và metrics
-identity; stage này không gọi Kaggle, model server hoặc Qdrant.
+Kaggle không truy cập Postgres/Qdrant và không tính metrics; rerank chỉ nhận candidate JSONL cùng manifest.
 
 ## Troubleshooting
 
-- Credential/owner lỗi: sửa `.env`, rồi chạy lại `seed doctor --backend kaggle`.
-- Job pending hoặc hết budget: chạy lại đúng stage để reconciler resume.
-- Candidate manifest không tương thích: dùng identity/run mới và không trộn
-  artifact từ job khác. Score cache khác candidate set sẽ báo thiếu pair trước
-  khi metrics chạy.
-- `no mounted file found`: dataset input chưa được mount hoặc thiếu file có đúng
-  tên; chạy lại sau khi dependency đạt trạng thái `READY`.
-- `checksum mismatch`: file đã mount nhưng không trùng SHA-256 của bundle; không
-  bỏ qua lỗi này, hãy để reconciler publish lại đúng version input dataset.
-- `multiple checksum matches`: nhiều dataset mount có cùng filename và nội dung;
-  gỡ dependency thừa rồi chạy lại để worker chỉ còn một file khớp.
-- `--top-k` lớn hơn 30: retrieve lại với candidate depth tương ứng.
+- Credential/owner lỗi: sửa `.env`, chạy lại `seed doctor --backend kaggle`.
+- `checksum mismatch` hoặc `no mounted file found`: dataset input chưa `READY` hoặc lệch; chạy lại để reconciler publish đúng version.
+- `Expected hits from exactly one published release`: chưa import/publish release, hoặc `retrieval.collections` trỏ sai collection.
+- `pinned to release`: release hiện hành đổi giữa chừng; dùng tên run mới.
+- `Query embedding cache ... is missing`: chạy lại `seed embed queries --backend kaggle` với đúng file evaluation và model embedding của backend.
+- `--top-k` lớn hơn `candidate-k`: retrieve lại với candidate depth đủ lớn.
 
-Chi tiết command và semantics: [CLI reference](cli-reference.md). Chính sách
-artifact downstream: [Downstream](downstream.md).
+Chi tiết lệnh: [CLI reference](cli-reference.md). Chính sách bàn giao: [Downstream](downstream.md).

@@ -70,7 +70,6 @@ RETRIEVAL_EVAL_RUNS_DIR = RETRIEVAL_EVAL_DIR
 DATA_CACHE_DIR = HEAVY_DATA_DIR / "cache"
 QUERY_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "query_embeddings"
 RERANK_SCORE_CACHE_DIR = DATA_CACHE_DIR / "rerank_scores"
-VECTOR_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "vector_embeddings"
 TEXT_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "text_embeddings"
 
 WORK_DIR = HEAVY_DATA_DIR / ".work"
@@ -84,17 +83,12 @@ GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 EVALUATION_CHUNKS_PATH = WORK_DIR / "evaluation-chunks" / "chunks.jsonl"
 BACKEND_ENV_FILE = PROJECT_ROOT.parent / "backend" / ".env"
 RAG_FINAL_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
-RAG_FINAL_CHUNKS_PATH = RAG_FINAL_DIR / "chunks.jsonl"
 RAG_FINAL_MANIFEST_PATH = RAG_FINAL_DIR / "manifest.json"
 RAG_FINAL_VALIDATION_PATH = RAG_FINAL_DIR / "validation_report.json"
 
 
 def retrieval_run_roots(run: str) -> tuple[Path, Path]:
     return RETRIEVAL_EVAL_DIR / run, HEAVY_RETRIEVAL_EVAL_DIR / run
-
-
-def chunk_embedding_bundle_dir(model: str, corpus_sha256: str) -> Path:
-    return VECTOR_EMBEDDING_CACHE_DIR / require_model(model).slug / corpus_sha256
 
 
 def query_embedding_bundle_dir(model: str, evaluation_sha256: str) -> Path:

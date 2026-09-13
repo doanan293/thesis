@@ -12,7 +12,6 @@ from seed_pipeline.cli.commands.rerank import rerank
 from seed_pipeline.cli.commands.retrieve import retrieve
 from seed_pipeline.cli.commands.source import source_app
 from seed_pipeline.cli.commands.validate import validate
-from seed_pipeline.cli.commands.vectors import vectors_app
 from seed_pipeline.cli.runtime import CliState
 from seed_pipeline.config.environment import load_project_env
 
@@ -44,7 +43,6 @@ app.command("build")(build)
 app.command("validate")(validate)
 app.add_typer(evaluation_app, name="evaluation")
 app.add_typer(embed_app, name="embed")
-app.add_typer(vectors_app, name="vectors")
 app.add_typer(source_app, name="source")
 app.add_typer(bundle_app, name="bundle")
 app.command("retrieve")(retrieve)

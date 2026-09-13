@@ -33,10 +33,6 @@ from seed_pipeline.config.paths import (
 from seed_pipeline.corpus.canonical.build_canonical_rag import process_canonical_rag
 from seed_pipeline.corpus.crawling.integrate_ankhang import integrate_ankhang_corpus
 from seed_pipeline.corpus.crawling.parse_html import parse_html_tree
-from seed_pipeline.corpus.metadata.build_rag_metadata import (
-    compile_unified_chunks,
-    write_unified_chunks,
-)
 from seed_pipeline.corpus.processing.clean_markdown_corpus import (
     process_corpus as clean_corpus,
 )
@@ -49,7 +45,6 @@ from seed_pipeline.corpus.validation.validate_final_rag import (
     read_jsonl,
     run_deep_audit,
     validate_final_rag,
-    validate_unified_chunks,
 )
 
 
@@ -104,7 +99,7 @@ def _digest_payload(config: BuildConfig) -> dict[str, Any]:
             RESOURCES_DIR / "vietnamese_valid_syllables.json"
         ),
         "max_chars": config.max_chars,
-        "schema_version": "rag-final-v2",
+        "schema_version": "rag-final-v3",
     }
 
 
@@ -223,17 +218,9 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         paths.canonical_dir / "blocks.jsonl",
         paths.candidate_final_dir / "blocks.jsonl",
     )
-    unified_chunks, _ = compile_unified_chunks(
-        sections_path=paths.source_final_dir / "sections.jsonl",
-        chunks_path=paths.source_final_dir / "chunks.jsonl",
-        glossary_path=config.glossary_path,
-    )
-    write_unified_chunks(unified_chunks, paths.candidate_final_dir / "chunks.jsonl")
-    unified_report = validate_unified_chunks(paths.candidate_final_dir / "chunks.jsonl")
     combined = combine_validation_reports(
         source_report=source_report.to_dict(),
         deep_report=deep_report.to_dict(),
-        unified_report=unified_report.to_dict(),
     )
     (paths.candidate_final_dir / "validation_report.json").write_text(
         json.dumps(combined, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

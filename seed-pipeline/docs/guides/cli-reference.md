@@ -9,178 +9,85 @@ uv run seed
 Các command chính:
 
 ```text
-seed doctor
+seed doctor --backend local|kaggle
 seed build
 seed validate
-seed evaluation build
-seed embed chunks --backend local|kaggle
+seed bundle export --output DIR
+seed bundle parity --bundle DIR --old-chunks FILE
+seed bundle embed --bundle DIR --backend local|kaggle --model MODEL
+seed evaluation build [--bundle DIR]
+seed evaluation rejudge-current --dense-run NAME --hybrid-run NAME
 seed embed queries --backend local|kaggle
-seed vectors upload
 seed retrieve --run NAME
-seed rerank --run NAME --backend local|kaggle
+seed rerank --run NAME --backend local|kaggle --model MODEL
 seed metrics --run NAME
 ```
 
-Global `--json` emits a machine-readable envelope and `--debug` enables
-tracebacks. Dùng `uv run seed COMMAND --help` để xem default thực tế.
+Global `--json` in envelope máy đọc được, `--debug` bật traceback. `uv run seed COMMAND --help` cho default thực tế.
+
+## Bundle
+
+| Command | Việc |
+| --- | --- |
+| `seed bundle export --output DIR [--rag-final-dir DIR] [--glossary FILE] [--mappings FILE] [--force]` | Đọc `rag-final/{sections,blocks,manifest}` và resources, xuất `knowledge-bundle/v1`, validate bằng `read_bundle` trước khi thay `DIR` |
+| `seed bundle parity --bundle DIR --old-chunks FILE [--report FILE] [--max-chars N]` | So `chunk_section` của backend với `chunks.jsonl` của build cũ (chunk_text, trang, hydrate_strategy, embedding_text, term_annotations, colloquial_mapping, thứ tự); exit 1 nếu lệch |
+| `seed bundle embed --bundle DIR --backend local\|kaggle --model MODEL [--cache FILE] [--work-dir DIR] [--kaggle-account accN] [--dry-run] [--force]` | Gom cặp `(embedding_text_sha256, embedding_text)` duy nhất, embed phần thiếu, ghi `embeddings/<model_slug>.jsonl` và manifest; exit 3 nếu Kaggle chưa xong (chạy lại để resume) |
+
+`--model` của `bundle embed` phải trùng `PHARMA_RETRIEVAL__EMBEDDING__MODEL` của backend, ví dụ `qwen3-embedding:4b-fp16`. Cache nằm ở `data/heavy/cache/text_embeddings/<model-slug>.jsonl`; Kaggle dùng dataset input `seed-pipeline-bundle`, stage `corpus-embed` contract version 3.
 
 ## Run, retriever và model
 
-`--run` dùng cùng một tên dưới hai cây: metadata ở
-`data/retrieval_eval/<run-name>/` và payload lớn ở
-`data/heavy/retrieval_eval/<run-name>/`. Retrieval, rerank và metrics dùng tên
-này để mở lại cùng một workspace và các artifact đã đóng băng; tên run không tự
-chọn thuật toán.
+`--run` dùng cùng một tên dưới hai cây: metadata ở `data/retrieval_eval/<run>/` và payload lớn ở `data/heavy/retrieval_eval/<run>/`. Retrieve, rerank và metrics mở lại cùng workspace và artifact đã đóng băng.
 
-`--retriever` độc lập chọn cách tạo candidates: `bm25`, `dense` hoặc `hybrid`.
-`--model` của `seed retrieve` chọn embedding identity và Qdrant collection
-tương ứng. BM25 không embed query nhưng vẫn resolve collection đó, vì các điểm
-trong collection có BM25 sparse vector. `--model` của `seed rerank` là
-reranker model, không phải embedding model. `seed metrics` chỉ đọc artifact
-đã có và không chạy model.
+`seed retrieve` dựng retrieval stack của backend bằng `build_retrieval_service(settings, embedder=...)`:
 
-| Run name | Retriever | Important parameters |
-| --- | --- | --- |
-| `bm25-qwen06b-k30` | `bm25` | embedding collection `qwen06b`, `candidate-k=30` |
-| `dense-qwen06b-k30` | `dense` | embedding `qwen06b`, `candidate-k=30` |
-| `hybrid-qwen06b-p50-k30-rrf2` | `hybrid` | embedding `qwen06b`, `prefetch-k=50`, `candidate-k=30`, `rrf-k=2` |
+- Settings đọc từ `--backend-env-file` (mặc định `../backend/.env`), gồm Postgres, Qdrant, tên và số chiều của model embedding.
+- Lệnh ghi đè `retrieval.mode`, `candidate_k`, `prefetch_k`, `rrf_k`, `collections = [--collection]` (mặc định `formulary`), tắt rerank (`protocol = none`) và Langfuse.
+- `dense` và `hybrid` dùng vector query có sẵn trong cache của `seed embed queries` (`--query-embeddings`, mặc định `data/heavy/cache/query_embeddings/<model-slug>.jsonl` theo `PHARMA_RETRIEVAL__EMBEDDING__MODEL`). Thiếu vector của query nào thì lệnh dừng trước khi retrieve; evaluation không bao giờ embed query qua endpoint. `bm25` không cần vector query.
+- Phải có release đã import và publish; release lấy từ query đầu tiên và mọi hit sau phải cùng release.
+- Run identity: evaluation path/sha256, collection Qdrant, `embedding_model`, `query_embeddings_sha256`, `retriever`, K, `limit`, `release_id`, `chunker_version`.
 
-Run identity còn đóng băng evaluation path/checksum, collection, query-embedding
-digest, limit và các K parameters. Khi một identity field thay đổi, nên dùng
-tên run mới thay vì dùng `--force` một cách tùy ý.
-
-## Retrieval modes
-
-| Retriever | Query embeddings | Qdrant vectors | Candidate semantics |
+| Retriever | Query embeddings | Qdrant | Candidate semantics |
 | --- | --- | --- | --- |
-| `bm25` | Không dùng | BM25 sparse | `candidate-k` là direct retrieval limit |
-| `dense` | Bắt buộc, pre-embedded | Dense | `candidate-k` là direct retrieval limit |
-| `hybrid` | Bắt buộc, pre-embedded | Dense + BM25 sparse | `prefetch-k` cho mỗi nhánh; `candidate-k` sau RRF |
-
-BM25 không resolve query-embedding bundle. Dense và hybrid tự resolve bundle
-theo evaluation file hash và embedding model, rồi validate completion, identity
-và vector dimension trước khi query.
-
-## Retrieval K parameters
-
-```text
---prefetch-k INTEGER
---candidate-k INTEGER
---rrf-k INTEGER
-```
-
-- `--prefetch-k`: số kết quả lấy từ từng nhánh dense và BM25 trước hybrid fusion;
-  chỉ hợp lệ với `--retriever hybrid`.
-- `--candidate-k`: số candidates cuối được ghi vào retrieval artifact. Với dense
-  và BM25 đây là retrieval limit; với hybrid đây là output limit sau RRF.
-- `--rrf-k`: constant trong công thức RRF, mặc định `2`; không phải số
-  candidates giữ lại.
-
-Benchmark hybrid chuẩn:
+| `bm25` | Không dùng | BM25 sparse | `candidate-k` là retrieval limit |
+| `dense` | Bắt buộc, từ cache | dense | `candidate-k` là retrieval limit |
+| `hybrid` | Bắt buộc, từ cache | dense + BM25 sparse, RRF | `prefetch-k` mỗi nhánh, `candidate-k` sau RRF |
 
 ```bash
 uv run seed retrieve \
-  --run hybrid-qwen06b-p50-k30-rrf2 \
+  --run backend-hybrid-qwen4b-p50-k30-rrf2 \
   --retriever hybrid \
-  --model qwen3-embedding:0.6b-fp16 \
   --prefetch-k 50 \
   --candidate-k 30 \
   --rrf-k 2
 ```
 
-Nếu hybrid bỏ qua `--prefetch-k`, effective value bằng `candidate-k`. Value này
-được lưu trong run identity và candidate manifest. Run cũ không có field này
-được đọc theo cùng fallback để bảo đảm tương thích.
+Candidate `chunk_id` là nhãn vị trí `<section_key>:chunk-<ordinal:03d>`, `document_text` là `embedding_text` của chunk (dùng cho rerank).
 
 ## Rerank và metrics
 
-`seed rerank` chỉ đọc complete candidate bundle của run. Với Kaggle backend,
-stage chỉ load reranker model và score candidate pairs; không embed, retrieve,
-truy cập Qdrant hoặc tính metrics. Rerank gắn score vào run hiện có, không chạy
-lại retrieval và không tạo một retrieval run thứ hai.
-
-Ở profile mode (`--kaggle-account accN`), rerank và query/corpus production
-stages tự tìm checkpoint tương thích trong các profile `accN`, chọn completion
-lớn nhất và chỉ mirror khi source có tiến bộ strict hơn target. Mirror dùng
-credential riêng của target, source dataset giữ nguyên; target phải `READY` và
-được validate lại trước khi kernel submit. `--dry-run` chỉ báo kế hoạch, còn
-`--force` không thực hiện inheritance.
+`seed rerank` chỉ đọc complete candidate bundle của run; với Kaggle, stage chỉ load reranker và chấm candidate pairs. Mỗi lần rerank hoàn tất tạo một score variant bất biến dưới run.
 
 ```bash
-uv run seed rerank \
-  --run hybrid-qwen06b-p50-k30-rrf2 \
-  --backend local \
-  --model qwen3-reranker:0.6b-fp16
-
-uv run seed metrics \
-  --run hybrid-qwen06b-p50-k30-rrf2 \
-  --top-k 30
+uv run seed rerank --run backend-hybrid-qwen4b-p50-k30-rrf2 --backend kaggle --model qwen3-reranker:4b-fp16 --kaggle-account acc2
+uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --top-k 30
+uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --model qwen3-reranker:4b-fp16 --top-k 30
 ```
 
-Một run dùng chung candidate bundle bất biến cho mọi reranker. Mỗi lần rerank
-hoàn tất tạo một score variant bất biến dưới run; đổi model, GGUF SHA hoặc prompt
-contract sẽ tạo variant mới. Không cần truyền `--output-dir`.
+Metrics gồm Hit@3/5/10/30, MRR, và với `answer_mode=multi_required`: Multi-section Recall@K, Multi-all-hit@K. `--top-k` không được lớn hơn `candidate-k`.
 
-Metrics mặc định tạo/reuse baseline và report cho tất cả reranker variants đã
-hoàn tất. Có thể lọc theo model hoặc đúng variant:
+`seed embed queries --backend local|kaggle --model MODEL` tạo cache vector query (`data/heavy/cache/query_embeddings/<model-slug>.jsonl`) mà `seed retrieve` dùng cho `dense` và `hybrid`; `--model` phải trùng model embedding của backend. Candidate `document_text` là `embedding_text` của hit, đúng văn bản reranker của benchmark cũ chấm.
 
-```bash
-uv run seed metrics --run hybrid-qwen06b-p50-k30-rrf2 --top-k 30
-uv run seed metrics --run hybrid-qwen06b-p50-k30-rrf2 \
-  --model qwen3-reranker:0.6b-fp16 --top-k 30
-uv run seed metrics --run hybrid-qwen06b-p50-k30-rrf2 \
-  --variant VARIANT_SHA256_PREFIX --top-k 30
-```
+## Runtime profiling trên Kaggle
 
-`--model` và `--variant` loại trừ nhau. `--output-dir` của rerank/metrics còn
-được chấp nhận tạm thời cho script cũ nhưng chỉ phát cảnh báo; output chuẩn
-luôn do run tự sinh. Metrics gồm:
+Stage production tự benchmark workload một lần nếu chưa có profile hợp lệ và lưu dưới `data/heavy/runtime_kaggle_profiles/`; profile mất hiệu lực khi model, runtime, topology hoặc search space đổi. Lỗi benchmark dừng pipeline.
 
-- Hit@3, Hit@5, Hit@10, Hit@30.
-- MRR.
-- Với `answer_mode=multi_required`: Multi-section Recall@3/5/10/30 và
-  Multi-all-hit@3/5/10/30.
-
-`--top-k` không được lớn hơn `candidate-k` của run identity.
-
-### Runtime profiling
-
-Khi chạy Kaggle production, hệ thống tự benchmark workload tương ứng đúng một
-lần nếu chưa có profile hợp lệ. Profile được lưu dưới `data/heavy/runtime_kaggle_profiles/`
-và các lần sau sẽ tái sử dụng; profile bị vô hiệu khi model, runtime, topology
-hoặc search space thay đổi. Benchmark luôn dùng 512 mẫu và lỗi benchmark sẽ
-dừng pipeline, không rơi về profile mặc định.
-
-Mỗi level trong report có batch size, concurrency, item count, input
-characters, elapsed time, throughput, status và error category. Level lỗi vẫn
-được ghi để so sánh; recommendation chỉ chọn từ level hợp lệ.
-
-## Artifacts và exit codes
-
-Candidate, rerank score và metrics artifacts được publish thành bundle có
-`manifest.json`. Candidate bundle dùng chung tại `candidates/`; rerank bundles
-được lưu theo `rerank/<model-slug>/<variant-id>/`, còn reports theo
-`reports/baseline/<metrics-id>/` hoặc
-`reports/rerank/<model-slug>/<variant-id>/<metrics-id>/`.
-
-Global corpus/query embeddings vẫn là cache JSONL dưới `data/heavy/cache/`. Rerank execution cache cũng
-được version theo model SHA và prompt contract:
-
-```text
-data/heavy/cache/vector_embeddings/<model-slug>.jsonl
-data/heavy/cache/query_embeddings/<model-slug>.jsonl
-data/heavy/cache/rerank_scores/<model-slug>/<execution-identity>.jsonl
-```
-
-Mỗi record có checksum; cache resume theo key, còn run-owned bundle là nguồn
-artifact chuẩn và không bị ghi đè bởi model khác.
-Retrieval, rerank và metrics dùng chung workspace named qua `--run NAME`. Không trộn artifact candidate hoặc
-input giữa các run/model/evaluation identity khác nhau.
+## Exit codes
 
 | Code | Meaning |
 | ---: | --- |
 | 0 | Stage completed successfully |
-| 1 | Runtime or validation failure |
+| 1 | Runtime or validation failure (bao gồm parity lệch) |
 | 2 | Invalid CLI usage |
 | 3 | Resumable incomplete stage |
 | 130 | Interrupted by the operator |

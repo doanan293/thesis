@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Protocol
 
 from seed_pipeline.cache.jsonl_records import merge_records
-from seed_pipeline.config.paths import WORK_DIR, query_embedding_bundle_dir
+from seed_pipeline.config.paths import (
+    COMPOSE_FILE,
+    GGUF_ROOT,
+    WORK_DIR,
+    query_embedding_bundle_dir,
+)
 from seed_pipeline.evaluation.artifact_contracts import canonical_sha256
 from seed_pipeline.evaluation.preload_query_embeddings import preload_embeddings
 from seed_pipeline.evaluation.query_embedding_artifact import (
@@ -25,10 +30,6 @@ from seed_pipeline.integrations.kaggle.job_lock import (
 from seed_pipeline.runtime.catalog import ModelKind, require_model
 from seed_pipeline.runtime.client import LlamaCppClient
 from seed_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
-from seed_pipeline.vector_store.ingest_vectors import (
-    DEFAULT_COMPOSE_FILE,
-    DEFAULT_GGUF_ROOT,
-)
 
 
 @dataclass(frozen=True)
@@ -81,8 +82,8 @@ class LocalQueryEmbeddingBackend:
     def __init__(
         self,
         *,
-        compose_file: Path = DEFAULT_COMPOSE_FILE,
-        gguf_root: Path = DEFAULT_GGUF_ROOT,
+        compose_file: Path = COMPOSE_FILE,
+        gguf_root: Path = GGUF_ROOT,
     ):
         self.compose_file = compose_file
         self.gguf_root = gguf_root
@@ -185,7 +186,7 @@ class KaggleQueryEmbeddingBackend:
             benchmark_stage=StageName.QUERY_EMBED_BENCHMARK.value,
             model=request.model,
             input_path=request.evaluation_path,
-            gguf_root=DEFAULT_GGUF_ROOT,
+            gguf_root=GGUF_ROOT,
             budget_seconds=request.budget_seconds,
             dry_run=request.dry_run,
             force=request.force,
@@ -203,7 +204,7 @@ class KaggleQueryEmbeddingBackend:
             model=request.model,
             input_path=request.evaluation_path,
             output_dir=remote_dir,
-            gguf_root=DEFAULT_GGUF_ROOT,
+            gguf_root=GGUF_ROOT,
             force=request.force,
             check_only=request.dry_run,
             budget_seconds=request.budget_seconds,

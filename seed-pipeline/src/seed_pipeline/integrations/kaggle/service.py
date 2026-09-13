@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from seed_pipeline.config.environment import PROJECT_ENV_FILE, load_project_env
-from seed_pipeline.config.paths import PROJECT_ROOT
+from seed_pipeline.config.paths import GGUF_ROOT, PROJECT_ROOT
 from seed_pipeline.integrations.kaggle.api import (
     KaggleCommandRunner,
     config_view_command,
@@ -43,7 +43,6 @@ from seed_pipeline.integrations.kaggle.workspace import unwind_on_sigterm
 from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate, canonical_sha256
 
 DEFAULT_ENV_PATH = PROJECT_ENV_FILE
-DEFAULT_GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 
 
 @dataclass(frozen=True)
@@ -206,7 +205,7 @@ def run_kaggle_stage(
     model: str,
     input_path: Path,
     output_dir: Path,
-    gguf_root: Path = DEFAULT_GGUF_ROOT,
+    gguf_root: Path = GGUF_ROOT,
     force: bool = False,
     check_only: bool = False,
     max_runs: int = 10,

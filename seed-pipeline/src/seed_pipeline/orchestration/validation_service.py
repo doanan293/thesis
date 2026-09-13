@@ -7,7 +7,6 @@ from typing import Any
 from seed_pipeline.artifacts.contract import validate_contract_directory
 from seed_pipeline.corpus.validation.validate_final_rag import (
     ValidationReport,
-    validate_unified_chunks,
     write_json_report,
     write_markdown_report,
 )
@@ -48,19 +47,16 @@ def run_validation(request: ValidationRequest) -> ValidationResult:
     else:
         try:
             manifest = validate_contract_directory(request.final_dir)
-            unified_report = validate_unified_chunks(request.final_dir / "chunks.jsonl")
         except (OSError, RuntimeError, ValueError) as exc:
             report = ValidationReport(ok=False, errors=[str(exc)])
         else:
             report = ValidationReport(
-                ok=unified_report.ok,
-                errors=list(unified_report.errors),
-                warnings=list(unified_report.warnings),
+                ok=True,
                 metrics={
                     "schema_version": manifest["schema_version"],
                     "build_id": manifest["build_id"],
                     "section_count": manifest["section_count"],
-                    "chunk_count": manifest["chunk_count"],
+                    "block_count": manifest["block_count"],
                 },
             )
 
