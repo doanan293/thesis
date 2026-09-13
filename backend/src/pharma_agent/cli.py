@@ -3,13 +3,24 @@
 import asyncio
 import json
 import sys
+import uuid
+from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 import typer
 
+from pharma_agent.application.corpus.import_bundle import ImportReport
 from pharma_agent.application.progress import EventType, ProgressEvent
+from pharma_agent.domain.corpus.bundle import BundleValidationError, read_bundle
+from pharma_agent.domain.corpus.models import ReleaseSummary
 from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy
+from pharma_agent.domain.shared.errors import DomainError
 from pharma_agent.infrastructure.composition import build_application
+from pharma_agent.infrastructure.corpus_factory import (
+    CorpusServices,
+    open_corpus_services,
+)
 from pharma_agent.infrastructure.langgraph.cleanup import delete_expired_checkpoints
 from pharma_agent.infrastructure.settings import Settings
 
@@ -222,3 +233,177 @@ def cleanup_checkpoints(
         delete_expired_checkpoints(settings.postgres.conninfo, retention_days=retention)
     )
     typer.echo(f"deleted {deleted} checkpoints older than {retention} days")
+
+
+corpus_app = typer.Typer(
+    help="Corpus: import knowledge bundle, quản lý release", no_args_is_help=True
+)
+app.add_typer(corpus_app, name="corpus")
+
+CorpusAction = Callable[[CorpusServices], Awaitable[None]]
+
+
+def _run_corpus(action: CorpusAction, settings: Settings | None = None) -> None:
+    try:
+        asyncio.run(_with_corpus_services(settings or Settings(), action))
+    except DomainError as exc:
+        typer.echo(f"!! {exc.code}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+async def _with_corpus_services(settings: Settings, action: CorpusAction) -> None:
+    async with open_corpus_services(settings) as services:
+        await action(services)
+
+
+def _echo_import(report: ImportReport) -> None:
+    release = report.release
+    published = " published" if report.published else ""
+    typer.echo(
+        f"{report.outcome.value}: {report.collection_key} release {release.number} "
+        f"{release.id} [{release.status.value}]{published}"
+    )
+    stats = release.stats
+    if stats is not None:
+        typer.echo(
+            f"chunks {stats.chunks} | embeddings cached {stats.embeddings_cached} "
+            f"bundle {stats.embeddings_from_bundle} computed {stats.embeddings_computed} "
+            f"| points new {stats.points_upserted} updated {stats.points_updated}"
+        )
+
+
+def _release_line(summary: ReleaseSummary) -> str:
+    release = summary.release
+    marker = "*" if summary.current else " "
+    published = release.published_at.isoformat() if release.published_at else "-"
+    return (
+        f"{marker} {summary.collection_key} #{release.number} {release.id} "
+        f"{release.status.value} chunks={summary.chunk_count} published={published}"
+    )
+
+
+@corpus_app.command("import")
+def corpus_import(
+    bundle_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        help="Thư mục knowledge bundle",
+    ),
+    collection: str = typer.Option(
+        ..., "--collection", help="Key của collection, phải trùng manifest"
+    ),
+    publish: bool = typer.Option(
+        False, "--publish", help="Đặt release mới làm release hiện hành"
+    ),
+) -> None:
+    """Import knowledge bundle thành một release mới."""
+    try:
+        bundle = read_bundle(bundle_dir)
+    except BundleValidationError as exc:
+        typer.echo(f"!! {exc.code}: {bundle_dir}", err=True)
+        for problem in exc.problems:
+            typer.echo(f"   - {problem}", err=True)
+        raise typer.Exit(code=2) from exc
+    if bundle.manifest.collection.key != collection:
+        typer.echo(
+            f"!! bundle collection is {bundle.manifest.collection.key}, not {collection}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    async def action(services: CorpusServices) -> None:
+        _echo_import(await services.importer(bundle, publish=publish))
+
+    _run_corpus(action)
+
+
+@corpus_app.command("releases")
+def corpus_releases(
+    collection: str | None = typer.Option(
+        None, "--collection", help="Lọc theo collection"
+    ),
+) -> None:
+    """Liệt kê release, trạng thái, số chunk và release hiện hành (*)."""
+
+    async def action(services: CorpusServices) -> None:
+        summaries = await services.releases.list_releases(collection)
+        if not summaries:
+            typer.echo("no releases")
+        for summary in summaries:
+            typer.echo(_release_line(summary))
+
+    _run_corpus(action)
+
+
+@corpus_app.command("publish")
+def corpus_publish(
+    release_id: uuid.UUID = typer.Argument(
+        ..., help="Id của release ở trạng thái ready"
+    ),
+) -> None:
+    """Trỏ release hiện hành của collection tới release này."""
+
+    async def action(services: CorpusServices) -> None:
+        release = await services.releases.publish(release_id)
+        typer.echo(f"published release {release.number} {release.id}")
+
+    _run_corpus(action)
+
+
+@corpus_app.command("rollback")
+def corpus_rollback(
+    collection: str = typer.Option(..., "--collection", help="Key của collection"),
+) -> None:
+    """Trỏ về release được publish liền trước."""
+
+    async def action(services: CorpusServices) -> None:
+        release = await services.releases.rollback(collection)
+        typer.echo(f"rolled back {collection} to release {release.number} {release.id}")
+
+    _run_corpus(action)
+
+
+@corpus_app.command("gc")
+def corpus_gc(
+    collection: str = typer.Option(..., "--collection", help="Key của collection"),
+    keep: int | None = typer.Option(
+        None,
+        "--keep",
+        min=0,
+        help="Số release gần nhất được giữ (mặc định từ settings)",
+    ),
+) -> None:
+    """Retire release cũ, dọn point Qdrant và chunk version không còn dùng."""
+    settings = Settings()
+    retained = keep if keep is not None else settings.corpus.gc_keep
+
+    async def action(services: CorpusServices) -> None:
+        report = await services.releases.gc(collection, retained)
+        typer.echo(
+            f"retired {len(report.retired)} releases (keep {retained}) | points updated "
+            f"{report.points_updated} deleted {report.points_deleted} | chunk versions "
+            f"deleted {report.purge.chunk_versions_deleted} kept "
+            f"{report.purge.chunk_versions_kept} | section revisions deleted "
+            f"{report.purge.section_revisions_deleted}"
+        )
+
+    _run_corpus(action, settings)
+
+
+@corpus_app.command("reindex")
+def corpus_reindex(
+    collection: str = typer.Option(..., "--collection", help="Key của collection"),
+) -> None:
+    """Dựng lại point Qdrant của các release chưa retire từ Postgres và embedding cache."""
+
+    async def action(services: CorpusServices) -> None:
+        report = await services.releases.reindex(collection)
+        typer.echo(f"points upserted {report.points_upserted}")
+        for release_id, count in report.release_points.items():
+            typer.echo(f"release {release_id}: {count} points")
+        for release_id in report.skipped:
+            typer.echo(f"skipped release {release_id} (other embedding model)")
+
+    _run_corpus(action)

@@ -131,3 +131,19 @@ def test_embedding_and_rerank_connection_settings(
     )
     assert configured.rerank.api_key == "rerank-secret"
     assert configured.rerank.max_candidates == 20
+
+
+def test_corpus_settings_defaults_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    corpus = Settings(_env_file=None).corpus
+    assert (corpus.embed_batch_size, corpus.embed_max_concurrent, corpus.gc_keep) == (
+        32,
+        1,
+        2,
+    )
+    monkeypatch.setenv("PHARMA_CORPUS__EMBED_MAX_CONCURRENT", "4")
+    monkeypatch.setenv("PHARMA_CORPUS__GC_KEEP", "0")
+    configured = Settings(_env_file=None).corpus
+    assert (configured.embed_max_concurrent, configured.gc_keep) == (4, 0)
+    monkeypatch.setenv("PHARMA_CORPUS__EMBED_BATCH_SIZE", "0")
+    with pytest.raises(ValueError, match="embed_batch_size"):
+        Settings(_env_file=None)

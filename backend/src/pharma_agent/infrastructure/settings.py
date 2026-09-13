@@ -186,6 +186,14 @@ class CheckpointSettings(BaseModel):
     retention_days: int = Field(default=7, ge=1)
 
 
+class CorpusSettings(BaseModel):
+    """Corpus import and release commands (spec C §8.2, §8.5)."""
+
+    embed_batch_size: int = Field(default=32, ge=1)
+    embed_max_concurrent: int = Field(default=1, ge=1)
+    gc_keep: int = Field(default=2, ge=0)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PHARMA_",
@@ -205,4 +213,5 @@ class Settings(BaseSettings):
     api: ApiSettings = Field(default_factory=ApiSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     checkpoints: CheckpointSettings = Field(default_factory=CheckpointSettings)
+    corpus: CorpusSettings = Field(default_factory=CorpusSettings)
     skills_dir: Path = Path("skills")
