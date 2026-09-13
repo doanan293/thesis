@@ -1,0 +1,22 @@
+{
+  "appName": "Pharma Agent",
+  "actions": {
+    "save": "Lưu",
+    "cancel": "Huỷ",
+    "retry": "Thử lại",
+    "close": "Đóng",
+    "loading": "Đang tải…"
+  },
+  "nav": {
+    "chat": "Trò chuyện",
+    "skills": "Kỹ năng",
+    "settings": "Cài đặt"
+  },
+  "errorPage": {
+    "title": "Đã xảy ra lỗi",
+    "description": "Không tải được trang này. Vui lòng thử lại.",
+    "notFoundTitle": "Không tìm thấy trang",
+    "notFoundDescription": "Trang bạn tìm không tồn tại hoặc đã bị xoá.",
+    "backHome": "Về trang chủ"
+  }
+}
