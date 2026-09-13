@@ -33,6 +33,25 @@ class Citation(BaseModel):
     snippet: str
 
 
+class CitedChunk(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    chunk_version_id: UUID
+    text: str
+    start_page: int | None
+    end_page: int | None
+
+
+class CitationBlock(BaseModel):
+    """A stored citation with the chunks the model read, in reading order."""
+
+    model_config = ConfigDict(frozen=True)
+
+    citation: Citation
+    chunks: list[CitedChunk]
+    is_current: bool
+
+
 class Turn(BaseModel):
     model_config = ConfigDict(frozen=True)
 

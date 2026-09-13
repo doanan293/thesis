@@ -3,8 +3,13 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from pharma_agent.application.conversation.citations import CitationDetail
 from pharma_agent.application.conversation.ui_message import UIMessage, ui_message_of
-from pharma_agent.application.errors import ConversationNotFound, InvalidInput
+from pharma_agent.application.errors import (
+    CitationNotFound,
+    ConversationNotFound,
+    InvalidInput,
+)
 from pharma_agent.application.pagination import decode_cursor, encode_cursor
 from pharma_agent.domain.conversation.models import (
     Conversation,
@@ -115,6 +120,14 @@ class ConversationQueries:
         return MessagePage(
             items=await self._ui_messages(user_id, items), next_cursor=next_cursor
         )
+
+    async def get_citation(
+        self, user_id: str, message_id: str, index: int
+    ) -> CitationDetail:
+        block = await self._citations.citation_block(user_id, message_id, index)
+        if block is None:
+            raise CitationNotFound(f"citation {index} of message {message_id}")
+        return CitationDetail.of(block)
 
     async def rename(
         self, user_id: str, conversation_id: str, title: str

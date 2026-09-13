@@ -13,6 +13,7 @@ from pharma_agent.api.problems import problem_response
 from pharma_agent.api.schemas import ProblemItem
 from pharma_agent.application.errors import (
     ApplicationError,
+    CitationNotFound,
     ConversationNotFound,
     InvalidInput,
     PayloadTooLarge,
@@ -32,6 +33,7 @@ ERROR_CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*")
 STATUS_BY_ERROR: dict[type[ApplicationError], int] = {
     ConversationNotFound: 404,
     MessageNotFound: 404,
+    CitationNotFound: 404,
     SkillNotFound: 404,
     SkillNameTaken: 409,
     PayloadTooLarge: 413,

@@ -3,7 +3,12 @@ from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Protocol
 
-from pharma_agent.domain.conversation.models import Conversation, Message, Turn
+from pharma_agent.domain.conversation.models import (
+    CitationBlock,
+    Conversation,
+    Message,
+    Turn,
+)
 from pharma_agent.domain.retrieval.audit import RetrievalRunRecord
 
 
@@ -80,4 +85,10 @@ class CitationReader(Protocol):
         self, release_ids: Collection[uuid.UUID]
     ) -> set[uuid.UUID]:
         """The subset of `release_ids` that is the current release of its collection."""
+        ...
+
+    async def citation_block(
+        self, user_id: str, message_id: str, index: int
+    ) -> CitationBlock | None:
+        """Only when the message belongs to one of the user's conversations."""
         ...

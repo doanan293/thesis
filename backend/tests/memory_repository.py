@@ -2,7 +2,12 @@ import uuid
 from collections.abc import Collection, Sequence
 from datetime import datetime
 
-from pharma_agent.domain.conversation.models import Conversation, Message, Turn
+from pharma_agent.domain.conversation.models import (
+    CitationBlock,
+    Conversation,
+    Message,
+    Turn,
+)
 from pharma_agent.domain.conversation.turns import pair_turns
 from pharma_agent.domain.feedback.models import Feedback
 from pharma_agent.domain.retrieval.audit import RetrievalRunRecord
@@ -230,8 +235,14 @@ class InMemoryCitationReader:
 
     def __init__(self, *current_release_ids: uuid.UUID) -> None:
         self.current: set[uuid.UUID] = set(current_release_ids)
+        self.blocks: dict[tuple[str, str, int], CitationBlock] = {}
 
     async def current_release_ids(
         self, release_ids: Collection[uuid.UUID]
     ) -> set[uuid.UUID]:
         return {release_id for release_id in release_ids if release_id in self.current}
+
+    async def citation_block(
+        self, user_id: str, message_id: str, index: int
+    ) -> CitationBlock | None:
+        return self.blocks.get((user_id, message_id, index))

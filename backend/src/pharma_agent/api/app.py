@@ -10,6 +10,7 @@ from pharma_agent.api.deps import session_factory, user_id_dependency
 from pharma_agent.api.errors import install_error_handlers
 from pharma_agent.api.openapi import PharmaAgentAPI
 from pharma_agent.api.routers.chat import build_chat_router
+from pharma_agent.api.routers.citations import build_citations_router
 from pharma_agent.api.routers.conversations import build_conversations_router
 from pharma_agent.api.routers.feedback import build_feedback_router
 from pharma_agent.api.routers.health import build_health_router
@@ -57,5 +58,6 @@ def create_app(
     api.include_router(build_conversations_router(current_user_id))
     api.include_router(build_skills_router(current_user_id))
     api.include_router(build_feedback_router(current_user_id))
+    api.include_router(build_citations_router(current_user_id))
     app.include_router(api)
     return app

@@ -7,8 +7,8 @@ from pharma_agent.api.openapi import openapi_export_settings
 
 PROBLEM_CONTENT = {"schema": {"$ref": "#/components/schemas/Problem"}}
 
-# Route function names (overview §3.5). P6 adds get_message_citation; P7 adds the
-# cookie auth routes and moves Google OAuth to the cookie backend.
+# Route function names (overview §3.5). P7 adds the cookie auth routes and moves
+# Google OAuth to the cookie backend.
 EXPECTED_OPERATION_IDS = {
     "health",
     "chat",
@@ -19,6 +19,7 @@ EXPECTED_OPERATION_IDS = {
     "list_messages",
     "rename_conversation",
     "delete_conversation",
+    "get_message_citation",
     "submit_feedback",
     "list_skills",
     "upload_skill",
@@ -165,3 +166,19 @@ def test_ui_message_stream_and_history_are_documented() -> None:
     assert page["responses"]["200"]["content"]["application/json"] == {
         "schema": {"$ref": "#/components/schemas/MessagePage"}
     }
+
+
+def test_citation_detail_is_documented() -> None:
+    doc = document()
+    operation = doc["paths"]["/api/v1/messages/{message_id}/citations/{index}"]["get"]
+    assert operation["operationId"] == "get_message_citation"
+    assert operation["responses"]["200"]["content"]["application/json"] == {
+        "schema": {"$ref": "#/components/schemas/CitationDetail"}
+    }
+    for status in ("401", "404", "422", "503"):
+        assert operation["responses"][status]["content"] == {
+            "application/problem+json": PROBLEM_CONTENT
+        }
+    schemas = doc["components"]["schemas"]
+    assert {"CitationDetail", "CitationChunk"} <= set(schemas)
+    assert "document_title" in schemas["CitationDetail"]["properties"]

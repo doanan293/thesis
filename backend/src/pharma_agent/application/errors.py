@@ -6,6 +6,10 @@ class ConversationNotFound(ApplicationError):
     code = "CONVERSATION_NOT_FOUND"
 
 
+class CitationNotFound(ApplicationError):
+    code = "CITATION_NOT_FOUND"
+
+
 class InvalidInput(ApplicationError):
     code = "INVALID_INPUT"
 
