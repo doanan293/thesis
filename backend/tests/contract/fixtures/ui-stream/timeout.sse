@@ -1,0 +1,28 @@
+data: {"type":"start","messageId":"00000000000000000000000000000001"}
+
+data: {"type":"data-conversation","transient":true,"data":{"id":"00000000000000000000000000000002","title":"Paracetamol người lớn uống bao nhiêu?"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"guarding"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"understanding"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"selecting_skills"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"searching","round":1}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"reading"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"answering"}}
+
+data: {"type":"data-evidence","id":"evidence","data":{"items":[{"index":1,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":812,"endPage":812,"snippet":"Người lớn và trẻ em trên 12 tuổi: uống 0,5–1 g mỗi 4–6 giờ khi cần."},{"index":2,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":813,"endPage":813,"snippet":"Không dùng quá 4 g mỗi ngày ở người lớn."}]}}
+
+data: {"type":"text-start","id":"text"}
+
+data: {"type":"text-delta","id":"text","delta":"Xin lỗi, xử lý câu hỏi về thuốc này mất quá lâu và đã bị dừng. Bạn thử hỏi ngắn gọn hơn hoặc gửi lại sau ít phút."}
+
+data: {"type":"text-end","id":"text"}
+
+data: {"type":"finish","finishReason":"error","messageMetadata":{"status":"timeout","createdAt":"2026-09-13T08:00:00Z","errorCode":"DEADLINE_EXCEEDED","usage":{"llmCalls":4,"promptTokens":400,"completionTokens":40,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":true}}
+
+data: [DONE]
+

@@ -71,13 +71,21 @@ def build_harness(
     authenticated: bool = True,
     health: dict[str, Callable[[], Awaitable[bool]]] | None = None,
     health_reasons: dict[str, str] | None = None,
+    limits: BudgetLimits | None = None,
+    retriever: FakeRetriever | None = None,
 ) -> Harness:
     llm = FakeLlm()
     repo = InMemoryConversationRepository()
     clock = SystemClock()
-    retriever = FakeRetriever(*[[make_hit(f"c{i}", fusion=0.9)] for i in range(10)])
+    turn_retriever = (
+        retriever
+        if retriever is not None
+        else FakeRetriever(*[[make_hit(f"c{i}", fusion=0.9)] for i in range(10)])
+    )
     runner = ChatTurnRunner(
-        build_chat_graph(), build_deps(llm, retriever), BudgetLimits()
+        build_chat_graph(),
+        build_deps(llm, turn_retriever),
+        limits if limits is not None else BudgetLimits(),
     )
     skill_repo = InMemorySkillRepository()
     feedback_repo = InMemoryFeedbackRepository()

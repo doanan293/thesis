@@ -1,0 +1,38 @@
+data: {"type":"start","messageId":"00000000000000000000000000000001"}
+
+data: {"type":"data-conversation","transient":true,"data":{"id":"00000000000000000000000000000002","title":"Paracetamol người lớn uống bao nhiêu?"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"guarding"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"understanding"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"selecting_skills"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"searching","round":1}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"answering"}}
+
+data: {"type":"text-start","id":"text"}
+
+data: {"type":"text-delta","id":"text","delta":"Dược th"}
+
+data: {"type":"text-delta","id":"text","delta":"ư không"}
+
+data: {"type":"text-delta","id":"text","delta":" có thô"}
+
+data: {"type":"text-delta","id":"text","delta":"ng tin "}
+
+data: {"type":"text-delta","id":"text","delta":"phù hợp"}
+
+data: {"type":"text-delta","id":"text","delta":" cho câ"}
+
+data: {"type":"text-delta","id":"text","delta":"u hỏi n"}
+
+data: {"type":"text-delta","id":"text","delta":"ày."}
+
+data: {"type":"text-end","id":"text"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"status":"abstained","createdAt":"2026-09-13T08:00:00Z","errorCode":null,"usage":{"llmCalls":5,"promptTokens":1200,"completionTokens":100,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":true}}
+
+data: [DONE]
+

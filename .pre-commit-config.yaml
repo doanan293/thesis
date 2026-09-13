@@ -6,8 +6,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # SSE contract fixtures are byte-exact wire recordings: every frame ends with a blank line.
       - id: trailing-whitespace
+        exclude: ^backend/tests/contract/fixtures/.*\.sse$
       - id: end-of-file-fixer
+        exclude: ^backend/tests/contract/fixtures/.*\.sse$
       - id: check-yaml
       - id: check-toml
       - id: debug-statements

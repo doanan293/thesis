@@ -1,0 +1,52 @@
+data: {"type":"start","messageId":"00000000000000000000000000000001"}
+
+data: {"type":"data-conversation","transient":true,"data":{"id":"00000000000000000000000000000002","title":"Paracetamol người lớn uống bao nhiêu?"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"guarding"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"understanding"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"selecting_skills"}}
+
+data: {"type":"data-skills","data":{"skills":[{"name":"drug-monograph","title":"Tra cứu chuyên luận thuốc"}]}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"searching","round":1}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"reading"}}
+
+data: {"type":"data-phase","id":"phase","data":{"phase":"answering"}}
+
+data: {"type":"data-evidence","id":"evidence","data":{"items":[{"index":1,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":812,"endPage":812,"snippet":"Người lớn và trẻ em trên 12 tuổi: uống 0,5–1 g mỗi 4–6 giờ khi cần."},{"index":2,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":813,"endPage":813,"snippet":"Không dùng quá 4 g mỗi ngày ở người lớn."}]}}
+
+data: {"type":"text-start","id":"text"}
+
+data: {"type":"text-delta","id":"text","delta":"Người l"}
+
+data: {"type":"text-delta","id":"text","delta":"ớn uống"}
+
+data: {"type":"text-delta","id":"text","delta":" 0,5–1 "}
+
+data: {"type":"text-delta","id":"text","delta":"g mỗi 4"}
+
+data: {"type":"text-delta","id":"text","delta":"–6 giờ "}
+
+data: {"type":"text-delta","id":"text","delta":"[1] và "}
+
+data: {"type":"text-delta","id":"text","delta":"không q"}
+
+data: {"type":"text-delta","id":"text","delta":"uá 4 g "}
+
+data: {"type":"text-delta","id":"text","delta":"mỗi ngà"}
+
+data: {"type":"text-delta","id":"text","delta":"y [2]."}
+
+data: {"type":"text-end","id":"text"}
+
+data: {"type":"source-document","sourceId":"d2c4db75-ef8c-5aa9-b121-ff875c81d639","mediaType":"text/markdown","title":"Paracetamol › Liều lượng và cách dùng","providerMetadata":{"pharma":{"index":1,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":812,"endPage":812,"snippet":"Người lớn và trẻ em trên 12 tuổi: uống 0,5–1 g mỗi 4–6 giờ khi cần.","isCurrent":true}}}
+
+data: {"type":"source-document","sourceId":"03e2c2fb-c3e9-5721-9f5b-bb2a1034c0e7","mediaType":"text/markdown","title":"Paracetamol › Liều lượng và cách dùng","providerMetadata":{"pharma":{"index":2,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":813,"endPage":813,"snippet":"Không dùng quá 4 g mỗi ngày ở người lớn.","isCurrent":true}}}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"status":"completed","createdAt":"2026-09-13T08:00:00Z","errorCode":null,"usage":{"llmCalls":5,"promptTokens":1200,"completionTokens":100,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":true}}
+
+data: [DONE]
+
