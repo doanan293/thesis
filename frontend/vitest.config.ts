@@ -20,6 +20,13 @@ export default defineConfig({
       },
       {
         extends: true,
+        // Vite reuses its optimizer cache without scanning imports, so a dependency a browser
+        // test imports for the first time is optimized mid-run and reloads the page. Force a
+        // fresh pre-bundle that scans every browser test and setup file before tests start.
+        optimizeDeps: {
+          force: true,
+          entries: ["app/**/*.browser.test.tsx", "tests/setup/*.ts"],
+        },
         test: {
           name: "browser",
           include: ["app/**/*.browser.test.tsx"],
