@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from typer.testing import CliRunner
 
 from pharma_agent import cli
@@ -9,6 +10,7 @@ from pharma_agent.api.app import create_app
 from pharma_agent.api.openapi import openapi_export_settings, render_openapi
 from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.application.chat.runner import ChatTurnRunner
+from pharma_agent.application.progress import EventType, ProgressEvent
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.agent.schemas import (
     Audience,
@@ -176,3 +178,23 @@ def test_export_openapi_is_deterministic_and_matches_the_app(tmp_path: Path) -> 
     assert list(document) == sorted(document)
     authorize = document["paths"]["/api/v1/auth/google/authorize"]["get"]
     assert authorize["operationId"] == "oauth:google.jwt.authorize"
+
+
+def test_render_warns_when_the_turn_was_not_persisted(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli._render(
+        ProgressEvent(
+            type=EventType.DONE, data={"status": "completed", "persisted": False}
+        ),
+        [],
+    )
+    assert "!! Không lưu được lượt hội thoại này." in capsys.readouterr().err
+
+    cli._render(
+        ProgressEvent(
+            type=EventType.DONE, data={"status": "completed", "persisted": True}
+        ),
+        [],
+    )
+    assert capsys.readouterr().err == ""

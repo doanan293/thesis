@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from pharma_agent.domain.agent.run import AnswerMode, AnswerPlan
 from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.conversation.turns import build_turn_messages
+from pharma_agent.domain.shared.ids import new_id
 from tests.api.harness import OWNER, Harness, build_harness
 from tests.api.test_chat_api import script_turn
 from tests.domain.factories import make_run
@@ -13,6 +14,8 @@ async def add_turn(harness: Harness, conversation: Conversation, at: datetime) -
     run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=at)
     run.complete()
     user_msg, assistant_msg = build_turn_messages(
+        user_message_id=new_id(),
+        assistant_message_id=new_id(),
         conversation_id=conversation.conversation_id,
         run=run,
         answer_text="a",

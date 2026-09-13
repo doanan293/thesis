@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncGenerator
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -19,12 +20,9 @@ from pharma_agent.domain.conversation.ports import ConversationRepository
 from pharma_agent.domain.conversation.turns import build_turn_messages
 from pharma_agent.domain.retrieval.audit import audit_from_run
 from pharma_agent.domain.shared.clock import Clock
+from pharma_agent.domain.shared.ids import new_id
 
 logger = logging.getLogger(__name__)
-
-PERSIST_FAILED_MESSAGE = (
-    "Không lưu được lượt hội thoại này; câu trả lời vẫn hiển thị bình thường."
-)
 
 
 class MemoryPolicy(BaseModel):
@@ -41,6 +39,7 @@ class ChatTurnResult(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     phases: list[str] = Field(default_factory=list)
     usage: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
     persisted: bool
 
 
@@ -51,12 +50,16 @@ class ChatSession:
         conversation: Conversation,
         *,
         created: bool,
+        user_message_id: str,
+        assistant_message_id: str,
         conversations: ConversationRepository,
         clock: Clock,
     ) -> None:
         self._execution = execution
         self._conversation = conversation
         self._created = created
+        self._user_message_id = user_message_id
+        self._assistant_message_id = assistant_message_id
         self._conversations = conversations
         self._clock = clock
         self.result: ChatTurnResult | None = None
@@ -65,6 +68,14 @@ class ChatSession:
     def conversation_id(self) -> str:
         return self._conversation.conversation_id
 
+    @property
+    def user_message_id(self) -> str:
+        return self._user_message_id
+
+    @property
+    def assistant_message_id(self) -> str:
+        return self._assistant_message_id
+
     async def events(self) -> AsyncGenerator[ProgressEvent]:
         yield ProgressEvent(
             type=EventType.CONVERSATION,
@@ -72,6 +83,7 @@ class ChatSession:
                 "conversation_id": self.conversation_id,
                 "title": self._conversation.title,
                 "created": self._created,
+                "message_id": self._assistant_message_id,
             },
         )
         phases: list[str] = []
@@ -88,16 +100,18 @@ class ChatSession:
                     **event.data,
                     "conversation_id": self.conversation_id,
                     "message_id": result.message_id,
+                    "persisted": result.persisted,
+                    "created_at": result.created_at.isoformat(),
                 },
             )
-            if not result.persisted:
-                yield ProgressEvent.error("PERSIST_FAILED", PERSIST_FAILED_MESSAGE)
 
     async def _persist(self, phases: list[str]) -> ChatTurnResult:
         outcome = self._execution.outcome
         if outcome is None:
             raise RuntimeError("runner emitted done without an outcome")
         user_message, assistant_message = build_turn_messages(
+            user_message_id=self._user_message_id,
+            assistant_message_id=self._assistant_message_id,
             conversation_id=self.conversation_id,
             run=outcome.run,
             answer_text=outcome.answer_text,
@@ -128,6 +142,7 @@ class ChatSession:
             citations=list(outcome.citations),
             phases=phases,
             usage=outcome.run.usage.model_dump(),
+            created_at=assistant_message.created_at,
             persisted=persisted,
         )
         return self.result
@@ -185,6 +200,8 @@ class ChatService:
             execution,
             conversation,
             created=created,
+            user_message_id=new_id(),
+            assistant_message_id=new_id(),
             conversations=self._conversations,
             clock=self._clock,
         )

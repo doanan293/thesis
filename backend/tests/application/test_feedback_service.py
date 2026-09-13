@@ -7,6 +7,7 @@ from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.conversation.turns import build_turn_messages
 from pharma_agent.domain.feedback.models import Rating
 from pharma_agent.domain.shared.clock import FixedClock
+from pharma_agent.domain.shared.ids import new_id
 from tests.domain.factories import NOW, make_run
 from tests.memory_repository import (
     InMemoryConversationRepository,
@@ -35,6 +36,8 @@ async def seeded() -> tuple[InMemoryConversationRepository, str, str]:
     run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=NOW)
     run.complete()
     user_msg, assistant_msg = build_turn_messages(
+        user_message_id=new_id(),
+        assistant_message_id=new_id(),
         conversation_id=conversation.conversation_id,
         run=run,
         answer_text="a",

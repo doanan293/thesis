@@ -24,7 +24,6 @@ class EventType(StrEnum):
     TOKEN = "token"
     CITATIONS = "citations"
     DONE = "done"
-    ERROR = "error"
 
 
 class ProgressEvent(BaseModel):
@@ -38,7 +37,3 @@ class ProgressEvent(BaseModel):
     @classmethod
     def token(cls, text: str) -> "ProgressEvent":
         return cls(type=EventType.TOKEN, data={"text": text})
-
-    @classmethod
-    def error(cls, code: str, message: str) -> "ProgressEvent":
-        return cls(type=EventType.ERROR, data={"code": code, "message": message})

@@ -63,6 +63,8 @@ def test_build_turn_messages_and_pair_turns() -> None:
     run.complete()
     citation = make_citation("c1")
     user_msg, assistant_msg = build_turn_messages(
+        user_message_id="1" * 32,
+        assistant_message_id="2" * 32,
         conversation_id="conv1",
         run=run,
         answer_text="500 mg [1]",
@@ -70,6 +72,7 @@ def test_build_turn_messages_and_pair_turns() -> None:
         phases=["guarding", "answering"],
         now=NOW,
     )
+    assert (user_msg.message_id, assistant_msg.message_id) == ("1" * 32, "2" * 32)
     assert user_msg.role is MessageRole.USER and user_msg.content == "Liều paracetamol?"
     assert user_msg.status == RunStatus.COMPLETED.value
     assert assistant_msg.role is MessageRole.ASSISTANT and assistant_msg.citations == [

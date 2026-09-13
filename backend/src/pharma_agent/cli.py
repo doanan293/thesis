@@ -99,8 +99,8 @@ def _render(event: ProgressEvent, evidence: list[dict[str, Any]]) -> None:
     elif event.type is EventType.TOKEN:
         sys.stdout.write(event.data["text"])
         sys.stdout.flush()
-    elif event.type is EventType.ERROR:
-        typer.echo(f"!! {event.data['code']}: {event.data['message']}", err=True)
+    elif event.type is EventType.DONE and event.data.get("persisted") is False:
+        typer.echo("!! Không lưu được lượt hội thoại này.", err=True)
 
 
 @app.command()

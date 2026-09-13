@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 from pharma_agent.domain.agent.run import AgentRun
 from pharma_agent.domain.conversation.models import Citation, Message, MessageRole, Turn
-from pharma_agent.domain.shared.ids import new_id
 
 # The assistant message must sort after the user message even when both are
 # created within the same clock tick.
@@ -12,6 +11,8 @@ _ASSISTANT_OFFSET = timedelta(microseconds=1)
 
 def build_turn_messages(
     *,
+    user_message_id: str,
+    assistant_message_id: str,
     conversation_id: str,
     run: AgentRun,
     answer_text: str,
@@ -21,7 +22,7 @@ def build_turn_messages(
 ) -> tuple[Message, Message]:
     status = run.status.value
     user_message = Message(
-        message_id=new_id(),
+        message_id=user_message_id,
         conversation_id=conversation_id,
         role=MessageRole.USER,
         content=run.original_query,
@@ -30,7 +31,7 @@ def build_turn_messages(
         created_at=now,
     )
     assistant_message = Message(
-        message_id=new_id(),
+        message_id=assistant_message_id,
         conversation_id=conversation_id,
         role=MessageRole.ASSISTANT,
         content=answer_text,

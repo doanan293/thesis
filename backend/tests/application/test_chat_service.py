@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from pharma_agent.application.chat.graph import build_chat_graph
@@ -62,6 +64,17 @@ async def collect(events) -> list[ProgressEvent]:
     return [event async for event in events]
 
 
+async def test_open_turn_pre_generates_distinct_message_ids() -> None:
+    llm, repo = FakeLlm(), InMemoryConversationRepository()
+    service = service_with(llm, repo)
+
+    session = await service.open_turn(user_id=OWNER, message="hi", conversation_id=None)
+
+    assert re.fullmatch(r"[0-9a-f]{32}", session.user_message_id)
+    assert re.fullmatch(r"[0-9a-f]{32}", session.assistant_message_id)
+    assert session.user_message_id != session.assistant_message_id
+
+
 async def test_new_conversation_turn_is_persisted_with_audit() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     scripted_turn(llm, "Liều paracetamol cho người lớn")
@@ -78,25 +91,30 @@ async def test_new_conversation_turn_is_persisted_with_audit() -> None:
         "conversation_id": session.conversation_id,
         "title": "Paracetamol uống bao nhiêu?",
         "created": True,
+        "message_id": session.assistant_message_id,
     }
-    done = next(e for e in events if e.type is EventType.DONE)
+    done = events[-1]
+    assert done.type is EventType.DONE
     assert done.data["conversation_id"] == session.conversation_id
-    assert done.data["status"] == "completed" and done.data["message_id"]
-    assert events[-1] is done
+    assert done.data["status"] == "completed"
+    assert done.data["message_id"] == session.assistant_message_id
+    assert done.data["persisted"] is True
 
     stored = repo.rows[session.conversation_id]
     assert stored.turn_count == 1 and stored.user_id == OWNER
     user_msg, assistant_msg = repo.message_log[session.conversation_id]
+    assert user_msg.message_id == session.user_message_id
     assert user_msg.content == "Paracetamol uống bao nhiêu?"
-    assert (
-        assistant_msg.message_id == done.data["message_id"] and assistant_msg.citations
-    )
+    assert assistant_msg.message_id == session.assistant_message_id
+    assert assistant_msg.citations
+    assert done.data["created_at"] == assistant_msg.created_at.isoformat()
     assert "answering" in assistant_msg.phases
     assert (
         repo.audit[assistant_msg.message_id][0].query_text
         == "Liều paracetamol cho người lớn"
     )
     assert session.result is not None and session.result.persisted is True
+    assert session.result.created_at == assistant_msg.created_at
 
 
 async def test_follow_up_turn_sends_previous_turn_to_rephrase() -> None:
@@ -138,7 +156,7 @@ async def test_unknown_or_foreign_conversation_is_not_found() -> None:
         )
 
 
-async def test_persist_failure_reports_error_after_done() -> None:
+async def test_persist_failure_is_reported_on_done() -> None:
     llm, repo = FakeLlm(), InMemoryConversationRepository()
     scripted_turn(llm, "Liều paracetamol")
     service = service_with(llm, repo)
@@ -149,9 +167,10 @@ async def test_persist_failure_reports_error_after_done() -> None:
 
     events = await collect(session.events())
 
-    assert [e.type for e in events[-2:]] == [EventType.DONE, EventType.ERROR]
-    assert events[-2].data["message_id"] is None
-    assert events[-1].data["code"] == "PERSIST_FAILED"
+    done = events[-1]
+    assert done.type is EventType.DONE
+    assert done.data["persisted"] is False and done.data["message_id"] is None
+    assert [event.type for event in events].count(EventType.DONE) == 1
     assert session.result is not None and session.result.persisted is False
     assert session.result.content  # the answer is still delivered
 
@@ -175,6 +194,7 @@ async def test_first_turn_names_a_pre_created_conversation() -> None:
         "conversation_id": empty.conversation_id,
         "title": "Paracetamol uống bao nhiêu?",
         "created": False,
+        "message_id": session.assistant_message_id,
     }
     stored = repo.rows[empty.conversation_id]
     assert stored.title == "Paracetamol uống bao nhiêu?" and stored.turn_count == 1
