@@ -219,6 +219,10 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         paths.source_final_dir / "sections.jsonl",
         paths.candidate_final_dir / "sections.jsonl",
     )
+    shutil.copy2(
+        paths.canonical_dir / "blocks.jsonl",
+        paths.candidate_final_dir / "blocks.jsonl",
+    )
     unified_chunks, _ = compile_unified_chunks(
         sections_path=paths.source_final_dir / "sections.jsonl",
         chunks_path=paths.source_final_dir / "chunks.jsonl",
