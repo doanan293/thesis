@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 HealthCheck = Callable[[], Awaitable[bool]]
 
+CORPUS_NOT_READY = "CORPUS_NOT_READY"
+
 
 @dataclass
 class Container:
@@ -56,19 +58,22 @@ class Container:
     feedback: FeedbackService | None = None
     tracing: Tracing = field(default_factory=NullTracing)
     health_checks: dict[str, HealthCheck] = field(default_factory=dict)
+    # Reason code /health reports when the named check fails.
+    health_reasons: dict[str, str] = field(default_factory=dict)
 
 
 ContainerFactory = Callable[[Settings], AbstractAsyncContextManager[Container]]
 
 
-def _qdrant_check(agent: Application, settings: Settings) -> HealthCheck:
+def _corpus_check(agent: Application, settings: Settings) -> HealthCheck:
     async def check() -> bool:
         try:
-            await agent.retrieval.retriever.verify_collection(
+            await agent.retrieval.retriever.verify_corpus(
                 embedding_model=settings.retrieval.embedding.model,
                 dimension=settings.retrieval.embedding.dimension,
             )
-        except RetrievalError:
+        except RetrievalError as exc:
+            logger.warning("corpus not ready: %s", exc)
             return False
         return True
 
@@ -166,7 +171,8 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
                     every=settings.memory.summary_every_turns,
                     max_chars=settings.memory.summary_max_chars,
                 )
-                container.health_checks["qdrant"] = _qdrant_check(agent, settings)
+                container.health_checks["corpus"] = _corpus_check(agent, settings)
+                container.health_reasons["corpus"] = CORPUS_NOT_READY
             yield container
     finally:
         await database.dispose()

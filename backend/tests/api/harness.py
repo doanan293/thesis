@@ -67,6 +67,7 @@ def build_harness(
     agent: bool = True,
     authenticated: bool = True,
     health: dict[str, Callable[[], Awaitable[bool]]] | None = None,
+    health_reasons: dict[str, str] | None = None,
 ) -> Harness:
     llm = FakeLlm()
     repo = InMemoryConversationRepository()
@@ -89,6 +90,7 @@ def build_harness(
         skills=SkillService(skill_repo),
         feedback=FeedbackService(repo, feedback_repo, sink, clock),
         health_checks=health if health is not None else {"postgres": _ok},
+        health_reasons=health_reasons or {},
     )
 
     @asynccontextmanager

@@ -18,6 +18,8 @@ from pharma_agent.domain.agent.schemas import (
 )
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
+from pharma_agent.domain.retrieval.ports import RetrievalError
+from pharma_agent.infrastructure.retrieval.llama_cpp_reranker import NoopReranker
 from tests.domain.factories import make_hit
 from tests.fakes import FakeLlm, FakeRetriever, build_deps
 
@@ -121,3 +123,34 @@ def test_cleanup_checkpoints_uses_settings_or_option(monkeypatch) -> None:
         ("postgresql://u:p@db.example:5432/app", 14),
         ("postgresql://u:p@db.example:5432/app", 2),
     ]
+
+
+def test_check_reports_corpus_embedding_and_rerank(monkeypatch) -> None:
+    class Retriever:
+        async def verify_corpus(self, *, embedding_model: str, dimension: int) -> None:
+            raise RetrievalError(
+                "0 of 1 collections in formulary have a current release"
+            )
+
+    class Embedder:
+        async def embed(self, texts):
+            return [[0.0] * 2560 for _ in texts]
+
+    closed: list[bool] = []
+
+    async def aclose() -> None:
+        closed.append(True)
+
+    stack = SimpleNamespace(
+        retriever=Retriever(),
+        embedder=Embedder(),
+        reranker=NoopReranker(),
+        aclose=aclose,
+    )
+    monkeypatch.setattr(cli, "build_retrieval_service", lambda settings: stack)
+    result = CliRunner().invoke(cli.app, ["check"])
+    assert result.exit_code == 1
+    assert "ERR corpus: CORPUS_NOT_READY: 0 of 1 collections" in result.output
+    assert "OK  embedding:" in result.output and "-> 2560 dims" in result.output
+    assert "OK  rerank:" in result.output
+    assert closed == [True]

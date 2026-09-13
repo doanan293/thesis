@@ -105,7 +105,7 @@ def _render(event: ProgressEvent, evidence: list[dict[str, Any]]) -> None:
 
 @app.command()
 def check() -> None:
-    """Kiểm tra cấu hình LLM, Qdrant, embedding và reranker."""
+    """Kiểm tra cấu hình LLM, corpus (Qdrant + release hiện hành), embedding và reranker."""
     settings = Settings()
     failures = asyncio.run(_check(settings))
     for name, ok, detail in failures:
@@ -128,18 +128,19 @@ async def _check(settings: Settings) -> list[tuple[str, bool, str]]:
     embedding = settings.retrieval.embedding
     try:
         try:
-            await retrieval.retriever.verify_collection(
+            await retrieval.retriever.verify_corpus(
                 embedding_model=embedding.model, dimension=embedding.dimension
             )
             results.append(
                 (
-                    "qdrant",
+                    "corpus",
                     True,
-                    f"{settings.retrieval.qdrant_collection} {embedding.model} dimension {embedding.dimension}",
+                    f"{settings.retrieval.qdrant_collection} ({embedding.model}, {embedding.dimension} dims), "
+                    f"current release for {', '.join(settings.retrieval.collections)}",
                 )
             )
         except Exception as exc:
-            results.append(("qdrant", False, str(exc)))
+            results.append(("corpus", False, f"CORPUS_NOT_READY: {exc}"))
         try:
             vectors = await retrieval.embedder.embed(["kiểm tra"])
             results.append(

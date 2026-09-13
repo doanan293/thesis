@@ -285,3 +285,21 @@ async def test_verify_collection_checks_dimension_and_metadata() -> None:
         await retriever(
             FakeQdrant([], metadata={"embedding_model": "other", "dims": 2}), reader
         ).verify_collection(embedding_model="m", dimension=2)
+
+
+async def test_verify_corpus_requires_a_current_release_for_every_scoped_collection() -> (
+    None
+):
+    ready = FakeReader({COLLECTION_ID: RELEASE_ID}, [])
+    await retriever(FakeQdrant([]), ready).verify_corpus(
+        embedding_model="m", dimension=2
+    )
+    assert ready.release_calls == [["formulary"]]
+    with pytest.raises(RetrievalError, match="0 of 1 collections"):
+        await retriever(FakeQdrant([]), FakeReader({}, [])).verify_corpus(
+            embedding_model="m", dimension=2
+        )
+    with pytest.raises(RetrievalError, match="metadata"):
+        await retriever(FakeQdrant([], metadata={}), ready).verify_corpus(
+            embedding_model="m", dimension=2
+        )

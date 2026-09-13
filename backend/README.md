@@ -11,8 +11,15 @@ uv sync
 cp .env.example .env            # điền PHARMA_LLM__DEFAULT__API_KEY
 ```
 
-Cần Qdrant (collection alias `thesis_chunks_qwen3_embedding_4b_fp16` do corpus-pipeline publish),
-llama.cpp embedding (cổng 11434) và reranker (cổng 11435) từ `docker-compose.yml` ở repo root.
+Cần Postgres, Qdrant, llama.cpp embedding (cổng 11434) và reranker (cổng 11435) từ
+`docker-compose.yml` ở repo root. Corpus nằm trong schema `corpus` của Postgres; Qdrant chỉ là
+index (alias `chunks_current`). Nạp một knowledge bundle và publish trước khi hỏi:
+
+```bash
+uv run pharma-agent migrate
+uv run pharma-agent corpus import <bundle_dir> --collection formulary --publish
+```
+
 LLM, embedding và reranker đổi được sang OpenAI cloud hoặc server tự host chỉ bằng
 `base_url`, `api_key`, `model` trong `.env`.
 
@@ -41,8 +48,10 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   (WSL cần `networkingMode=mirrored`). Compose tự đặt URL Postgres, Qdrant, embedding và
   reranker theo port ở `.env` root, nên `backend/.env` chỉ cần LLM, auth và Langfuse.
 - Đổi sang GGUF nhẹ hơn: đặt `LLAMA_EMBEDDING_MODEL` hoặc `LLAMA_RERANKER_MODEL` là tên file trong
-  `ai-models/gguf`, rồi `docker compose up -d`. Embedding phải vẫn là qwen3-embedding 4B để
-  khớp collection.
+  `ai-models/gguf`, rồi `docker compose up -d`. Embedding phải là model đã dùng khi
+  import corpus; `/health` báo `CORPUS_NOT_READY` nếu metadata collection không khớp.
+- Lần đầu cần nạp corpus vào container: `docker compose cp <bundle_dir> backend:/tmp/bundle` rồi
+  `docker compose exec backend pharma-agent corpus import /tmp/bundle --collection formulary --publish`.
 
 ## Chạy HTTP API
 
@@ -77,7 +86,7 @@ Luồng SSE lần lượt gồm `conversation`, `phase`, `skills_selected`, `evi
 | `GET /api/v1/users/me` | Người dùng hiện tại |
 | `POST /api/v1/chat`, `/chat/stream` | Hỏi đáp một lượt (JSON hoặc SSE) |
 | `GET/PATCH/DELETE /api/v1/conversations/{id}`, `GET .../messages` | Lịch sử hội thoại |
-| `GET /api/v1/health` | Postgres, Qdrant, trạng thái agent |
+| `GET /api/v1/health` | Postgres, `corpus` (collection Qdrant khớp model embedding và mọi collection trong `PHARMA_RETRIEVAL__COLLECTIONS` có release hiện hành; nếu không, `reasons.corpus = "CORPUS_NOT_READY"`), trạng thái agent |
 | `GET/POST /api/v1/skills`, `PATCH/DELETE /api/v1/skills/{id}` | Skill hệ thống và skill tự tải lên (`SKILL.md` tối đa 64 KB) |
 | `POST /api/v1/messages/{id}/feedback` | Đánh giá câu trả lời (`up`/`down`), gửi thêm score sang Langfuse |
 

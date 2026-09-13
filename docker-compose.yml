@@ -35,6 +35,8 @@ x-backend: &backend
     PHARMA_API__PORT: "${BACKEND_PORT:-8000}"
     PHARMA_POSTGRES__DSN: "postgresql+psycopg://${POSTGRES_USER:-thesis}:${POSTGRES_PASSWORD:-thesis}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-thesis}"
     PHARMA_QDRANT__URL: "http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}"
+    # Corpus text lives in Postgres schema `corpus`; Qdrant keeps only the index (alias chunks_current).
+    # Load it once: docker compose exec backend pharma-agent corpus import <bundle_dir> --collection formulary --publish
     PHARMA_RETRIEVAL__EMBEDDING__BASE_URL: "http://127.0.0.1:${LLAMA_EMBEDDING_PORT:-11434}/v1"
     PHARMA_RETRIEVAL__EMBEDDING__MODEL: "${LLAMA_EMBEDDING_MODEL_NAME:-qwen3-embedding:4b-fp16}"
     PHARMA_RETRIEVAL__RERANK__BASE_URL: "http://127.0.0.1:${LLAMA_RERANKER_PORT:-11435}"

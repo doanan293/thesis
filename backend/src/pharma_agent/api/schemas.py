@@ -19,6 +19,8 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     agent: bool
     checks: dict[str, bool]
+    # Reason code of each failed check that declares one, e.g. {"corpus": "CORPUS_NOT_READY"}.
+    reasons: dict[str, str] = Field(default_factory=dict)
 
 
 class ErrorResponse(BaseModel):

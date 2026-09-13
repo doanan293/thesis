@@ -243,3 +243,17 @@ class QdrantHybridRetriever:
                 f"collection {self._collection} metadata {metadata!r} does not match "
                 f"embedding model {embedding_model} with {dimension} dims"
             )
+
+    async def verify_corpus(self, *, embedding_model: str, dimension: int) -> None:
+        """Raise RetrievalError unless the collection matches the embedding settings and every
+        scoped corpus collection has a current release (spec C §9, health `corpus`)."""
+        await self.verify_collection(
+            embedding_model=embedding_model, dimension=dimension
+        )
+        scope = sorted(set(self._scope))
+        releases = await self._reader.current_releases(scope)
+        if len(releases) < len(scope):
+            raise RetrievalError(
+                f"{len(releases)} of {len(scope)} collections in {', '.join(scope)} "
+                "have a current release"
+            )

@@ -22,6 +22,11 @@ def build_health_router() -> APIRouter:
             status="ok" if healthy else "degraded",
             agent=container.chat is not None,
             checks=checks,
+            reasons={
+                name: container.health_reasons[name]
+                for name, ok in checks.items()
+                if not ok and name in container.health_reasons
+            },
         )
         return JSONResponse(
             status_code=200 if healthy else 503, content=body.model_dump()
