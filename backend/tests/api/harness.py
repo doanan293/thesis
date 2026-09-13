@@ -62,7 +62,9 @@ class Harness:
 
 
 def settings() -> Settings:
-    return Settings(_env_file=None, auth={"jwt_secret": "s" * 40})
+    return Settings(
+        _env_file=None, auth={"jwt_secret": "s" * 40, "csrf_secret": "c" * 40}
+    )
 
 
 def build_harness(

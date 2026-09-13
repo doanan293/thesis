@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from pharma_agent.api.csrf import install_csrf
 from pharma_agent.api.deps import session_factory, user_id_dependency
 from pharma_agent.api.errors import install_error_handlers
 from pharma_agent.api.openapi import PharmaAgentAPI
@@ -41,13 +42,16 @@ def create_app(
         generate_unique_id_function=lambda route: route.name,
     )
     app.state.auth = auth
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=resolved.api.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    install_csrf(app, resolved.auth)
+    if resolved.api.cors_origins:
+        # Added after CSRF, so CORS is the outer layer and 403 problems carry CORS headers.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=resolved.api.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     install_error_handlers(app)
 
     api = APIRouter(prefix="/api/v1")

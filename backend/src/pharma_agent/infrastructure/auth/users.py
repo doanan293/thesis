@@ -23,6 +23,7 @@ from pharma_agent.infrastructure.persistence.postgres.tables import (
 from pharma_agent.infrastructure.settings import AuthSettings
 
 LOGIN_URL = "/api/v1/auth/jwt/login"
+SESSION_COOKIE_NAME = "pharma_session"
 
 SessionFactoryResolver = Callable[[Request], async_sessionmaker[AsyncSession]]
 UserDatabase = SQLAlchemyUserDatabase[UserTable, uuid.UUID]

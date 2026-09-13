@@ -127,6 +127,7 @@ def openapi_export_settings() -> Settings:
         _env_file=None,
         auth=AuthSettings(
             jwt_secret=SecretStr(EXPORT_PLACEHOLDER + "-" + "0" * 32),
+            csrf_secret=SecretStr(EXPORT_PLACEHOLDER + "-" + "1" * 32),
             google_client_id=EXPORT_PLACEHOLDER,
             google_client_secret=SecretStr(EXPORT_PLACEHOLDER),
         ),

@@ -51,7 +51,9 @@ pytestmark = pytest.mark.integration
 
 async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
     settings = Settings(
-        _env_file=None, auth={"jwt_secret": "s" * 40}, postgres={"dsn": migrated_dsn}
+        _env_file=None,
+        auth={"jwt_secret": "s" * 40, "csrf_secret": "c" * 40},
+        postgres={"dsn": migrated_dsn},
     )
     llm = FakeLlm()
     script_turn(llm)
