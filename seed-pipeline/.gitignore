@@ -1,0 +1,34 @@
+# Python cache and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local environment files
+.venv/
+venv/
+.env
+
+# Logs and temporary runtime files
+*.log
+*.tmp
+*.bak
+tmp/
+temp/
+
+# Local database/vector runtime state
+.qdrant/
+.clickhouse/
+*.vector-cache.lock
+.kaggle/
+seed-pipeline-kaggle-*/
+
+# Local tool state
+.superpowers/
+docs/superpowers/
+
+# Archiveable generated and large data boundary
+data/heavy/

@@ -1,5 +1,5 @@
-"""Rerankers over llama.cpp server. The qwen3 prompt and scoring are copied from corpus-pipeline so
-runtime scores match the evaluation (corpus_pipeline.runtime.model_profiles.qwen3_rerank_contract)."""
+"""Rerankers over llama.cpp server. The qwen3 prompt and scoring are copied from seed-pipeline so
+runtime scores match the evaluation (seed_pipeline.runtime.model_profiles.qwen3_rerank_contract)."""
 
 import asyncio
 import math

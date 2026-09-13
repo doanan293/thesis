@@ -1,6 +1,6 @@
 """Glossary terms, colloquial mappings and embedding text (spec C §7.1).
 
-Public API. Ported from corpus-pipeline ``term_enrichment.py``, ``payload_layers.py``
+Public API. Ported from seed-pipeline ``term_enrichment.py``, ``payload_layers.py``
 and ``build_rag_metadata.py``; output must stay identical to the old chunks.jsonl.
 """
 

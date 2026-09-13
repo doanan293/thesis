@@ -14,7 +14,7 @@ LLAMA_UBATCH_SIZE="${LLAMA_UBATCH_SIZE:-$LLAMA_BATCH_SIZE}"
 LLAMA_THREADS="${LLAMA_THREADS:-}"
 LLAMA_THREADS_BATCH="${LLAMA_THREADS_BATCH:-$LLAMA_THREADS}"
 LLAMA_FLASH_ATTN="${LLAMA_FLASH_ATTN:-auto}"
-# Same cache policy as corpus-pipeline's runtime (server_policy.inference_cache_policy).
+# Same cache policy as seed-pipeline's runtime (server_policy.inference_cache_policy).
 LLAMA_CACHE_RAM_MIB="${LLAMA_CACHE_RAM_MIB:-0}"
 LLAMA_SLOT_PROMPT_SIMILARITY="${LLAMA_SLOT_PROMPT_SIMILARITY:-}"
 LLAMA_EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"

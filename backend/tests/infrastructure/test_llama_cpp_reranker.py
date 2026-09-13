@@ -17,7 +17,7 @@ from tests.domain.factories import chunk_uuid, make_hit
 
 BASE = "http://rerank"
 
-# Copied verbatim from corpus_pipeline.runtime.model_profiles.build_qwen3_yes_no_prompt: the agent must score
+# Copied verbatim from seed_pipeline.runtime.model_profiles.build_qwen3_yes_no_prompt: the agent must score
 # candidates with the exact prompt the evaluation used.
 EXPECTED_PROMPT = (
     "<|im_start|>system\n"

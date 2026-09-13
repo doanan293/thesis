@@ -1,0 +1,491 @@
+from __future__ import annotations
+
+import math
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import requests
+
+from seed_pipeline.runtime.model_profiles import RerankContract
+
+
+class LlamaCppError(RuntimeError):
+    pass
+
+
+class LlamaCppRequestError(LlamaCppError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retryable: bool = False,
+        failed_input_index: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retryable = retryable
+        self.failed_input_index = failed_input_index
+
+
+class LlamaCppResponseError(LlamaCppError):
+    pass
+
+
+@dataclass(frozen=True)
+class CompletionPromptTiming:
+    cached_tokens: int
+    evaluated_tokens: int
+
+
+@dataclass(frozen=True)
+class CompletionRerankResult:
+    score: float
+    timing: CompletionPromptTiming | None = None
+
+
+class LlamaCppClient:
+    def __init__(
+        self,
+        base_url: str,
+        timeout: float = 900.0,
+        post: Callable = requests.post,
+        get: Callable = requests.get,
+        max_attempts: int = 3,
+        retry_delay_seconds: float = 0.5,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = float(timeout)
+        self._post = post
+        self._get = get
+        self.max_attempts = max(1, max_attempts)
+        self.retry_delay_seconds = max(0.0, float(retry_delay_seconds))
+        self._sleep = sleep
+        self._token_ids: dict[tuple[str, str], int] = {}
+
+    def health(self) -> None:
+        url = f"{self.base_url}/health"
+        try:
+            response = self._get(url, timeout=min(self.timeout, 10.0))
+            response.raise_for_status()
+        except Exception as exc:
+            raise LlamaCppRequestError(
+                f"llama.cpp health request failed: {url}: {exc}"
+            ) from exc
+
+    def embed(
+        self, texts: list[str], model: str, expected_dimension: int
+    ) -> list[list[float]]:
+        if not texts:
+            return []
+        last_error = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                return self._embed_once(texts, model, expected_dimension)
+            except LlamaCppRequestError as exc:
+                last_error = exc
+                if not exc.retryable or attempt >= self.max_attempts:
+                    break
+                self._sleep(self.retry_delay_seconds * attempt)
+        assert last_error is not None
+        if last_error.retryable and len(texts) > 1:
+            midpoint = len(texts) // 2
+            try:
+                left = self.embed(texts[:midpoint], model, expected_dimension)
+            except LlamaCppRequestError as exc:
+                if exc.failed_input_index is None:
+                    exc.failed_input_index = 0
+                raise
+            try:
+                right = self.embed(texts[midpoint:], model, expected_dimension)
+            except LlamaCppRequestError as exc:
+                if exc.failed_input_index is None:
+                    exc.failed_input_index = 0
+                exc.failed_input_index += midpoint
+                raise
+            return left + right
+        if last_error.failed_input_index is None and len(texts) == 1:
+            last_error.failed_input_index = 0
+        raise last_error
+
+    def embeddings_batch(
+        self, texts: list[str], model: str, expected_dimension: int
+    ) -> list[list[float]]:
+        """Explicit batch alias used by Kaggle workers."""
+        return self.embed(texts, model, expected_dimension)
+
+    def _embed_once(
+        self, texts: list[str], model: str, expected_dimension: int
+    ) -> list[list[float]]:
+        payload = self._request(
+            "/v1/embeddings", {"model": model, "input": list(texts)}
+        )
+        data = payload.get("data")
+        if not isinstance(data, list) or len(data) != len(texts):
+            raise LlamaCppResponseError(
+                "Embedding response has an unexpected vector count"
+            )
+        by_index: dict[int, list[float]] = {}
+        for item in data:
+            if not isinstance(item, dict) or not isinstance(item.get("index"), int):
+                raise LlamaCppResponseError("Embedding response indices are invalid")
+            index = item["index"]
+            vector = item.get("embedding")
+            if index in by_index or not isinstance(vector, list):
+                raise LlamaCppResponseError(
+                    "Embedding response indices are missing or duplicate"
+                )
+            if len(vector) != expected_dimension:
+                raise LlamaCppResponseError(
+                    f"Embedding dimension mismatch: expected {expected_dimension}, got {len(vector)}"
+                )
+            converted = [float(value) for value in vector]
+            if not all(math.isfinite(value) for value in converted):
+                raise LlamaCppResponseError("Embedding vector values must be finite")
+            by_index[index] = converted
+        expected_indices = set(range(len(texts)))
+        if set(by_index) != expected_indices:
+            raise LlamaCppResponseError(
+                "Embedding response indices are missing or out of range"
+            )
+        return [by_index[index] for index in range(len(texts))]
+
+    def rerank_native(
+        self, query: str, documents: list[str], model: str
+    ) -> list[float]:
+        if not documents:
+            return []
+        payload = self._request(
+            "/v1/rerank",
+            {"model": model, "query": query, "documents": list(documents)},
+        )
+        results = payload.get("results")
+        if not isinstance(results, list) or len(results) != len(documents):
+            raise LlamaCppResponseError("Rerank response has an unexpected score count")
+        by_index: dict[int, float] = {}
+        for item in results:
+            if not isinstance(item, dict) or not isinstance(item.get("index"), int):
+                raise LlamaCppResponseError("Rerank response indices are invalid")
+            index = item["index"]
+            if index in by_index:
+                raise LlamaCppResponseError("Rerank response indices are duplicate")
+            score_raw = item.get("relevance_score")
+            if not isinstance(score_raw, int | float):
+                raise LlamaCppResponseError(
+                    "Rerank response relevance_score is invalid"
+                )
+            score = float(score_raw)
+            if not math.isfinite(score):
+                raise LlamaCppResponseError("Rerank scores must be finite")
+            by_index[index] = score
+        if set(by_index) != set(range(len(documents))):
+            raise LlamaCppResponseError(
+                "Rerank response indices are missing or out of range"
+            )
+        return [by_index[index] for index in range(len(documents))]
+
+    def _single_token_id(self, text: str, model: str) -> int:
+        key = (model, text)
+        if key in self._token_ids:
+            return self._token_ids[key]
+        payload = self._request(
+            "/tokenize",
+            {
+                "content": text,
+                "add_special": False,
+                "parse_special": False,
+            },
+        )
+        tokens = payload.get("tokens")
+        if (
+            not isinstance(tokens, list)
+            or len(tokens) != 1
+            or not isinstance(tokens[0], int)
+        ):
+            raise LlamaCppResponseError(
+                f"Rerank candidate {text!r} must encode to exactly one token"
+            )
+        self._token_ids[key] = tokens[0]
+        return tokens[0]
+
+    def _completion_token_ids(
+        self, model: str, contract: RerankContract
+    ) -> tuple[int, int]:
+        scoring = contract.scoring
+        if contract.protocol != "completion_logprobs" or scoring is None:
+            raise ValueError("completion token lookup requires a completion contract")
+        yes_id = self._single_token_id(scoring.positive_token, model)
+        no_id = self._single_token_id(scoring.negative_token, model)
+        if yes_id == no_id:
+            raise LlamaCppResponseError(
+                "Rerank completion candidates must use different tokens"
+            )
+        return yes_id, no_id
+
+    def rerank_completion(
+        self, prompt: str, model: str, contract: RerankContract | None = None
+    ) -> float:
+        if contract is None:
+            from seed_pipeline.runtime.model_profiles import qwen3_rerank_contract
+
+            contract = qwen3_rerank_contract()
+        yes_id, no_id = self._completion_token_ids(model, contract)
+        payload = self._request(
+            "/completion",
+            self.completion_payload(
+                prompt, contract, model=model, yes_id=yes_id, no_id=no_id
+            ),
+        )
+        return self._parse_completion_score(payload, yes_id, no_id)
+
+    @staticmethod
+    def completion_payload(
+        prompt: str,
+        contract: RerankContract,
+        *,
+        model: str = "",
+        yes_id: int,
+        no_id: int,
+        cache_prompt: bool = True,
+    ) -> dict:
+        scoring = contract.scoring
+        if contract.protocol != "completion_logprobs" or scoring is None:
+            raise ValueError("completion payload requires a completion contract")
+        return {
+            "model": model,
+            "prompt": prompt,
+            "cache_prompt": cache_prompt,
+            "n_predict": scoring.n_predict,
+            "temperature": scoring.temperature,
+            "samplers": list(scoring.samplers),
+            "n_probs": scoring.n_probs,
+            "min_keep": scoring.min_keep,
+            "post_sampling_probs": scoring.post_sampling_probs,
+            "logit_bias": [[yes_id, scoring.logit_bias], [no_id, scoring.logit_bias]],
+        }
+
+    def _parse_completion_result(
+        self, payload: dict, yes_id: int, no_id: int
+    ) -> CompletionRerankResult:
+        probabilities = payload.get("completion_probabilities")
+        if not isinstance(probabilities, list) or not probabilities:
+            raise LlamaCppResponseError(
+                "Completion rerank response is missing token probabilities"
+            )
+        first = probabilities[0]
+        candidates = first.get("top_probs") if isinstance(first, dict) else None
+        if not isinstance(candidates, list):
+            raise LlamaCppResponseError(
+                "Completion rerank response is missing top probabilities"
+            )
+        candidate_probabilities: dict[int, float] = {}
+        for item in candidates:
+            try:
+                token_id = item["id"]
+                probability = float(item["prob"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise LlamaCppResponseError(
+                    "Completion rerank token probability is invalid"
+                ) from exc
+            if not isinstance(token_id, int):
+                raise LlamaCppResponseError(
+                    "Completion rerank token probability is invalid"
+                )
+            if token_id in {yes_id, no_id}:
+                if token_id in candidate_probabilities:
+                    raise LlamaCppResponseError(
+                        "Completion rerank candidate probabilities are duplicate"
+                    )
+                if not math.isfinite(probability) or probability < 0:
+                    raise LlamaCppResponseError(
+                        "Completion rerank probabilities must be finite and non-negative"
+                    )
+                candidate_probabilities[token_id] = probability
+        if set(candidate_probabilities) != {yes_id, no_id}:
+            raise LlamaCppResponseError(
+                "Completion rerank response requires yes and no probabilities"
+            )
+        total = candidate_probabilities[yes_id] + candidate_probabilities[no_id]
+        if total <= 0:
+            raise LlamaCppResponseError(
+                "Completion rerank candidate probability total must be positive"
+            )
+        timing = None
+        raw_timing = payload.get("timings")
+        if isinstance(raw_timing, dict):
+            cached = raw_timing.get("cache_n")
+            evaluated = raw_timing.get("prompt_n")
+            if (
+                isinstance(cached, int)
+                and not isinstance(cached, bool)
+                and isinstance(evaluated, int)
+                and not isinstance(evaluated, bool)
+                and cached >= 0
+                and evaluated >= 0
+            ):
+                timing = CompletionPromptTiming(cached, evaluated)
+        return CompletionRerankResult(
+            candidate_probabilities[yes_id] / total,
+            timing,
+        )
+
+    def _parse_completion_score(self, payload: dict, yes_id: int, no_id: int) -> float:
+        return self._parse_completion_result(payload, yes_id, no_id).score
+
+    async def rerank_completions_async(
+        self,
+        prompts: list[str],
+        model: str,
+        concurrency: int = 16,
+        contract: RerankContract | None = None,
+        cache_prompt: bool = True,
+    ) -> list[float]:
+        results = await self.rerank_completion_results_async(
+            prompts,
+            model,
+            concurrency=concurrency,
+            contract=contract,
+            cache_prompt=cache_prompt,
+        )
+        return [result.score for result in results]
+
+    async def rerank_completion_results_async(
+        self,
+        prompts: list[str],
+        model: str,
+        concurrency: int = 16,
+        contract: RerankContract | None = None,
+        cache_prompt: bool = True,
+    ) -> list[CompletionRerankResult]:
+        if not prompts:
+            return []
+        if contract is None:
+            from seed_pipeline.runtime.model_profiles import qwen3_rerank_contract
+
+            contract = qwen3_rerank_contract()
+        import asyncio
+
+        import httpx
+
+        yes_id, no_id = self._completion_token_ids(model, contract)
+
+        semaphore = asyncio.Semaphore(max(1, concurrency))
+
+        async def _fetch_one(
+            async_client: httpx.AsyncClient, prompt: str
+        ) -> CompletionRerankResult:
+            async with semaphore:
+                url = f"{self.base_url}/completion"
+                payload = self.completion_payload(
+                    prompt,
+                    contract,
+                    model=model,
+                    yes_id=yes_id,
+                    no_id=no_id,
+                    cache_prompt=cache_prompt,
+                )
+                last_error: LlamaCppRequestError | None = None
+                for attempt in range(1, self.max_attempts + 1):
+                    try:
+                        response = await async_client.post(
+                            url, json=payload, timeout=self.timeout
+                        )
+                    except Exception as exc:
+                        retryable = isinstance(
+                            exc,
+                            httpx.RequestError | ConnectionError | TimeoutError,
+                        )
+                        last_error = LlamaCppRequestError(
+                            f"llama.cpp request failed for /completion: {exc}",
+                            retryable=retryable,
+                        )
+                    else:
+                        status_code = response.status_code
+                        if status_code >= 400:
+                            body = response.text[:2000]
+                            retryable = status_code in {408, 429} or status_code >= 500
+                            detail = f": {body}" if body else ""
+                            last_error = LlamaCppRequestError(
+                                f"llama.cpp request failed for /completion: HTTP {status_code}{detail}",
+                                status_code=status_code,
+                                retryable=retryable,
+                            )
+                        else:
+                            try:
+                                res_json = response.json()
+                            except Exception as exc:
+                                raise LlamaCppResponseError(
+                                    f"llama.cpp response for /completion is not valid JSON: {exc}"
+                                ) from exc
+                            if not isinstance(res_json, dict):
+                                raise LlamaCppResponseError(
+                                    "llama.cpp response for /completion must be an object"
+                                )
+                            return self._parse_completion_result(
+                                res_json, yes_id, no_id
+                            )
+                    if (
+                        last_error is None
+                        or not last_error.retryable
+                        or attempt >= self.max_attempts
+                    ):
+                        break
+                    await asyncio.sleep(self.retry_delay_seconds * attempt)
+                assert last_error is not None
+                raise last_error
+
+        async with httpx.AsyncClient() as async_client:
+            tasks = [_fetch_one(async_client, prompt) for prompt in prompts]
+            return list(await asyncio.gather(*tasks))
+
+    def _request(self, path: str, payload: dict) -> dict:
+        url = f"{self.base_url}{path}"
+        last_error: LlamaCppRequestError | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = self._post(url, json=payload, timeout=self.timeout)
+            except Exception as exc:
+                retryable = isinstance(
+                    exc,
+                    requests.exceptions.RequestException
+                    | ConnectionError
+                    | TimeoutError,
+                )
+                last_error = LlamaCppRequestError(
+                    f"llama.cpp request failed for {path}: {exc}",
+                    retryable=retryable,
+                )
+            else:
+                status_code = int(getattr(response, "status_code", 200))
+                if status_code >= 400:
+                    body = str(getattr(response, "text", ""))[:2000]
+                    retryable = status_code in {408, 429} or status_code >= 500
+                    detail = f": {body}" if body else ""
+                    last_error = LlamaCppRequestError(
+                        f"llama.cpp request failed for {path}: HTTP {status_code}{detail}",
+                        status_code=status_code,
+                        retryable=retryable,
+                    )
+                else:
+                    try:
+                        result = response.json()
+                    except Exception as exc:
+                        raise LlamaCppResponseError(
+                            f"llama.cpp response for {path} is not valid JSON: {exc}"
+                        ) from exc
+                    if not isinstance(result, dict):
+                        raise LlamaCppResponseError(
+                            f"llama.cpp response for {path} must be an object"
+                        )
+                    return result
+            if (
+                last_error is None
+                or not last_error.retryable
+                or attempt >= self.max_attempts
+            ):
+                break
+            self._sleep(self.retry_delay_seconds * attempt)
+        assert last_error is not None
+        raise last_error

@@ -1,6 +1,7 @@
-# Shared hooks for every project in this repo (corpus-pipeline, backend).
+# Shared hooks for every project in this repo (seed-pipeline, backend).
 # Install once from the repo root: `uv run --project backend pre-commit install`.
-exclude: '.*(data/|\.venv/|ai-models/|\.agents/)'
+# Specs and plans under backend/docs/superpowers are immutable records; hooks never rewrite them.
+exclude: '.*(data/|\.venv/|ai-models/|\.agents/|backend/docs/superpowers/)'
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -23,11 +24,11 @@ repos:
 
   - repo: local
     hooks:
-      - id: pyrefly-corpus-pipeline
-        name: pyrefly check (corpus-pipeline)
-        entry: uv run --directory corpus-pipeline pyrefly check --min-severity warn
+      - id: pyrefly-seed-pipeline
+        name: pyrefly check (seed-pipeline)
+        entry: uv run --directory seed-pipeline pyrefly check --min-severity warn
         language: system
-        files: ^corpus-pipeline/.*\.(py|pyi|toml)$
+        files: ^seed-pipeline/.*\.(py|pyi|toml)$
         pass_filenames: false
         require_serial: true
       - id: pyrefly-backend
@@ -58,9 +59,9 @@ repos:
     rev: 0.12.13
     hooks:
       - id: uv-lock
-        name: uv-lock (corpus-pipeline)
-        args: [--project, corpus-pipeline]
-        files: ^corpus-pipeline/(uv\.lock|pyproject\.toml|uv\.toml)$
+        name: uv-lock (seed-pipeline)
+        args: [--project, seed-pipeline]
+        files: ^seed-pipeline/(uv\.lock|pyproject\.toml|uv\.toml)$
       - id: uv-lock
         name: uv-lock (backend)
         args: [--project, backend]

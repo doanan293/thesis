@@ -1,6 +1,6 @@
 """The single corpus chunker (spec C §7.1).
 
-Public API. Splitting is ported from corpus-pipeline ``build_final_chunk_records``,
+Public API. Splitting is ported from seed-pipeline ``build_final_chunk_records``,
 ``split_table_markdown``, ``split_lines_without_breaking_entries`` and
 ``split_long_text``; the splitter is chosen only by ``BlockRecord.kind``.
 """
