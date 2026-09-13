@@ -6,6 +6,7 @@ from fastapi_users_db_sqlalchemy import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
 )
+from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyBaseAccessTokenTableUUID
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -62,6 +63,12 @@ class UserTable(SQLAlchemyBaseUserTableUUID, Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     oauth_accounts: Mapped[list[OAuthAccountTable]] = relationship(lazy="joined")
+
+
+class AccessTokenTable(SQLAlchemyBaseAccessTokenTableUUID, Base):
+    """fastapi-users database sessions behind the `pharma_session` cookie."""
+
+    __tablename__ = "access_tokens"
 
 
 class ConversationTable(Base):

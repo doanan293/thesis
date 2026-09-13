@@ -1,4 +1,5 @@
-"""fastapi-users wiring: JWT bearer auth, registration, current user, Google OAuth."""
+"""fastapi-users wiring: cookie sessions for browsers, JWT bearer for CLI and tests,
+registration, current user and Google OAuth."""
 
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -10,13 +11,17 @@ from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, schemas
 from fastapi_users.authentication import (
     AuthenticationBackend,
     BearerTransport,
+    CookieTransport,
     JWTStrategy,
 )
+from fastapi_users.authentication.strategy.db import DatabaseStrategy
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyAccessTokenDatabase
 from httpx_oauth.clients.google import GoogleOAuth2
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from pharma_agent.infrastructure.persistence.postgres.tables import (
+    AccessTokenTable,
     OAuthAccountTable,
     UserTable,
 )
@@ -27,6 +32,7 @@ SESSION_COOKIE_NAME = "pharma_session"
 
 SessionFactoryResolver = Callable[[Request], async_sessionmaker[AsyncSession]]
 UserDatabase = SQLAlchemyUserDatabase[UserTable, uuid.UUID]
+AccessTokenDatabase = SQLAlchemyAccessTokenDatabase[AccessTokenTable]
 
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
@@ -51,7 +57,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[UserTable, uuid.UUID]):
 @dataclass(frozen=True)
 class Auth:
     users: FastAPIUsers[UserTable, uuid.UUID]
-    backend: AuthenticationBackend[UserTable, uuid.UUID]
+    cookie_backend: AuthenticationBackend[UserTable, uuid.UUID]
+    jwt_backend: AuthenticationBackend[UserTable, uuid.UUID]
     current_active_user: Callable[..., Any]
     google: GoogleOAuth2 | None
     secret: str
@@ -72,17 +79,40 @@ def build_auth(
     ) -> AsyncIterator[UserDatabase]:
         yield SQLAlchemyUserDatabase(session, UserTable, OAuthAccountTable)
 
+    async def get_access_token_db(
+        session: Annotated[AsyncSession, Depends(get_session)],
+    ) -> AsyncIterator[AccessTokenDatabase]:
+        yield SQLAlchemyAccessTokenDatabase(session, AccessTokenTable)
+
     async def get_user_manager(
         user_db: Annotated[UserDatabase, Depends(get_user_db)],
     ) -> AsyncIterator[UserManager]:
         yield UserManager(user_db, secret)
+
+    def get_session_strategy(
+        access_tokens: Annotated[AccessTokenDatabase, Depends(get_access_token_db)],
+    ) -> DatabaseStrategy[UserTable, uuid.UUID, AccessTokenTable]:
+        return DatabaseStrategy[UserTable, uuid.UUID, AccessTokenTable](
+            access_tokens, lifetime_seconds=settings.session_lifetime_seconds
+        )
 
     def get_jwt_strategy() -> JWTStrategy[UserTable, uuid.UUID]:
         return JWTStrategy(
             secret=secret, lifetime_seconds=settings.jwt_lifetime_seconds
         )
 
-    backend = AuthenticationBackend(
+    cookie_backend = AuthenticationBackend(
+        name="cookie",
+        transport=CookieTransport(
+            cookie_name=SESSION_COOKIE_NAME,
+            cookie_max_age=settings.session_lifetime_seconds,
+            cookie_secure=settings.cookie_secure,
+            cookie_httponly=True,
+            cookie_samesite="lax",
+        ),
+        get_strategy=get_session_strategy,
+    )
+    jwt_backend = AuthenticationBackend(
         name="jwt",
         transport=BearerTransport(tokenUrl=LOGIN_URL),
         get_strategy=get_jwt_strategy,
@@ -92,7 +122,7 @@ def build_auth(
     # first appearance, so it expects BaseUserManager[UUID, UserTable]. Types are correct.
     users = FastAPIUsers[UserTable, uuid.UUID](
         get_user_manager,  # pyrefly: ignore[bad-argument-type]
-        [backend],
+        [cookie_backend, jwt_backend],
     )
     google = None
     if (
@@ -105,7 +135,8 @@ def build_auth(
         )
     return Auth(
         users=users,
-        backend=backend,
+        cookie_backend=cookie_backend,
+        jwt_backend=jwt_backend,
         current_active_user=users.current_user(active=True),
         google=google,
         secret=secret,
@@ -115,7 +146,12 @@ def build_auth(
 
 def include_auth_routes(router: APIRouter, auth: Auth) -> None:
     router.include_router(
-        auth.users.get_auth_router(auth.backend), prefix="/auth/jwt", tags=["auth"]
+        auth.users.get_auth_router(auth.cookie_backend),
+        prefix="/auth/cookie",
+        tags=["auth"],
+    )
+    router.include_router(
+        auth.users.get_auth_router(auth.jwt_backend), prefix="/auth/jwt", tags=["auth"]
     )
     router.include_router(
         auth.users.get_register_router(UserRead, UserCreate),
@@ -131,7 +167,7 @@ def include_auth_routes(router: APIRouter, auth: Auth) -> None:
         router.include_router(
             auth.users.get_oauth_router(
                 auth.google,
-                auth.backend,
+                auth.cookie_backend,
                 auth.secret,
                 redirect_url=f"{auth.frontend_url.rstrip('/')}/auth/google/callback",
                 associate_by_email=True,

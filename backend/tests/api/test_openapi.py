@@ -25,6 +25,8 @@ EXPECTED_OPERATION_IDS = {
     "upload_skill",
     "set_skill_enabled",
     "delete_skill",
+    "auth:cookie.login",
+    "auth:cookie.logout",
     "auth:jwt.login",
     "auth:jwt.logout",
     "register:register",
@@ -33,8 +35,8 @@ EXPECTED_OPERATION_IDS = {
     "users:user",
     "users:patch_user",
     "users:delete_user",
-    "oauth:google.jwt.authorize",
-    "oauth:google.jwt.callback",
+    "oauth:google.cookie.authorize",
+    "oauth:google.cookie.callback",
 }
 
 
@@ -104,6 +106,7 @@ def test_components_are_clean() -> None:
         "FeedbackView",
         "SkillView",
         "HealthResponse",
+        "Body_auth_cookie_login",
         "Body_auth_jwt_login",
         "Body_upload_skill",
     } <= set(schemas)

@@ -24,6 +24,7 @@ pytestmark = pytest.mark.integration
 EXPECTED_TABLES = {
     "user",
     "oauth_account",
+    "access_tokens",
     "conversations",
     "messages",
     "message_citations",

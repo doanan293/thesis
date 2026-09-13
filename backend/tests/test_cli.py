@@ -177,7 +177,7 @@ def test_export_openapi_is_deterministic_and_matches_the_app(tmp_path: Path) -> 
     document = json.loads(text)
     assert list(document) == sorted(document)
     authorize = document["paths"]["/api/v1/auth/google/authorize"]["get"]
-    assert authorize["operationId"] == "oauth:google.jwt.authorize"
+    assert authorize["operationId"] == "oauth:google.cookie.authorize"
 
 
 def test_render_warns_when_the_turn_was_not_persisted(
