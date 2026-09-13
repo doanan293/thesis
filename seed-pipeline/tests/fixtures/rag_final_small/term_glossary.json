@@ -1,0 +1,36 @@
+[
+  {
+    "term": "ADR",
+    "case_sensitive": true,
+    "vietnamese_expansions": [
+      "tác dụng không mong muốn",
+      "phản ứng có hại của thuốc"
+    ],
+    "english_expansions": [
+      "Adverse Drug Reactions"
+    ],
+    "aliases": [
+      "adverse drug reaction"
+    ],
+    "category": "safety",
+    "confidence": "high",
+    "source": "curated"
+  },
+  {
+    "term": "NSAID",
+    "case_sensitive": true,
+    "vietnamese_expansions": [
+      "thuốc chống viêm không steroid",
+      "thuốc kháng viêm không steroid"
+    ],
+    "english_expansions": [
+      "Nonsteroidal Anti-inflammatory Drug"
+    ],
+    "aliases": [
+      "NSAIDs"
+    ],
+    "category": "drug_class",
+    "confidence": "high",
+    "source": "curated"
+  }
+]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import typer
 
 from seed_pipeline.cli.commands.build import build
+from seed_pipeline.cli.commands.bundle import bundle_app
 from seed_pipeline.cli.commands.doctor import doctor
 from seed_pipeline.cli.commands.embed import embed_app
 from seed_pipeline.cli.commands.evaluation import evaluation_app
@@ -45,6 +46,7 @@ app.add_typer(evaluation_app, name="evaluation")
 app.add_typer(embed_app, name="embed")
 app.add_typer(vectors_app, name="vectors")
 app.add_typer(source_app, name="source")
+app.add_typer(bundle_app, name="bundle")
 app.command("retrieve")(retrieve)
 app.command("rerank")(rerank)
 app.command("metrics")(metrics)
