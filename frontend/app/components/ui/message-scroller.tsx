@@ -72,10 +72,9 @@ function MessageScrollerItem({
     <MessageScrollerPrimitive.Item
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
-      className={cn(
-        "min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]",
-        className
-      )}
+      // No content-visibility: auto here. Prepended messages then change height after they
+      // render, and the scroller's prepend compensation sometimes overshoots the reading position.
+      className={cn("min-w-0 shrink-0", className)}
       {...props}
     />
   )
