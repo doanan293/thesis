@@ -3,9 +3,10 @@
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pharma_agent.application.corpus.import_bundle import ImportKnowledgeBundle
+from pharma_agent.application.corpus.releases import ReleaseService
 from pharma_agent.domain.corpus.bundle import ColloquialMappingRecord, GlossaryEntry
 from pharma_agent.domain.corpus.models import (
     ChunkVersion,
@@ -24,7 +25,7 @@ from pharma_agent.domain.corpus.models import (
     SectionRevision,
 )
 from pharma_agent.domain.corpus.ports import Embedder
-from pharma_agent.domain.shared.clock import FixedClock
+from pharma_agent.domain.shared.clock import Clock, FixedClock
 from tests.fakes import NOW
 
 
@@ -327,10 +328,26 @@ class CorpusAdapters:
     index: InMemoryVectorIndex = field(default_factory=InMemoryVectorIndex)
 
 
+class SteppingClock:
+    """Each call returns a later time, so published_at values are ordered."""
+
+    def __init__(
+        self, start: datetime = NOW, step: timedelta = timedelta(minutes=1)
+    ) -> None:
+        self._next = start
+        self._step = step
+
+    def now(self) -> datetime:
+        current = self._next
+        self._next = current + self._step
+        return current
+
+
 def build_importer(
     adapters: CorpusAdapters,
     embedder: Embedder,
     *,
+    clock: Clock | None = None,
     batch_size: int = 2,
     max_concurrent: int = 1,
 ) -> ImportKnowledgeBundle:
@@ -339,7 +356,26 @@ def build_importer(
         adapters.cache,
         adapters.index,
         embedder,
-        FixedClock(NOW),
+        clock if clock is not None else FixedClock(NOW),
+        embed_batch_size=batch_size,
+        embed_max_concurrent=max_concurrent,
+    )
+
+
+def build_release_service(
+    adapters: CorpusAdapters,
+    embedder: Embedder,
+    *,
+    clock: Clock | None = None,
+    batch_size: int = 2,
+    max_concurrent: int = 1,
+) -> ReleaseService:
+    return ReleaseService(
+        adapters.repository,
+        adapters.cache,
+        adapters.index,
+        embedder,
+        clock if clock is not None else FixedClock(NOW),
         embed_batch_size=batch_size,
         embed_max_concurrent=max_concurrent,
     )
