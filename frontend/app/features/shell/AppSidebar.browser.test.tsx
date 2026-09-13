@@ -5,6 +5,7 @@ import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 
 import type { UserRead } from "~/api/gen/schemas"
+import { getListConversationsMockHandler } from "~/api/gen/endpoints.msw"
 import { SidebarProvider } from "~/components/ui/sidebar"
 import { TooltipProvider } from "~/components/ui/tooltip"
 import { AppSidebar } from "~/features/shell/AppSidebar"
@@ -48,6 +49,9 @@ async function renderShell() {
 describe("AppSidebar", () => {
   beforeEach(async () => {
     await page.viewport(1280, 800)
+    worker.use(
+      getListConversationsMockHandler({ items: [], next_cursor: null })
+    )
   })
 
   test("links the private pages and marks the current one", async () => {
@@ -66,6 +70,11 @@ describe("AppSidebar", () => {
     await expect
       .element(page.getByRole("link", { name: "Cài đặt" }))
       .toHaveAttribute("href", "/settings")
+    // The shell also mounts the conversation list; wait for its request to finish inside the test,
+    // otherwise it reaches MSW after the handlers reset and fails the next test.
+    await expect
+      .element(page.getByText("Chưa có cuộc trò chuyện nào"))
+      .toBeVisible()
   })
 
   test("logs out through the cookie endpoint and returns to the login page", async () => {
@@ -77,6 +86,9 @@ describe("AppSidebar", () => {
       })
     )
     await renderShell()
+    await expect
+      .element(page.getByText("Chưa có cuộc trò chuyện nào"))
+      .toBeVisible()
 
     await page.getByRole("button", { name: "Menu tài khoản" }).click()
     await page.getByRole("menuitem", { name: "Đăng xuất" }).click()

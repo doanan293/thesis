@@ -15,6 +15,7 @@ import {
   SidebarMenuItem,
 } from "~/components/ui/sidebar"
 import { UserMenu } from "~/features/shell/UserMenu"
+import { ConversationSidebar } from "~/features/conversations/ConversationSidebar"
 
 const NAV_ITEMS = [
   { to: "/chat", label: "nav.chat", Icon: MessageSquareIcon },
@@ -50,6 +51,7 @@ export function AppSidebar({ user }: { user: UserRead }) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <ConversationSidebar />
       </SidebarContent>
       <SidebarFooter>
         <UserMenu user={user} />
