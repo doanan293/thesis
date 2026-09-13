@@ -13,12 +13,13 @@ dependencies = [
     "mail-parser==4.4.0",
     "marko==2.2.3",
     "openpyxl==3.1.5",
+    "pharma-agent",
     "PyMuPDF==1.27.2.3",
     "pylatexenc==2.10",
     "pypdfium2==5.10.1",
     "python-docx==1.2.0",
     "python-pptx==1.0.2",
-    "qdrant-client==1.18.0",
+    "qdrant-client>=1.19,<2",
     "kaggle==2.2.3",
     "requests==2.34.2",
     "typer==0.21.2",
@@ -48,6 +49,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
+pharma-agent = { path = "../backend", editable = true }
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 

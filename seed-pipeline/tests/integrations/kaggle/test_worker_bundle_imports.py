@@ -41,7 +41,8 @@ def test_worker_imports_from_source_bundle_without_local_workspace(
         f"sys.path.insert(0, {str(bundle)!r}); "
         f"module = importlib.import_module({worker_module!r}); "
         f"assert str(module.__file__).startswith({str(bundle)!r}); "
-        "assert 'seed_pipeline.config.paths' not in sys.modules"
+        "assert 'seed_pipeline.config.paths' not in sys.modules; "
+        "assert 'pharma_agent' not in sys.modules"
     )
     environment = dict(os.environ)
     environment.pop("SEED_PIPELINE_ROOT", None)
