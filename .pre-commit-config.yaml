@@ -77,6 +77,13 @@ repos:
         files: ^frontend/.*\.(ts|tsx|json)$
         pass_filenames: false
         require_serial: true
+      - id: frontend-api-drift
+        name: orval output matches openapi.json (frontend)
+        entry: npm --prefix frontend run api:check
+        language: system
+        files: ^frontend/(openapi\.json|orval\.config\.ts|app/api/gen/)
+        pass_filenames: false
+        require_serial: true
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
