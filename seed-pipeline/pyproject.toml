@@ -64,6 +64,9 @@ src = ["src", "tests"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-markers = ["integration: needs Docker (run with -m integration)"]
-addopts = ["--import-mode=importlib", "-m", "not integration"]
+markers = [
+    "integration: needs Docker (run with -m integration)",
+    "data: needs the full build under data/heavy (run with -m data)",
+]
+addopts = ["--import-mode=importlib", "-m", "not integration and not data"]
 filterwarnings = ["error"]
