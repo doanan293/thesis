@@ -91,7 +91,8 @@ API công khai mà `seed-pipeline` được phép import (ghi rõ trong docstrin
 - `pharma_agent.domain.corpus.identity`
 - `pharma_agent.domain.corpus.chunking`
 - `pharma_agent.domain.corpus.enrichment`
-- `pharma_agent.infrastructure.composition.build_retrieval_service(settings)` (cho evaluation)
+- `pharma_agent.domain.corpus.hydrate`
+- `pharma_agent.infrastructure.composition.build_retrieval_service(settings, *, embedder=None)` (cho evaluation; evaluation truyền embedder đọc cache query embedding đã tính sẵn)
 
 ## 5. Knowledge bundle `knowledge-bundle/v1`
 
@@ -114,7 +115,7 @@ bundle/
 | `sections.jsonl` | `{key, document_key, heading, context_path[], ordinal, start_page, end_page, retrieval, blocks[]}`; `retrieval ∈ {default, index_only}` |
 | `blocks[]` | `{kind, markdown, start_page, end_page, table_key}`; `kind ∈ {prose, table, list, index_entries}`; trang là số nguyên từ 1 hoặc `null` |
 | `glossary.json` | Giữ nguyên schema của `data/resources/term_glossary.json` hiện tại |
-| `colloquial_mappings.json` | Giữ nguyên schema của `data/resources/colloquial_mappings.json`, thêm `section_keys[]` nếu mapping gắn với section |
+| `colloquial_mappings.json` | Mảng JSON các record `{key, aliases[], visual_sign, product_names[], section_keys[]}`: field lấy từ `data/resources/colloquial_mappings.json` (tệp nguồn là object theo slug), `key` là slug An Khang hoặc rỗng, mỗi section thuộc tối đa một mapping |
 | `embeddings/<model_slug>.jsonl` | `{embedding_text_sha256, dims, vector}`; `vector` là float32 little-endian mã hoá base64 |
 
 ### 5.2 Key
@@ -154,7 +155,7 @@ Migration Alembic của backend tạo schema `corpus`; `env.py` bật `include_s
 | `documents` | `id, collection_id, key, kind, title, source_title, source_url, attributes jsonb` | unique `(collection_id, key)` | Không, chỉ metadata |
 | `sections` | `id, document_id, key, heading, context_path text[], ordinal, retrieval_mode` | unique `(document_id, key)` | Không; danh tính lâu dài cho URL và SEO |
 | `section_revisions` | `id, section_id, blocks jsonb, start_page, end_page, char_count` | `id` từ §6.1 | Có |
-| `chunk_versions` | `id, section_revision_id, ordinal, kind, chunk_text, embedding_text, embedding_text_sha256, start_page, end_page, table_key, term_annotations jsonb, colloquial jsonb, chunker_version, created_at` | FK `section_revisions` `RESTRICT`; index `embedding_text_sha256` | Có |
+| `chunk_versions` | `id, section_revision_id, ordinal, kind, context_header, chunk_text, embedding_text, embedding_text_sha256, start_page, end_page, table_key, term_annotations jsonb, colloquial jsonb, chunker_version, created_at` | FK `section_revisions` `RESTRICT`; index `embedding_text_sha256` | Có |
 | `releases` | `id, collection_id, number, status, bundle_digest, chunker_version, embedding_model, stats jsonb, created_at, ready_at, published_at, retired_at` | unique `(collection_id, number)`; `status ∈ {building, ready, retired}` | Chỉ trạng thái |
 | `release_chunks` | `release_id, chunk_version_id, section_id, section_revision_id, ordinal, hydrate_strategy` | PK `(release_id, chunk_version_id)`; index `(release_id, section_revision_id, ordinal)`; FK chunk `RESTRICT` | Có |
 | `glossary_entries` | `release_id, term, data jsonb` | FK release `CASCADE` | Có |
@@ -268,9 +269,9 @@ Domain retrieval giữ nguyên các port `Retriever`, `Reranker`, `Hydrator` và
 
 | Thành phần | Thay đổi |
 | --- | --- |
-| `Hit`, `Chunk` | `chunk_id` → `chunk_version_id`; thêm `release_id`, `collection_id`, `document_key`, `section_key`, `section_revision_id`, `ordinal`, `start_page`, `end_page` cho từng chunk; trang dùng `None` thay cho 0 |
+| `Hit`, `Chunk` | Giữ `embedding_text` (reranker chấm trên trường này như hiện nay); `chunk_id` → `chunk_version_id`; thêm `release_id`, `collection_id`, `document_key`, `section_key`, `section_revision_id`, `ordinal`, `start_page`, `end_page` cho từng chunk; trang dùng `None` thay cho 0 |
 | Port mới `CorpusReader` | `load_chunks(ids) -> list[ChunkRecord]`, `section_chunks(release_id, section_revision_id, around: int | None, radius: int) -> list[Chunk]`, `current_releases(collection_ids) -> dict[collection_id, release_id]` |
-| `QdrantHybridRetriever` | Giữ hybrid RRF dense + BM25; thêm filter §8.3; nhận ID + score từ Qdrant rồi gọi `CorpusReader.load_chunks` để dựng `Hit` (text, header, trang, thuật ngữ, colloquial) |
+| `QdrantHybridRetriever` | Chế độ `hybrid` (RRF dense + BM25), `dense`, `bm25` (chỉ sparse, làm baseline evaluation); thêm filter §8.3; nhận ID + score từ Qdrant rồi gọi `CorpusReader.load_chunks` để dựng `Hit` (text, header, trang, thuật ngữ, colloquial) |
 | `PostgresHydrator` | Thay `QdrantHydrator`: `full_section` lấy toàn bộ `release_chunks` của section revision theo `ordinal`; `chunk_window` lấy `ordinal ± radius`; `search_only` trả rỗng |
 | `Reranker` | Giữ nguyên |
 | Phạm vi | Setting `retrieval.collections = ["formulary"]`; release hiện hành đọc từ Postgres mỗi lần search (một query có index, không cache) |

@@ -163,7 +163,8 @@ def chunk_section(document: DocumentRecord, section: SectionRecord, glossary: Se
   `release_chunks`, `glossary_entries`, `colloquial_mappings`, `embedding_cache`. Class names:
   `CollectionTable`, `DocumentTable`, `SectionTable`, `SectionRevisionTable`,
   `ChunkVersionTable`, `ReleaseTable`, `ReleaseChunkTable`, `GlossaryEntryTable`,
-  `ColloquialMappingTable`, `EmbeddingCacheTable`.
+  `ColloquialMappingTable`, `EmbeddingCacheTable`. `chunk_versions` also has `context_header text not null`
+  (from `ChunkDraft.context_header`), so readers never rebuild it.
 - Primary keys are `uuid` columns; corpus ids leave the database as `uuid.UUID` in Python and as
   the canonical hyphenated string in JSON, Qdrant payloads and API responses.
 - Application service `pharma_agent.application.corpus.import_bundle.ImportKnowledgeBundle` with
@@ -179,6 +180,13 @@ def chunk_section(document: DocumentRecord, section: SectionRecord, glossary: Se
   `infrastructure/retrieval/qdrant_adapter.py`); payload keys `collection_id`, `release_ids`,
   `document_id`, `section_id`, `section_revision_id`, `kind`; point id = `str(chunk_version_id)`.
   Qdrant adapter for writes: `pharma_agent.infrastructure.retrieval.qdrant_index.QdrantVectorIndex`.
+- Constructors (as written in P2): `PostgresCorpusRepository(sessions)`, `PostgresEmbeddingCache(sessions)`,
+  `QdrantVectorIndex(client, *, model: str, dimension: int, alias: str = "chunks_current")` (its
+  `ensure_collection()` creates the physical collection and points `alias` at it; P3 makes
+  `open_corpus_services` pass `settings.retrieval.qdrant_collection` so writes and reads use the same alias), `ImportKnowledgeBundle(repository, cache, index, embedder, clock, *,
+  embed_batch_size: int, embed_max_concurrent: int)`, `ReleaseService(` same arguments `)`. Factory
+  `pharma_agent.infrastructure.corpus_factory.open_corpus_services(settings, *, embedder: Embedder | None = None)`
+  yields `CorpusServices(importer, releases, index, embedder)`; tests and the E2E server inject `FakeEmbedder` here.
 - Fixture bundle for tests: `backend/tests/fixtures/knowledge_bundle_small/` (2 documents, a
   prose section, a table section, an `index_only` section with `index_entries`, a leaflet with a
   colloquial mapping, glossary with 2 entries, embeddings for a 4-dim fake model
@@ -190,10 +198,10 @@ def chunk_section(document: DocumentRecord, section: SectionRecord, glossary: Se
 - `Hit` fields after P3: `chunk_version_id: UUID`, `release_id: UUID`, `collection_id: UUID`,
   `document_key: str`, `section_key: str`, `section_revision_id: UUID`, `ordinal: int`,
   `hydrate_strategy`, `source`, `title`, `section`, `start_page: int | None`,
-  `end_page: int | None`, `context_header`, `chunk_text`, `kind: str`, `table_key: str | None`,
+  `end_page: int | None`, `context_header`, `chunk_text`, `embedding_text`, `kind: str`, `table_key: str | None`,
   `colloquial_mapping`, `term_annotations`, `fusion_score`, `rerank_score`, `matched_queries`.
-  `embedding_text`, `chunk_id`, `section_id`, `chunk_index`, `content_type`, `table_id` are
-  removed. `page_label` handles `None`.
+  `chunk_id`, `section_id`, `chunk_index`, `content_type`, `table_id` are removed; `embedding_text`
+  stays because the reranker scores it, as it does today. `page_label` handles `None`.
 - `Chunk` fields after P3: `chunk_version_id: UUID`, `section_revision_id: UUID`, `ordinal: int`,
   `text: str`, `kind: str`, `table_key: str | None`, `start_page: int | None`, `end_page: int | None`.
   `is_table` is `kind == "table"`.
@@ -207,8 +215,11 @@ def chunk_section(document: DocumentRecord, section: SectionRecord, glossary: Se
   `pharma_agent.infrastructure.retrieval.postgres_corpus.PostgresCorpusReader`;
   `PostgresHydrator` in the same module.
 - Settings: `RetrievalSettings.qdrant_collection: str = "chunks_current"`,
-  `RetrievalSettings.collections: list[str] = ["formulary"]`; `collection_alias` removed.
-- `pharma_agent.infrastructure.composition.build_retrieval_service(settings: Settings) -> RetrievalStack`
+  `RetrievalSettings.collections: list[str] = ["formulary"]`,
+  `RetrievalSettings.mode: Literal["hybrid", "dense", "bm25"] = "hybrid"` (`bm25` = sparse only, no query
+  embedding, used by the evaluation baseline); `collection_alias` removed.
+- `pharma_agent.infrastructure.composition.build_retrieval_service(settings: Settings, *, database: Database | None = None, embedder: Embedder | None = None) -> RetrievalStack`
+  (both keyword arguments are added in P3; P4 injects a cached query embedder, P7 reuses it)
   where `RetrievalStack` is a dataclass with `service: RetrievalService` and
   `async def aclose(self) -> None`. The seed-pipeline evaluation uses this.
 - Health check name `corpus`; failure reason code `CORPUS_NOT_READY`.
@@ -239,11 +250,16 @@ def chunk_section(document: DocumentRecord, section: SectionRecord, glossary: Se
 ## 4. Pinned frontend names (P8–P10)
 
 - `frontend/openapi.json` generated by `uv run --directory ../backend pharma-agent export-openapi --output ../frontend/openapi.json`; npm script `api:openapi` runs it, `api:generate` runs orval.
-- orval outputs: `app/api/gen/endpoints.ts` (react-query hooks and query options), `app/api/gen/schemas.ts` (types), `app/api/gen/zod.ts`, `app/api/gen/msw.ts`. Mutator `app/api/fetcher.ts` exports `fetcher<T>(url: string, init?: RequestInit): Promise<T>`.
+- orval outputs (orval 8.32 file layout, as written in P8): `app/api/gen/endpoints.ts` (react-query hooks and query options), `app/api/gen/schemas/` with `index.ts` (types, imported as `~/api/gen/schemas`), `app/api/gen/zod.ts`, `app/api/gen/endpoints.msw.ts` (MSW handlers, imported as `~/api/gen/endpoints.msw`). orval runs with `override.fetch.includeHttpResponseReturnType: false`, `query.version: 5`, `useInfinite: true`, `useInfiniteQueryParam: "cursor"`. Mutator `app/api/fetcher.ts` exports `fetcher<T>(url: string, init?: RequestInit): Promise<T>`.
 - `app/api/problem.ts` exports `class ApiError extends Error { status: number; code: string; detail: string | undefined; errors: ProblemItem[] }` and `isApiError(value: unknown): value is ApiError`.
 - `app/lib/csrf.ts` exports `readCsrfToken(): string | undefined` and `CSRF_HEADER = "x-csrftoken"`.
 - `app/api/query-client.ts` exports `queryClient`.
 - i18n namespaces: `common`, `auth`, `chat`, `citations`, `skills`, `settings`, `landing`, `errors` (error messages keyed by problem `code`).
 - Chat feature entry: `app/features/chat/ChatThread.tsx`, `app/features/conversations/ConversationSidebar.tsx`, `app/features/citations/CitationSheet.tsx`, `app/features/chat/lib/cite-markers.ts` exporting `toCiteRefMarkup(text: string): string`.
 - Registry components folder: `app/components/elements/`.
+- Test support (P8): MSW `server` in `tests/msw/node.ts`, `worker` in `tests/msw/browser.ts`, Vitest setup files in `tests/setup/` (`fail-on-console.ts`, `msw-node.ts`, `msw-browser.ts`), `tests/utils/providers.tsx` (`TestProviders`, `createTestQueryClient`), `tests/utils/i18n.ts` (`createTestI18n`). Browser tests are `app/**/*.browser.test.tsx`; unit tests `app/**/*.test.{ts,tsx}`.
+- Toast: `~/components/ui/toast` exports `Toaster` and the shared manager `toast` (`toast.add({ title, description, type })`).
+- Actions: `POST /actions/locale` (`routes/actions/locale.ts`) and `POST /actions/theme` (`routes/actions/theme.ts`, remix-themes). Landing paths `/` (vi) and `/en/` (en).
+- Passwords entered in the UI (register, change password) require at least 8 characters.
+- Commit messages in plans say they end with the session attribution trailer of the executing session; plans never hard-code a session URL.
 - Playwright config `frontend/playwright.config.ts`; E2E specs in `frontend/tests/e2e/`.

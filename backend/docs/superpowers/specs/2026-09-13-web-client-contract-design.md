@@ -240,6 +240,7 @@ Ngoài phạm vi: quên mật khẩu và xác thực email (chưa có dịch v�
 `backend/tests/e2e/server.py`, chạy `uv run python -m tests.e2e.server --port 8001`:
 
 - App thật (`create_app`) với Postgres và Qdrant thật (service trong docker-compose), migration chạy khi khởi động.
+- Dùng database riêng `pharma_e2e` (xoá và tạo lại mỗi lần chạy) và alias Qdrant riêng `e2e_chunks_current`, để import bundle fixture không ghi đè dữ liệu dev; cookie không bật `Secure` vì Playwright chạy HTTP.
 - Import bundle fixture nhỏ của spec C bằng `ImportKnowledgeBundle` với embedder giả trả vector cố định theo hash.
 - `FakeLlm` chạy kịch bản theo nội dung câu hỏi (ví dụ chứa `[e2e:blocked]`, `[e2e:timeout]`, mặc định là câu trả lời có citation `[1]`).
 - Không có cờ "chế độ giả" trong code production; mọi thứ nằm trong `tests/`.
