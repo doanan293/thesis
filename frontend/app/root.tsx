@@ -1,3 +1,4 @@
+import { QueryClientProvider } from "@tanstack/react-query"
 import { useEffect, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import {
@@ -11,6 +12,7 @@ import {
 } from "react-router"
 import { PreventFlashOnWrongTheme, ThemeProvider } from "remix-themes"
 
+import { queryClient } from "~/api/query-client"
 import { Document } from "~/components/document"
 import { Toaster } from "~/components/ui/toast"
 import { TooltipProvider } from "~/components/ui/tooltip"
@@ -69,11 +71,13 @@ export default function App({ loaderData }: Route.ComponentProps) {
   }, [i18n, loaderData.locale])
 
   return (
-    <Toaster>
-      <TooltipProvider>
-        <Outlet />
-      </TooltipProvider>
-    </Toaster>
+    <QueryClientProvider client={queryClient}>
+      <Toaster>
+        <TooltipProvider>
+          <Outlet />
+        </TooltipProvider>
+      </Toaster>
+    </QueryClientProvider>
   )
 }
 
