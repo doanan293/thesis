@@ -1,13 +1,15 @@
 from typing import NoReturn
 
+import httpx
 import pytest
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi_users.authentication import CookieTransport
 from pydantic import SecretStr
 from starlette.routing import NoMatchFound
 
 from pharma_agent.infrastructure.auth.users import build_auth, include_auth_routes
 from pharma_agent.infrastructure.settings import AuthSettings
+from tests.api.asgi import running
 
 SECRET = "s" * 40
 
@@ -85,3 +87,37 @@ def test_routes_with_google_use_the_cookie_backend() -> None:
 def test_missing_secret_fails_fast() -> None:
     with pytest.raises(ValueError, match="PHARMA_AUTH__JWT_SECRET"):
         build_auth(AuthSettings(), no_sessions)
+
+
+@pytest.mark.parametrize("cookie_secure", [True, False])
+async def test_google_authorize_state_cookie_follows_cookie_secure(
+    cookie_secure: bool,
+) -> None:
+    auth = build_auth(
+        AuthSettings(
+            jwt_secret=SecretStr(SECRET),
+            google_client_id="id",
+            google_client_secret=SecretStr("secret"),
+            frontend_url="https://app.example",
+            cookie_secure=cookie_secure,
+        ),
+        no_sessions,
+    )
+    router = APIRouter(prefix="/api/v1")
+    include_auth_routes(router, auth)
+    app = FastAPI()
+    app.include_router(router)
+    async with running(app) as client:
+        response = await client.get("/api/v1/auth/google/authorize")
+    assert response.status_code == 200, response.text
+    state_cookie = response.headers["set-cookie"].lower()
+    assert state_cookie.startswith("fastapiusersoauthcsrf=")
+    attributes = {part.strip().split("=")[0] for part in state_cookie.split(";")[1:]}
+    assert {"httponly", "samesite"} <= attributes
+    assert ("secure" in attributes) is cookie_secure
+    authorization_url = httpx.URL(response.json()["authorization_url"])
+    assert authorization_url.host == "accounts.google.com"
+    assert (
+        authorization_url.params["redirect_uri"]
+        == "https://app.example/auth/google/callback"
+    )

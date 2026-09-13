@@ -63,6 +63,7 @@ class Auth:
     google: GoogleOAuth2 | None
     secret: str
     frontend_url: str
+    cookie_secure: bool
 
 
 def build_auth(
@@ -141,6 +142,7 @@ def build_auth(
         google=google,
         secret=secret,
         frontend_url=settings.frontend_url,
+        cookie_secure=settings.cookie_secure,
     )
 
 
@@ -172,6 +174,7 @@ def include_auth_routes(router: APIRouter, auth: Auth) -> None:
                 redirect_url=f"{auth.frontend_url.rstrip('/')}/auth/google/callback",
                 associate_by_email=True,
                 is_verified_by_default=True,
+                csrf_token_cookie_secure=auth.cookie_secure,
             ),
             prefix="/auth/google",
             tags=["auth"],
