@@ -198,3 +198,25 @@ def test_render_warns_when_the_turn_was_not_persisted(
         [],
     )
     assert capsys.readouterr().err == ""
+
+
+def test_cleanup_sessions_uses_the_session_lifetime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    async def fake_cleanup(conninfo: str, *, lifetime_seconds: int) -> int:
+        calls.append((conninfo, lifetime_seconds))
+        return 4
+
+    monkeypatch.setattr(cli, "delete_expired_access_tokens", fake_cleanup)
+    monkeypatch.setenv("PHARMA_AUTH__SESSION_LIFETIME_SECONDS", "3600")
+    monkeypatch.setenv(
+        "PHARMA_POSTGRES__DSN", "postgresql+psycopg://u:p@db.example:5432/app"
+    )
+
+    result = CliRunner().invoke(cli.app, ["cleanup-sessions"])
+
+    assert result.exit_code == 0, result.output
+    assert "deleted 4 sessions older than 3600 seconds" in result.output
+    assert calls == [("postgresql://u:p@db.example:5432/app", 3600)]

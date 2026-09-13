@@ -16,6 +16,9 @@ from pharma_agent.domain.corpus.bundle import BundleValidationError, read_bundle
 from pharma_agent.domain.corpus.models import ReleaseSummary
 from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy, page_label
 from pharma_agent.domain.shared.errors import DomainError
+from pharma_agent.infrastructure.auth.session_cleanup import (
+    delete_expired_access_tokens,
+)
 from pharma_agent.infrastructure.composition import (
     build_application,
     build_retrieval_service,
@@ -252,6 +255,19 @@ def cleanup_checkpoints(
         delete_expired_checkpoints(settings.postgres.conninfo, retention_days=retention)
     )
     typer.echo(f"deleted {deleted} checkpoints older than {retention} days")
+
+
+@app.command("cleanup-sessions")
+def cleanup_sessions() -> None:
+    """Xóa phiên đăng nhập bằng cookie đã hết hạn."""
+    settings = Settings()
+    lifetime = settings.auth.session_lifetime_seconds
+    deleted = asyncio.run(
+        delete_expired_access_tokens(
+            settings.postgres.conninfo, lifetime_seconds=lifetime
+        )
+    )
+    typer.echo(f"deleted {deleted} sessions older than {lifetime} seconds")
 
 
 corpus_app = typer.Typer(
