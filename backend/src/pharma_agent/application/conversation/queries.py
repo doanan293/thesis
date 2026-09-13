@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from pharma_agent.application.errors import ConversationNotFound, InvalidInput
+from pharma_agent.application.pagination import decode_cursor, encode_cursor
 from pharma_agent.domain.conversation.models import (
     Citation,
     Conversation,
@@ -53,18 +54,39 @@ class MessageView(BaseModel):
         )
 
 
+class ConversationPage(BaseModel):
+    items: list[ConversationView]
+    next_cursor: str | None
+
+
+class MessagePage(BaseModel):
+    """One page of history: items oldest first, `next_cursor` points to older ones."""
+
+    items: list[MessageView]
+    next_cursor: str | None
+
+
 class ConversationQueries:
     def __init__(self, conversations: ConversationRepository, clock: Clock) -> None:
         self._conversations = conversations
         self._clock = clock
 
     async def list_conversations(
-        self, user_id: str, *, limit: int, before: datetime | None = None
-    ) -> list[ConversationView]:
+        self, user_id: str, *, limit: int, cursor: str | None = None
+    ) -> ConversationPage:
+        after = decode_cursor(cursor) if cursor else None
         rows = await self._conversations.list_for_user(
-            user_id, limit=limit, before=before
+            user_id, limit=limit + 1, cursor=after
         )
-        return [ConversationView.of(row) for row in rows]
+        items = rows[:limit]
+        next_cursor = (
+            encode_cursor(items[-1].updated_at, items[-1].conversation_id)
+            if len(rows) > limit
+            else None
+        )
+        return ConversationPage(
+            items=[ConversationView.of(row) for row in items], next_cursor=next_cursor
+        )
 
     async def get_conversation(
         self, user_id: str, conversation_id: str
@@ -77,13 +99,24 @@ class ConversationQueries:
         conversation_id: str,
         *,
         limit: int,
-        before: datetime | None = None,
-    ) -> list[MessageView]:
+        cursor: str | None = None,
+    ) -> MessagePage:
+        before = decode_cursor(cursor) if cursor else None
         await self._owned(user_id, conversation_id)
         rows = await self._conversations.messages(
-            conversation_id, limit=limit, before=before
+            conversation_id, limit=limit + 1, cursor=before
         )
-        return [MessageView.of(row) for row in rows]
+        # Rows are oldest first; the extra row means older messages remain.
+        has_older = len(rows) > limit
+        items = rows[1:] if has_older else rows
+        next_cursor = (
+            encode_cursor(items[0].created_at, items[0].message_id)
+            if has_older
+            else None
+        )
+        return MessagePage(
+            items=[MessageView.of(row) for row in items], next_cursor=next_cursor
+        )
 
     async def rename(
         self, user_id: str, conversation_id: str, title: str

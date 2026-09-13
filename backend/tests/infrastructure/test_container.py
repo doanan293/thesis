@@ -18,7 +18,8 @@ async def test_container_without_llm_serves_queries_only(
         assert catalog == []
         assert await container.health_checks["postgres"]() is True
         assert container.health_reasons == {}
-        assert await container.queries.list_conversations("a" * 32, limit=5) == []
+        page = await container.queries.list_conversations("a" * 32, limit=5)
+        assert page.items == [] and page.next_cursor is None
 
 
 async def test_container_with_llm_builds_chat_and_corpus_check(

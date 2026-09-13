@@ -109,3 +109,30 @@ async def test_audit_tables_reference_releases_and_chunk_versions(
     assert {"chunk_version_id", "section_key", "table_key"} <= hits
     assert not {"chunk_id", "section_id", "table_id"} & hits
     assert hit_references == {"retrieval_runs"}  # never a FK into schema corpus
+
+
+def _indexes(connection: Connection, table: str) -> dict[str | None, list[str | None]]:
+    return {
+        index["name"]: list(index["column_names"])
+        for index in inspect(connection).get_indexes(table)
+    }
+
+
+async def test_keyset_indexes_cover_the_sort_keys(migrated_dsn: str) -> None:
+    engine = create_async_engine(migrated_dsn)
+    async with engine.connect() as connection:
+        conversations = await connection.run_sync(_indexes, "conversations")
+        messages = await connection.run_sync(_indexes, "messages")
+    await engine.dispose()
+    assert conversations["ix_conversations_user_updated_id"] == [
+        "user_id",
+        "updated_at",
+        "id",
+    ]
+    assert "ix_conversations_user_updated" not in conversations
+    assert messages["ix_messages_conversation_created_id"] == [
+        "conversation_id",
+        "created_at",
+        "id",
+    ]
+    assert "ix_messages_conversation_created" not in messages

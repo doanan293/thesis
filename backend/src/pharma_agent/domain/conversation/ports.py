@@ -14,9 +14,16 @@ class ConversationRepository(Protocol):
         ...
 
     async def list_for_user(
-        self, user_id: str, *, limit: int, before: datetime | None = None
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        cursor: tuple[datetime, str] | None = None,
     ) -> list[Conversation]:
-        """Most recently updated first."""
+        """Conversations with at least one turn, ordered (updated_at desc, id desc).
+
+        With a cursor, only the rows strictly after that (updated_at, id) position.
+        """
         ...
 
     async def update_title(self, conversation: Conversation) -> None:
@@ -48,9 +55,16 @@ class ConversationRepository(Protocol):
         ...
 
     async def messages(
-        self, conversation_id: str, *, limit: int, before: datetime | None = None
+        self,
+        conversation_id: str,
+        *,
+        limit: int,
+        cursor: tuple[datetime, str] | None = None,
     ) -> list[Message]:
-        """Newest `limit` messages strictly before `before`, returned oldest first."""
+        """The newest `limit` messages strictly older than the (created_at, id) cursor.
+
+        Returned oldest first; ties on created_at are broken by id.
+        """
         ...
 
     async def get_message(self, user_id: str, message_id: str) -> Message | None:

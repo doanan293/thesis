@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select, text
@@ -165,7 +165,9 @@ async def test_append_turn_is_atomic_and_increments_turn_count(
         0
     ].usage == {"llm_calls": 5}
     older = await repo.messages(
-        conversation.conversation_id, limit=10, before=messages[0].created_at
+        conversation.conversation_id,
+        limit=10,
+        cursor=(messages[0].created_at, messages[0].message_id),
     )
     assert [m.content for m in older] == ["q0", "a0", "q1"]
 
@@ -234,17 +236,26 @@ async def test_list_for_user_orders_by_recent_activity_and_deletes_cascade(
     second = Conversation.start(
         user_id=owner, first_message="second", now=NOW + timedelta(minutes=5)
     )
-    await repo.create(first)
-    await repo.create(second)
-    user_msg, assistant_msg = turn(first.conversation_id, 10)
-    first.record_turn(assistant_msg.created_at)
-    await repo.append_turn(first, user_msg, assistant_msg, AUDIT)
+    empty = Conversation.start(
+        user_id=owner, first_message="empty", now=NOW + timedelta(minutes=30)
+    )
+    for conversation in (first, second, empty):
+        await repo.create(conversation)
+    for conversation, index in ((second, 7), (first, 10)):
+        user_msg, assistant_msg = turn(conversation.conversation_id, index)
+        conversation.record_turn(assistant_msg.created_at)
+        await repo.append_turn(
+            conversation,
+            user_msg,
+            assistant_msg,
+            AUDIT if conversation is first else [],
+        )
 
     listed = await repo.list_for_user(owner, limit=10)
     assert [c.title for c in listed] == ["first", "second"]
+    after_first = (listed[0].updated_at, listed[0].conversation_id)
     assert [
-        c.title
-        for c in await repo.list_for_user(owner, limit=10, before=listed[0].updated_at)
+        c.title for c in await repo.list_for_user(owner, limit=10, cursor=after_first)
     ] == ["second"]
 
     assert await repo.delete(owner, first.conversation_id) is True
@@ -252,3 +263,74 @@ async def test_list_for_user_orders_by_recent_activity_and_deletes_cascade(
         assert (
             await session.execute(select(func.count()).select_from(RetrievalHitTable))
         ).scalar_one() == 0
+
+
+def tied_turn(conversation_id: str) -> tuple[Message, Message]:
+    """Both messages share NOW, so only the id breaks the tie."""
+    return (
+        Message(
+            message_id=uuid.uuid4().hex,
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content="q",
+            status="completed",
+            created_at=NOW,
+        ),
+        Message(
+            message_id=uuid.uuid4().hex,
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content="a",
+            status="completed",
+            created_at=NOW,
+        ),
+    )
+
+
+async def test_keyset_pages_have_no_duplicates_or_gaps_with_tied_timestamps(
+    database: Database,
+) -> None:
+    repo = repository(database)
+    owner = await make_user(database)
+    created: list[Conversation] = []
+    for index in range(5):
+        conversation = Conversation.start(
+            user_id=owner, first_message=f"c{index}", now=NOW
+        )
+        await repo.create(conversation)
+        user_msg, assistant_msg = tied_turn(conversation.conversation_id)
+        conversation.record_turn(NOW)
+        await repo.append_turn(conversation, user_msg, assistant_msg, [])
+        created.append(conversation)
+    await repo.create(
+        Conversation.start(
+            user_id=owner, first_message="empty", now=NOW + timedelta(hours=1)
+        )
+    )
+
+    seen: list[str] = []
+    position: tuple[datetime, str] | None = None
+    while page := await repo.list_for_user(owner, limit=2, cursor=position):
+        seen.extend(c.conversation_id for c in page)
+        position = (page[-1].updated_at, page[-1].conversation_id)
+    assert seen == sorted((c.conversation_id for c in created), reverse=True)
+
+    target = created[0]
+    for _ in range(3):
+        user_msg, assistant_msg = tied_turn(target.conversation_id)
+        target.record_turn(NOW)
+        await repo.append_turn(target, user_msg, assistant_msg, [])
+    everything = [
+        m.message_id for m in await repo.messages(target.conversation_id, limit=100)
+    ]
+    assert everything == sorted(everything) and len(set(everything)) == 8
+
+    pages: list[list[str]] = []
+    position = None
+    while page := await repo.messages(target.conversation_id, limit=3, cursor=position):
+        ids = [m.message_id for m in page]
+        assert ids == sorted(ids)
+        pages.append(ids)
+        position = (page[0].created_at, page[0].message_id)
+    assert [len(ids) for ids in pages] == [3, 3, 2]
+    assert [mid for ids in reversed(pages) for mid in ids] == everything

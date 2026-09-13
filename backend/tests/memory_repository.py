@@ -34,14 +34,27 @@ class InMemoryConversationRepository:
         )
 
     async def list_for_user(
-        self, user_id: str, *, limit: int, before: datetime | None = None
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        cursor: tuple[datetime, str] | None = None,
     ) -> list[Conversation]:
-        rows = [
-            row.model_copy(deep=True)
-            for row in self.rows.values()
-            if row.user_id == user_id and (before is None or row.updated_at < before)
-        ]
-        return sorted(rows, key=lambda row: row.updated_at, reverse=True)[:limit]
+        # Hex ids compare like Postgres uuids (bytewise), so the order matches.
+        rows = sorted(
+            (
+                row
+                for row in self.rows.values()
+                if row.user_id == user_id and row.turn_count > 0
+            ),
+            key=lambda row: (row.updated_at, row.conversation_id),
+            reverse=True,
+        )
+        if cursor is not None:
+            rows = [
+                row for row in rows if (row.updated_at, row.conversation_id) < cursor
+            ]
+        return [row.model_copy(deep=True) for row in rows[:limit]]
 
     async def update_title(self, conversation: Conversation) -> None:
         row = self.rows[conversation.conversation_id]
@@ -87,14 +100,23 @@ class InMemoryConversationRepository:
         return pair_turns(self.message_log.get(conversation_id, [])[skip * 2 :])
 
     async def messages(
-        self, conversation_id: str, *, limit: int, before: datetime | None = None
+        self,
+        conversation_id: str,
+        *,
+        limit: int,
+        cursor: tuple[datetime, str] | None = None,
     ) -> list[Message]:
-        items = [
-            message
-            for message in self.message_log.get(conversation_id, [])
-            if before is None or message.created_at < before
-        ]
-        return items[-limit:]
+        ordered = sorted(
+            self.message_log.get(conversation_id, []),
+            key=lambda message: (message.created_at, message.message_id),
+        )
+        if cursor is not None:
+            ordered = [
+                message
+                for message in ordered
+                if (message.created_at, message.message_id) < cursor
+            ]
+        return ordered[-limit:]
 
     async def get_message(self, user_id: str, message_id: str) -> Message | None:
         for conversation_id, messages in self.message_log.items():

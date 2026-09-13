@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import DateTime, Uuid, delete, literal, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from pharma_agent.domain.conversation.models import (
@@ -123,15 +123,34 @@ class PostgresConversationRepository:
         return _conversation(row) if row is not None else None
 
     async def list_for_user(
-        self, user_id: str, *, limit: int, before: datetime | None = None
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        cursor: tuple[datetime, str] | None = None,
     ) -> list[Conversation]:
         owner = _uuid(user_id)
         if owner is None:
             return []
-        query = select(ConversationTable).where(ConversationTable.user_id == owner)
-        if before is not None:
-            query = query.where(ConversationTable.updated_at < before)
-        query = query.order_by(ConversationTable.updated_at.desc()).limit(limit)
+        query = select(ConversationTable).where(
+            ConversationTable.user_id == owner, ConversationTable.turn_count > 0
+        )
+        if cursor is not None:
+            updated_at, key = cursor
+            after = _uuid(key)
+            if after is None:
+                return []
+            # Row-value comparison matches the index (user_id, updated_at, id).
+            query = query.where(
+                tuple_(ConversationTable.updated_at, ConversationTable.id)
+                < tuple_(
+                    literal(updated_at, DateTime(timezone=True)),
+                    literal(after, Uuid()),
+                )
+            )
+        query = query.order_by(
+            ConversationTable.updated_at.desc(), ConversationTable.id.desc()
+        ).limit(limit)
         async with self._sessions() as session:
             rows = (await session.execute(query)).scalars().all()
         return [_conversation(row) for row in rows]
@@ -224,15 +243,31 @@ class PostgresConversationRepository:
         return pair_turns([_message(row) for row in rows])
 
     async def messages(
-        self, conversation_id: str, *, limit: int, before: datetime | None = None
+        self,
+        conversation_id: str,
+        *,
+        limit: int,
+        cursor: tuple[datetime, str] | None = None,
     ) -> list[Message]:
         key = _uuid(conversation_id)
         if key is None:
             return []
         query = select(MessageTable).where(MessageTable.conversation_id == key)
-        if before is not None:
-            query = query.where(MessageTable.created_at < before)
-        query = query.order_by(MessageTable.created_at.desc()).limit(limit)
+        if cursor is not None:
+            created_at, message_key = cursor
+            before = _uuid(message_key)
+            if before is None:
+                return []
+            query = query.where(
+                tuple_(MessageTable.created_at, MessageTable.id)
+                < tuple_(
+                    literal(created_at, DateTime(timezone=True)),
+                    literal(before, Uuid()),
+                )
+            )
+        query = query.order_by(
+            MessageTable.created_at.desc(), MessageTable.id.desc()
+        ).limit(limit)
         async with self._sessions() as session:
             rows = (await session.execute(query)).scalars().all()
         return [_message(row) for row in reversed(rows)]

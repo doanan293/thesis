@@ -66,7 +66,9 @@ class UserTable(SQLAlchemyBaseUserTableUUID, Base):
 
 class ConversationTable(Base):
     __tablename__ = "conversations"
-    __table_args__ = (Index("ix_conversations_user_updated", "user_id", "updated_at"),)
+    __table_args__ = (
+        Index("ix_conversations_user_updated_id", "user_id", "updated_at", "id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -92,7 +94,12 @@ class MessageTable(Base):
     __tablename__ = "messages"
     __table_args__ = (
         CheckConstraint("role IN ('user', 'assistant')", name="role"),
-        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+        Index(
+            "ix_messages_conversation_created_id",
+            "conversation_id",
+            "created_at",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)

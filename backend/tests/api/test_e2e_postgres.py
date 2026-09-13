@@ -125,11 +125,11 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         assert events[-1][0] == "done" and events[-1][1]["message_id"]
 
         listed = await client.get("/api/v1/conversations", headers=headers)
-        assert [item["id"] for item in listed.json()] == [conversation_id]
+        assert [item["id"] for item in listed.json()["items"]] == [conversation_id]
         messages = await client.get(
             f"/api/v1/conversations/{conversation_id}/messages", headers=headers
         )
-        assert [m["role"] for m in messages.json()] == ["user", "assistant"]
+        assert [m["role"] for m in messages.json()["items"]] == ["user", "assistant"]
 
         async with database_holder["db"].sessions() as session:
             message_count = (
