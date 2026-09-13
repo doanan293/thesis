@@ -68,3 +68,48 @@ def test_rejudge_current_apply_forwards_apply_flag(monkeypatch):
     assert result.exit_code == 0
     assert captured["request"].apply is True
     assert captured["request"].evaluation_path.name == "section_retrieval_eval.jsonl"
+
+
+def test_evaluation_build_derives_chunks_from_the_bundle(tmp_path, monkeypatch):
+    from seed_pipeline.bundle.export import ExportRequest, export_bundle
+    from seed_pipeline.evaluation.build_dataset import EvaluationBuildResult
+
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "rag_final_small"
+    export_bundle(
+        ExportRequest(
+            rag_final_dir=fixture,
+            glossary_path=fixture / "term_glossary.json",
+            mappings_path=fixture / "colloquial_mappings.json",
+            output_dir=tmp_path / "bundle",
+        )
+    )
+    captured = {}
+
+    def fake_build(request):
+        captured["request"] = request
+        return EvaluationBuildResult(
+            tmp_path / "patient_queries.json", tmp_path / "evaluation.jsonl", 0, 0
+        )
+
+    monkeypatch.setattr(evaluation_command, "build_evaluation_dataset", fake_build)
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "evaluation",
+            "build",
+            "--sections",
+            str(fixture / "sections.jsonl"),
+            "--bundle",
+            str(tmp_path / "bundle"),
+            "--chunks-output",
+            str(tmp_path / "chunks.jsonl"),
+            "--output-dir",
+            str(tmp_path / "evaluation"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["request"].chunks_path == tmp_path / "chunks.jsonl"
+    assert len((tmp_path / "chunks.jsonl").read_text("utf-8").splitlines()) == 6
+    assert json.loads(result.stdout)["details"]["chunks"] == 6

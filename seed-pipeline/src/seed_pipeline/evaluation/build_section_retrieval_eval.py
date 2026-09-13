@@ -4,7 +4,11 @@ import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
-from seed_pipeline.config.paths import PROCESSED_EVALUATION_DIR, RAG_FINAL_DIR
+from seed_pipeline.config.paths import (
+    EVALUATION_CHUNKS_PATH,
+    PROCESSED_EVALUATION_DIR,
+    RAG_FINAL_DIR,
+)
 from seed_pipeline.corpus.metadata.payload_layers import compact_colloquial_mapping
 from seed_pipeline.evaluation.section_eval_schema import (
     ALLOWED_ANSWER_MODES,
@@ -32,7 +36,7 @@ from seed_pipeline.evaluation.section_eval_schema import (
 )
 
 DEFAULT_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
-DEFAULT_CHUNKS_PATH = RAG_FINAL_DIR / "chunks.jsonl"
+DEFAULT_CHUNKS_PATH = EVALUATION_CHUNKS_PATH
 DEFAULT_OUTPUT_PATH = PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl"
 
 SECTION_CATEGORY_RULES = [
