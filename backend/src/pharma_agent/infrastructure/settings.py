@@ -2,7 +2,14 @@ from pathlib import Path
 from typing import Literal
 
 from openai.types import ReasoningEffort
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pharma_agent.domain.agent.budget import BudgetLimits
@@ -152,15 +159,21 @@ class PostgresSettings(BaseModel):
 class AuthSettings(BaseModel):
     jwt_secret: SecretStr | None = None
     jwt_lifetime_seconds: int = 7 * 24 * 3600
+    session_lifetime_seconds: int = Field(default=7 * 24 * 3600, ge=60)
+    # Browsers accept Secure cookies on http://localhost, so this stays on in development.
+    cookie_secure: bool = True
+    csrf_secret: SecretStr | None = None
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
     frontend_url: str = "http://localhost:3000"
 
-    @field_validator("jwt_secret")
+    @field_validator("jwt_secret", "csrf_secret")
     @classmethod
-    def _secret_length(cls, value: SecretStr | None) -> SecretStr | None:
+    def _secret_length(
+        cls, value: SecretStr | None, info: ValidationInfo
+    ) -> SecretStr | None:
         if value is not None and len(value.get_secret_value()) < 32:
-            raise ValueError("jwt_secret must be at least 32 characters")
+            raise ValueError(f"{info.field_name} must be at least 32 characters")
         return value
 
     @property
@@ -172,11 +185,17 @@ class AuthSettings(BaseModel):
             raise ValueError("set PHARMA_AUTH__JWT_SECRET (at least 32 characters)")
         return self.jwt_secret.get_secret_value()
 
+    def require_csrf_secret(self) -> str:
+        if self.csrf_secret is None:
+            raise ValueError("set PHARMA_AUTH__CSRF_SECRET (at least 32 characters)")
+        return self.csrf_secret.get_secret_value()
+
 
 class ApiSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # The browser reaches the API on the same origin (nginx or the dev proxy): no CORS by default.
+    cors_origins: list[str] = Field(default_factory=list)
 
 
 class MemorySettings(BaseModel):

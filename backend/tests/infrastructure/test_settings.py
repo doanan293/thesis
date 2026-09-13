@@ -151,3 +151,43 @@ def test_corpus_settings_defaults_and_env(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("PHARMA_CORPUS__EMBED_BATCH_SIZE", "0")
     with pytest.raises(ValueError, match="embed_batch_size"):
         Settings(_env_file=None)
+
+
+def test_session_cookie_and_csrf_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "PHARMA_AUTH__CSRF_SECRET",
+        "PHARMA_AUTH__COOKIE_SECURE",
+        "PHARMA_AUTH__SESSION_LIFETIME_SECONDS",
+        "PHARMA_API__CORS_ORIGINS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.auth.session_lifetime_seconds == 604800
+    assert settings.auth.cookie_secure is True
+    assert settings.api.cors_origins == []
+    with pytest.raises(ValueError, match="PHARMA_AUTH__CSRF_SECRET"):
+        settings.auth.require_csrf_secret()
+
+
+def test_csrf_secret_and_cookie_flags_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PHARMA_AUTH__CSRF_SECRET", "c" * 40)
+    monkeypatch.setenv("PHARMA_AUTH__COOKIE_SECURE", "false")
+    monkeypatch.setenv("PHARMA_AUTH__SESSION_LIFETIME_SECONDS", "3600")
+    monkeypatch.setenv("PHARMA_API__CORS_ORIGINS", '["http://localhost:5173"]')
+    settings = Settings(_env_file=None)
+    assert settings.auth.require_csrf_secret() == "c" * 40
+    assert settings.auth.cookie_secure is False
+    assert settings.auth.session_lifetime_seconds == 3600
+    assert settings.api.cors_origins == ["http://localhost:5173"]
+
+
+def test_short_csrf_secret_and_tiny_session_are_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_AUTH__CSRF_SECRET", "short")
+    with pytest.raises(ValueError, match="csrf_secret must be at least 32"):
+        Settings(_env_file=None)
+    monkeypatch.delenv("PHARMA_AUTH__CSRF_SECRET")
+    monkeypatch.setenv("PHARMA_AUTH__SESSION_LIFETIME_SECONDS", "10")
+    with pytest.raises(ValueError, match="session_lifetime_seconds"):
+        Settings(_env_file=None)
