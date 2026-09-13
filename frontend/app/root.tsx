@@ -7,12 +7,15 @@ import {
   Scripts,
   ScrollRestoration,
   isRouteErrorResponse,
+  useRouteLoaderData,
 } from "react-router"
+import { PreventFlashOnWrongTheme, ThemeProvider } from "remix-themes"
 
 import { Document } from "~/components/document"
 import { Toaster } from "~/components/ui/toast"
 import { TooltipProvider } from "~/components/ui/tooltip"
 import { getLocale, i18nextMiddleware } from "~/i18n/middleware.server"
+import { themeSessionResolver } from "~/lib/theme.server"
 
 import type { Route } from "./+types/root"
 import stylesheet from "./app.css?url"
@@ -23,25 +26,36 @@ export const links: Route.LinksFunction = () => [
 
 export const middleware = [i18nextMiddleware]
 
-export function loader({ context }: Route.LoaderArgs) {
-  return { locale: getLocale(context) }
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { getTheme } = await themeSessionResolver(request)
+  return { locale: getLocale(context), theme: getTheme() }
 }
 
 export function Layout({ children }: { children: ReactNode }) {
+  const data = useRouteLoaderData<typeof loader>("root")
+  const theme = data?.theme ?? null
+
   return (
-    <Document>
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <Meta />
-        <Links />
-      </head>
-      <body>
-        {children}
-        <ScrollRestoration />
-        <Scripts />
-      </body>
-    </Document>
+    <ThemeProvider
+      specifiedTheme={theme}
+      themeAction="/actions/theme"
+      disableTransitionOnThemeChange
+    >
+      <Document>
+        <head>
+          <meta charSet="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <Meta />
+          <PreventFlashOnWrongTheme ssrTheme={theme !== null} />
+          <Links />
+        </head>
+        <body>
+          {children}
+          <ScrollRestoration />
+          <Scripts />
+        </body>
+      </Document>
+    </ThemeProvider>
   )
 }
 
