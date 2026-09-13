@@ -90,11 +90,24 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
     async with running(app) as client:
         anonymous = await client.post("/api/v1/chat", json={"message": "hi"})
         assert anonymous.status_code == 401
+        assert anonymous.headers["content-type"] == "application/problem+json"
+        assert anonymous.json()["code"] == "UNAUTHORIZED"
         registered = await client.post(
             "/api/v1/auth/register",
             json={"email": email, "password": password, "display_name": "An"},
         )
         assert registered.status_code == 201, registered.text
+        duplicate = await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": password}
+        )
+        assert duplicate.status_code == 400
+        assert duplicate.json()["code"] == "REGISTER_USER_ALREADY_EXISTS"
+        wrong_password = await client.post(
+            "/api/v1/auth/jwt/login",
+            data={"username": email, "password": "wrong-password"},
+        )
+        assert wrong_password.status_code == 400
+        assert wrong_password.json()["code"] == "LOGIN_BAD_CREDENTIALS"
         login = await client.post(
             "/api/v1/auth/jwt/login", data={"username": email, "password": password}
         )

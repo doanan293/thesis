@@ -23,9 +23,23 @@ class HealthResponse(BaseModel):
     reasons: dict[str, str] = Field(default_factory=dict)
 
 
-class ErrorResponse(BaseModel):
-    code: str
+class ProblemItem(BaseModel):
+    """One invalid request field of a 422 problem."""
+
+    loc: list[str | int]
     message: str
+    type: str
+
+
+class Problem(BaseModel):
+    """RFC 9457 problem details; clients switch on `code`."""
+
+    type: str
+    title: str
+    status: int
+    detail: str | None = None
+    code: str
+    errors: list[ProblemItem] | None = None
 
 
 class EnableSkillRequest(BaseModel):

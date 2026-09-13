@@ -85,7 +85,7 @@ async def test_upload_errors() -> None:
             files={"file": ("SKILL.md", free_text_name, "text/markdown")},
         )
         assert invalid_name.status_code == 422
-        assert "lowercase" in invalid_name.json()["message"]
+        assert "lowercase" in invalid_name.json()["detail"]
 
         too_big = await client.post(
             "/api/v1/skills",
