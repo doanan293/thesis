@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+import uuid
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -69,4 +70,14 @@ class ConversationRepository(Protocol):
 
     async def get_message(self, user_id: str, message_id: str) -> Message | None:
         """A message, only if it belongs to one of the user's conversations."""
+        ...
+
+
+class CitationReader(Protocol):
+    """Reads stored citations together with the corpus they point at."""
+
+    async def current_release_ids(
+        self, release_ids: Collection[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """The subset of `release_ids` that is the current release of its collection."""
         ...

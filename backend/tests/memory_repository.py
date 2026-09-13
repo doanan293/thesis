@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+import uuid
+from collections.abc import Collection, Sequence
 from datetime import datetime
 
 from pharma_agent.domain.conversation.models import Conversation, Message, Turn
@@ -212,3 +213,25 @@ class InMemoryFeedbackRepository:
 
     async def get(self, user_id: str, message_id: str) -> Feedback | None:
         return self.rows.get((user_id, message_id))
+
+    async def for_messages(
+        self, user_id: str, message_ids: Sequence[str]
+    ) -> dict[str, Feedback]:
+        wanted = set(message_ids)
+        return {
+            message_id: feedback
+            for (owner, message_id), feedback in self.rows.items()
+            if owner == user_id and message_id in wanted
+        }
+
+
+class InMemoryCitationReader:
+    """Corpus-side citation reads for tests that run without Postgres."""
+
+    def __init__(self, *current_release_ids: uuid.UUID) -> None:
+        self.current: set[uuid.UUID] = set(current_release_ids)
+
+    async def current_release_ids(
+        self, release_ids: Collection[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        return {release_id for release_id in release_ids if release_id in self.current}

@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -13,6 +14,17 @@ def _uuid(value: str) -> uuid.UUID | None:
         return uuid.UUID(hex=value)
     except ValueError:
         return None
+
+
+def _feedback(row: FeedbackTable) -> Feedback:
+    return Feedback(
+        feedback_id=row.feedback_id.hex,
+        user_id=row.user_id.hex,
+        message_id=row.message_id.hex,
+        rating=Rating(row.rating),
+        note=row.note,
+        created_at=row.created_at,
+    )
 
 
 class PostgresFeedbackRepository:
@@ -51,13 +63,18 @@ class PostgresFeedbackRepository:
                     )
                 )
             ).scalar_one_or_none()
-        if row is None:
-            return None
-        return Feedback(
-            feedback_id=row.feedback_id.hex,
-            user_id=row.user_id.hex,
-            message_id=row.message_id.hex,
-            rating=Rating(row.rating),
-            note=row.note,
-            created_at=row.created_at,
+        return _feedback(row) if row is not None else None
+
+    async def for_messages(
+        self, user_id: str, message_ids: Sequence[str]
+    ) -> dict[str, Feedback]:
+        owner = _uuid(user_id)
+        keys = [key for value in message_ids if (key := _uuid(value)) is not None]
+        if owner is None or not keys:
+            return {}
+        query = select(FeedbackTable).where(
+            FeedbackTable.user_id == owner, FeedbackTable.message_id.in_(keys)
         )
+        async with self._sessions() as session:
+            rows = (await session.execute(query)).scalars().all()
+        return {row.message_id.hex: _feedback(row) for row in rows}

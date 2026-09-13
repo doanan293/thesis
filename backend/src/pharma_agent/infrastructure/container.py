@@ -27,6 +27,9 @@ from pharma_agent.infrastructure.langgraph.checkpointer import (
 )
 from pharma_agent.infrastructure.langgraph.cleanup import delete_expired_checkpoints
 from pharma_agent.infrastructure.observability.langfuse_tracing import LangfuseTracing
+from pharma_agent.infrastructure.persistence.postgres.citation_reader import (
+    PostgresCitationReader,
+)
 from pharma_agent.infrastructure.persistence.postgres.conversation_repository import (
     AuditContext,
     PostgresConversationRepository,
@@ -120,14 +123,18 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
         else NullTracing()
     )
     skill_repository = PostgresSkillRepository(database.sessions)
+    feedback_repository = PostgresFeedbackRepository(database.sessions)
     container = Container(
         settings=settings,
         sessions=database.sessions,
-        queries=ConversationQueries(repository, clock),
-        skills=SkillService(skill_repository),
-        feedback=FeedbackService(
-            repository, PostgresFeedbackRepository(database.sessions), tracing, clock
+        queries=ConversationQueries(
+            repository,
+            clock,
+            feedback=feedback_repository,
+            citations=PostgresCitationReader(database.sessions),
         ),
+        skills=SkillService(skill_repository),
+        feedback=FeedbackService(repository, feedback_repository, tracing, clock),
         tracing=tracing,
         health_checks={"postgres": database.ping},
     )

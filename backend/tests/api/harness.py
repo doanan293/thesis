@@ -27,6 +27,7 @@ from tests.api.asgi import running
 from tests.domain.factories import make_hit
 from tests.fakes import FakeLlm, FakeRetriever, build_deps
 from tests.memory_repository import (
+    InMemoryCitationReader,
     InMemoryConversationRepository,
     InMemoryFeedbackRepository,
     InMemorySkillRepository,
@@ -52,6 +53,7 @@ class Harness:
     skill_repo: InMemorySkillRepository
     feedback_repo: InMemoryFeedbackRepository
     sink: RecordingScoreSink
+    citations: InMemoryCitationReader
 
     @asynccontextmanager
     async def client(self) -> AsyncGenerator[httpx.AsyncClient]:
@@ -79,11 +81,14 @@ def build_harness(
     )
     skill_repo = InMemorySkillRepository()
     feedback_repo = InMemoryFeedbackRepository()
+    citation_reader = InMemoryCitationReader()
     sink = RecordingScoreSink()
     container = Container(
         settings=settings(),
         sessions=None,
-        queries=ConversationQueries(repo, clock),
+        queries=ConversationQueries(
+            repo, clock, feedback=feedback_repo, citations=citation_reader
+        ),
         chat=ChatService(runner, repo, clock, MemoryPolicy()) if agent else None,
         summarizer=SummarizeConversation(llm, repo, clock, every=2, max_chars=500)
         if agent
@@ -112,6 +117,7 @@ def build_harness(
         skill_repo=skill_repo,
         feedback_repo=feedback_repo,
         sink=sink,
+        citations=citation_reader,
     )
 
 

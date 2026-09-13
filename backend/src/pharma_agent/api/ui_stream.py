@@ -9,7 +9,7 @@ from collections.abc import AsyncIterable, AsyncIterator
 from datetime import datetime
 from typing import Any, assert_never
 
-from sse_starlette import JSONServerSentEvent, ServerSentEvent
+from sse_starlette import EventSourceResponse, JSONServerSentEvent, ServerSentEvent
 
 from pharma_agent.application.conversation.ui_message import (
     MessageMetadata,
@@ -32,6 +32,16 @@ TEXT_PART_ID = "text"
 _ERROR_STATUSES = frozenset({MessageStatus.ERROR, MessageStatus.TIMEOUT})
 
 Chunk = dict[str, Any]
+
+
+class UIMessageStreamResponse(EventSourceResponse):
+    """sse-starlette's response with its media type on the class.
+
+    sse-starlette sets `media_type` per instance, while FastAPI documents a route's
+    `response_class` from the class attribute; without it the stream is filed as JSON.
+    """
+
+    media_type = "text/event-stream"
 
 
 class UIMessageStreamEncoder:

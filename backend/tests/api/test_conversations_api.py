@@ -3,9 +3,11 @@ from datetime import UTC, datetime, timedelta
 from pharma_agent.domain.agent.run import AnswerMode, AnswerPlan
 from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.conversation.turns import build_turn_messages
+from pharma_agent.domain.feedback.models import Feedback, Rating
 from pharma_agent.domain.shared.ids import new_id
 from tests.api.harness import OWNER, Harness, build_harness
 from tests.api.test_chat_api import script_turn
+from tests.citations import CURRENT_RELEASE_ID, OLD_RELEASE_ID, build_citation
 from tests.domain.factories import make_run
 
 
@@ -118,7 +120,7 @@ async def test_lists_page_with_cursors() -> None:
         assert older["next_cursor"] is None
         timeline = older["items"] + newest["items"]
         assert len({m["id"] for m in timeline}) == 6
-        stamps = [m["created_at"] for m in timeline]
+        stamps = [datetime.fromisoformat(m["metadata"]["createdAt"]) for m in timeline]
         assert stamps == sorted(stamps)
 
 
@@ -173,3 +175,57 @@ async def test_create_conversation_then_first_message_names_it() -> None:
         assert [(i["id"], i["title"], i["turn_count"]) for i in listed] == [
             (conversation_id, "Paracetamol uống bao nhiêu?", 1)
         ]
+
+
+async def test_message_history_is_a_page_of_ui_messages() -> None:
+    harness = build_harness()
+    harness.citations.current.add(CURRENT_RELEASE_ID)
+    now = datetime.now(UTC)
+    conversation = Conversation.start(
+        user_id=OWNER.hex, first_message="Paracetamol?", now=now
+    )
+    await harness.repo.create(conversation)
+    run = make_run("Paracetamol?")
+    run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=now)
+    run.complete()
+    user_msg, assistant_msg = build_turn_messages(
+        user_message_id=new_id(),
+        assistant_message_id=new_id(),
+        conversation_id=conversation.conversation_id,
+        run=run,
+        answer_text="Người lớn 0,5–1 g [1].",
+        citations=[build_citation(1, release_id=OLD_RELEASE_ID)],
+        phases=["answering"],
+        now=now,
+    )
+    conversation.record_turn(assistant_msg.created_at)
+    await harness.repo.append_turn(conversation, user_msg, assistant_msg, [])
+    await harness.feedback_repo.save(
+        Feedback.create(
+            user_id=OWNER.hex,
+            message_id=assistant_msg.message_id,
+            rating=Rating.UP,
+            note="",
+            now=now,
+        )
+    )
+
+    async with harness.client() as client:
+        response = await client.get(
+            f"/api/v1/conversations/{conversation.conversation_id}/messages"
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["next_cursor"] is None
+    user, assistant = body["items"]
+    assert (user["id"], user["role"], user["parts"]) == (
+        user_msg.message_id,
+        "user",
+        [{"type": "text", "text": "Paracetamol?"}],
+    )
+    assert datetime.fromisoformat(user["metadata"]["createdAt"]) == user_msg.created_at
+    source = assistant["parts"][1]
+    assert source["sourceId"] == str(build_citation().chunk_version_id)
+    assert source["providerMetadata"]["pharma"]["isCurrent"] is False
+    assert assistant["metadata"]["feedback"] == {"rating": "up", "note": ""}

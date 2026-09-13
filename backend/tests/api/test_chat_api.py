@@ -1,3 +1,9 @@
+from pharma_agent.application.conversation.ui_message import (
+    ConversationData,
+    EvidenceData,
+    PhaseData,
+    SkillsData,
+)
 from pharma_agent.domain.agent.schemas import (
     Audience,
     Intent,
@@ -130,3 +136,30 @@ async def test_chat_errors() -> None:
 
     # Unauthenticated access (401) needs the user database, so it is covered by
     # tests/api/test_e2e_postgres.py instead of this database-free harness.
+
+
+async def test_streamed_data_parts_match_the_documented_models() -> None:
+    harness = build_harness()
+    script_turn(harness.llm)
+    async with harness.client() as client:
+        response = await client.post(
+            "/api/v1/chat/stream", json={"message": "Paracetamol?"}
+        )
+
+    models = {
+        "data-phase": PhaseData,
+        "data-skills": SkillsData,
+        "data-evidence": EvidenceData,
+        "data-conversation": ConversationData,
+    }
+    data_chunks = [
+        chunk for chunk in ui_chunks(response.text) if chunk["type"] in models
+    ]
+    assert {chunk["type"] for chunk in data_chunks} >= {
+        "data-phase",
+        "data-evidence",
+        "data-conversation",
+    }
+    for chunk in data_chunks:
+        payload = models[chunk["type"]].model_validate(chunk["data"])
+        assert set(chunk["data"]) <= set(payload.model_dump(mode="json"))

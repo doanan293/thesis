@@ -1,16 +1,22 @@
+from collections.abc import Sequence
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from pharma_agent.application.conversation.ui_message import UIMessage, ui_message_of
 from pharma_agent.application.errors import ConversationNotFound, InvalidInput
 from pharma_agent.application.pagination import decode_cursor, encode_cursor
 from pharma_agent.domain.conversation.models import (
-    Citation,
     Conversation,
     InvalidTitle,
     Message,
+    MessageRole,
 )
-from pharma_agent.domain.conversation.ports import ConversationRepository
+from pharma_agent.domain.conversation.ports import (
+    CitationReader,
+    ConversationRepository,
+)
+from pharma_agent.domain.feedback.ports import FeedbackRepository
 from pharma_agent.domain.shared.clock import Clock
 
 
@@ -32,28 +38,6 @@ class ConversationView(BaseModel):
         )
 
 
-class MessageView(BaseModel):
-    id: str
-    role: str
-    content: str
-    status: str
-    citations: list[Citation] = Field(default_factory=list)
-    phases: list[str] = Field(default_factory=list)
-    created_at: datetime
-
-    @classmethod
-    def of(cls, message: Message) -> "MessageView":
-        return cls(
-            id=message.message_id,
-            role=message.role.value,
-            content=message.content,
-            status=message.status,
-            citations=list(message.citations),
-            phases=list(message.phases),
-            created_at=message.created_at,
-        )
-
-
 class ConversationPage(BaseModel):
     items: list[ConversationView]
     next_cursor: str | None
@@ -62,14 +46,23 @@ class ConversationPage(BaseModel):
 class MessagePage(BaseModel):
     """One page of history: items oldest first, `next_cursor` points to older ones."""
 
-    items: list[MessageView]
+    items: list[UIMessage]
     next_cursor: str | None
 
 
 class ConversationQueries:
-    def __init__(self, conversations: ConversationRepository, clock: Clock) -> None:
+    def __init__(
+        self,
+        conversations: ConversationRepository,
+        clock: Clock,
+        *,
+        feedback: FeedbackRepository,
+        citations: CitationReader,
+    ) -> None:
         self._conversations = conversations
         self._clock = clock
+        self._feedback = feedback
+        self._citations = citations
 
     async def list_conversations(
         self, user_id: str, *, limit: int, cursor: str | None = None
@@ -120,7 +113,7 @@ class ConversationQueries:
             else None
         )
         return MessagePage(
-            items=[MessageView.of(row) for row in items], next_cursor=next_cursor
+            items=await self._ui_messages(user_id, items), next_cursor=next_cursor
         )
 
     async def rename(
@@ -143,3 +136,23 @@ class ConversationQueries:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+    async def _ui_messages(
+        self, user_id: str, rows: Sequence[Message]
+    ) -> list[UIMessage]:
+        """Two batched lookups per page: the user's feedback and the current releases."""
+        feedback = await self._feedback.for_messages(
+            user_id,
+            [row.message_id for row in rows if row.role is MessageRole.ASSISTANT],
+        )
+        current = await self._citations.current_release_ids(
+            {citation.release_id for row in rows for citation in row.citations}
+        )
+        return [
+            ui_message_of(
+                row,
+                feedback=feedback.get(row.message_id),
+                current_release_ids=current,
+            )
+            for row in rows
+        ]

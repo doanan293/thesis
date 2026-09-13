@@ -106,3 +106,26 @@ async def test_save_upserts_per_user_and_message(database: Database) -> None:
     assert stored.feedback_id == first.feedback_id  # row identity is kept
     assert stored.rating is Rating.DOWN and stored.note == "sai liều"
     assert await repo.get("c" * 32, assistant_id) is None
+
+
+async def test_for_messages_returns_only_this_users_feedback_in_one_call(
+    database: Database,
+) -> None:
+    owner = await make_user(database, "a@example.com")
+    stranger = await make_user(database, "b@example.com")
+    _, first = await seed_turn(database, owner)
+    _, second = await seed_turn(database, owner)
+    repo = PostgresFeedbackRepository(database.sessions)
+    mine = Feedback.create(
+        user_id=owner, message_id=first, rating=Rating.DOWN, note="sai", now=NOW
+    )
+    theirs = Feedback.create(
+        user_id=stranger, message_id=second, rating=Rating.UP, note="", now=NOW
+    )
+    await repo.save(mine)
+    await repo.save(theirs)
+
+    found = await repo.for_messages(owner, [first, second, "not-a-uuid"])
+
+    assert found == {first: mine}
+    assert await repo.for_messages(owner, []) == {}

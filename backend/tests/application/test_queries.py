@@ -5,15 +5,39 @@ import pytest
 from pharma_agent.application.conversation.queries import ConversationQueries
 from pharma_agent.application.errors import ConversationNotFound, InvalidInput
 from pharma_agent.application.pagination import InvalidCursor
+from pharma_agent.domain.agent.run import AgentRun, AnswerMode, AnswerPlan
 from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.conversation.turns import build_turn_messages
 from pharma_agent.domain.shared.clock import FixedClock
 from pharma_agent.domain.shared.ids import new_id
 from tests.domain.factories import make_run
 from tests.fakes import NOW
-from tests.memory_repository import InMemoryConversationRepository
+from tests.memory_repository import (
+    InMemoryCitationReader,
+    InMemoryConversationRepository,
+    InMemoryFeedbackRepository,
+)
 
 OWNER, STRANGER = "a" * 32, "b" * 32
+
+
+def queries_for(
+    repo: InMemoryConversationRepository, clock: FixedClock
+) -> ConversationQueries:
+    return ConversationQueries(
+        repo,
+        clock,
+        feedback=InMemoryFeedbackRepository(),
+        citations=InMemoryCitationReader(),
+    )
+
+
+def finished_run(query: str) -> AgentRun:
+    """Only finished runs are persisted, so history never holds a running status."""
+    run = make_run(query)
+    run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=NOW)
+    run.complete()
+    return run
 
 
 async def add_turn(
@@ -24,7 +48,7 @@ async def add_turn(
         user_message_id=new_id(),
         assistant_message_id=new_id(),
         conversation_id=conversation.conversation_id,
-        run=make_run("q"),
+        run=finished_run("q"),
         answer_text="a",
         citations=[],
         phases=[],
@@ -36,7 +60,7 @@ async def add_turn(
 
 async def test_list_get_messages_rename_delete() -> None:
     repo = InMemoryConversationRepository()
-    queries = ConversationQueries(repo, FixedClock(NOW + timedelta(days=1)))
+    queries = queries_for(repo, FixedClock(NOW + timedelta(days=1)))
     older = Conversation.start(user_id=OWNER, first_message="older", now=NOW)
     never_used = Conversation.start(
         user_id=OWNER, first_message="never used", now=NOW + timedelta(minutes=1)
@@ -47,7 +71,7 @@ async def test_list_get_messages_rename_delete() -> None:
         user_message_id=new_id(),
         assistant_message_id=new_id(),
         conversation_id=older.conversation_id,
-        run=make_run("q"),
+        run=finished_run("q"),
         answer_text="a",
         citations=[],
         phases=["answering"],
@@ -61,11 +85,13 @@ async def test_list_get_messages_rename_delete() -> None:
     assert listed.items[0].turn_count == 1 and listed.next_cursor is None
 
     page = await queries.list_messages(OWNER, older.conversation_id, limit=10)
-    assert [(m.role, m.content) for m in page.items] == [
-        ("user", "q"),
-        ("assistant", "a"),
+    assert [
+        (message.role, message.parts[0].model_dump()) for message in page.items
+    ] == [
+        ("user", {"type": "text", "text": "q"}),
+        ("assistant", {"type": "text", "text": "a"}),
     ]
-    assert page.items[1].phases == ["answering"] and page.next_cursor is None
+    assert page.next_cursor is None
 
     renamed = await queries.rename(OWNER, older.conversation_id, "  Thuốc hạ sốt ")
     assert renamed.title == "Thuốc hạ sốt" and renamed.updated_at == NOW + timedelta(
@@ -89,7 +115,7 @@ async def test_list_get_messages_rename_delete() -> None:
 
 async def test_pages_have_no_duplicates_or_gaps_when_timestamps_tie() -> None:
     repo = InMemoryConversationRepository()
-    queries = ConversationQueries(repo, FixedClock(NOW))
+    queries = queries_for(repo, FixedClock(NOW))
     created: list[Conversation] = []
     for index in range(5):
         conversation = Conversation.start(
@@ -138,7 +164,7 @@ async def test_pages_have_no_duplicates_or_gaps_when_timestamps_tie() -> None:
 
 async def test_create_starts_an_empty_unlisted_conversation() -> None:
     repo = InMemoryConversationRepository()
-    queries = ConversationQueries(repo, FixedClock(NOW))
+    queries = queries_for(repo, FixedClock(NOW))
 
     view = await queries.create(OWNER)
 

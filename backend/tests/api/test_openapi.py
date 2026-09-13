@@ -116,3 +116,52 @@ def test_components_are_clean() -> None:
 def test_post_processing_is_idempotent() -> None:
     app = create_app(openapi_export_settings())
     assert app.openapi() == app.openapi()
+
+
+UI_SCHEMAS = {
+    "UIMessage",
+    "TextUIPart",
+    "SourceDocumentUIPart",
+    "MessageMetadata",
+    "MessageStatus",
+    "MessageUsage",
+    "MessageFeedback",
+    "PharmaSourceMetadata",
+    "EvidenceItem",
+    "PharmaDataParts",
+    "PhaseData",
+    "SkillRef",
+    "SkillsData",
+    "EvidenceData",
+    "ConversationData",
+}
+
+
+def test_ui_message_stream_and_history_are_documented() -> None:
+    doc = document()
+    schemas = doc["components"]["schemas"]
+    assert set(schemas) >= UI_SCHEMAS
+    assert set(schemas["UIMessage"]["properties"]) == {
+        "id",
+        "role",
+        "parts",
+        "metadata",
+    }
+    assert "sourceId" in schemas["SourceDocumentUIPart"]["properties"]
+    assert "isCurrent" in schemas["PharmaSourceMetadata"]["properties"]
+
+    stream = doc["paths"]["/api/v1/chat/stream"]["post"]["responses"]
+    assert stream["200"]["content"] == {
+        "text/event-stream": {
+            "schema": {"$ref": "#/components/schemas/PharmaDataParts"}
+        }
+    }
+    for status in ("401", "404", "422", "503"):
+        assert stream[status]["content"] == {
+            "application/problem+json": PROBLEM_CONTENT
+        }
+
+    page = doc["paths"]["/api/v1/conversations/{conversation_id}/messages"]["get"]
+    assert page["responses"]["200"]["content"]["application/json"] == {
+        "schema": {"$ref": "#/components/schemas/MessagePage"}
+    }

@@ -19,6 +19,9 @@ from pharma_agent.application.tracing import NullTracing
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.container import Container
+from pharma_agent.infrastructure.persistence.postgres.citation_reader import (
+    PostgresCitationReader,
+)
 from pharma_agent.infrastructure.persistence.postgres.conversation_repository import (
     AuditContext,
     PostgresConversationRepository,
@@ -69,18 +72,21 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
             BudgetLimits(),
         )
         clock = SystemClock()
+        feedback_repository = PostgresFeedbackRepository(database.sessions)
         try:
             yield Container(
                 settings=resolved,
                 sessions=database.sessions,
-                queries=ConversationQueries(repo, clock),
+                queries=ConversationQueries(
+                    repo,
+                    clock,
+                    feedback=feedback_repository,
+                    citations=PostgresCitationReader(database.sessions),
+                ),
                 chat=ChatService(runner, repo, clock, MemoryPolicy()),
                 skills=SkillService(PostgresSkillRepository(database.sessions)),
                 feedback=FeedbackService(
-                    repo,
-                    PostgresFeedbackRepository(database.sessions),
-                    NullTracing(),
-                    clock,
+                    repo, feedback_repository, NullTracing(), clock
                 ),
                 health_checks={"postgres": database.ping},
             )

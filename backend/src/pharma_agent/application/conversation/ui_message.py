@@ -108,6 +108,45 @@ class UIMessage(CamelModel):
     metadata: MessageMetadata
 
 
+class PhaseData(CamelModel):
+    phase: Literal[
+        "guarding",
+        "understanding",
+        "selecting_skills",
+        "searching",
+        "reading",
+        "answering",
+    ]
+    round: int | None = None
+
+
+class SkillRef(CamelModel):
+    name: str
+    title: str
+
+
+class SkillsData(CamelModel):
+    skills: list[SkillRef]
+
+
+class EvidenceData(CamelModel):
+    items: list[EvidenceItem]
+
+
+class ConversationData(CamelModel):
+    id: str
+    title: str
+
+
+class PharmaDataParts(CamelModel):
+    """AI SDK `DataParts` of the chat stream: part `data-<field>` carries the field's payload."""
+
+    phase: PhaseData
+    skills: SkillsData
+    evidence: EvidenceData
+    conversation: ConversationData
+
+
 def source_document_part(
     citation: Citation, *, is_current: bool
 ) -> SourceDocumentUIPart:
