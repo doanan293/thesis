@@ -1,6 +1,8 @@
 """RFC 9457 problem details: the single response shape of every API error."""
 
 from collections.abc import Mapping
+from http import HTTPStatus
+from typing import Any
 
 from fastapi.responses import JSONResponse
 
@@ -45,3 +47,17 @@ def problem_response(
         status_code=status,
         headers=headers,
     )
+
+
+PROBLEM_SCHEMA_REF = "#/components/schemas/Problem"
+
+
+def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """OpenAPI `responses` declaring `Problem` for each status.
+
+    `PharmaAgentAPI` moves them from application/json to application/problem+json.
+    """
+    return {
+        status: {"model": Problem, "description": HTTPStatus(status).phrase}
+        for status in statuses
+    }

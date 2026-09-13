@@ -220,6 +220,25 @@ def migrate(revision: str = typer.Argument("head", help="Alembic revision")) -> 
     command.upgrade(alembic_config(), revision)
 
 
+@app.command("export-openapi")
+def export_openapi(
+    output: Path = typer.Option(
+        ...,
+        "--output",
+        dir_okay=False,
+        help="File to write, for example ../frontend/openapi.json",
+    ),
+) -> None:
+    """Ghi tài liệu OpenAPI của HTTP API ra file, không cần chạy server."""
+    from pharma_agent.api.app import create_app
+    from pharma_agent.api.openapi import openapi_export_settings, render_openapi
+
+    document = render_openapi(create_app(openapi_export_settings()))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(document, encoding="utf-8", newline="\n")
+    typer.echo(f"wrote {output}")
+
+
 @app.command("cleanup-checkpoints")
 def cleanup_checkpoints(
     days: int | None = typer.Option(

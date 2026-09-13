@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Path, Response, UploadFile
 
 from pharma_agent.api.deps import ContainerDep, UserIdDependency, require_skills
+from pharma_agent.api.problems import problem_responses
 from pharma_agent.api.schemas import EnableSkillRequest
 from pharma_agent.application.skill.service import MAX_SKILL_BYTES, SkillView
 
@@ -11,7 +12,11 @@ SkillName = Annotated[str, Path(min_length=1, max_length=64)]
 
 
 def build_skills_router(current_user_id: UserIdDependency) -> APIRouter:
-    router = APIRouter(prefix="/skills", tags=["skills"])
+    router = APIRouter(
+        prefix="/skills",
+        tags=["skills"],
+        responses=problem_responses(401, 404, 409, 413, 422, 503),
+    )
     UserId = Annotated[str, Depends(current_user_id)]
 
     @router.get("", response_model=list[SkillView])

@@ -7,6 +7,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from starlette.background import BackgroundTask
 
 from pharma_agent.api.deps import ContainerDep, UserIdDependency, require_chat
+from pharma_agent.api.problems import problem_responses
 from pharma_agent.api.schemas import ChatRequest
 from pharma_agent.api.sse import to_server_sent_event
 from pharma_agent.application.chat.service import ChatTurnResult
@@ -27,7 +28,9 @@ async def summarize_quietly(
 
 
 def build_chat_router(current_user_id: UserIdDependency) -> APIRouter:
-    router = APIRouter(prefix="/chat", tags=["chat"])
+    router = APIRouter(
+        prefix="/chat", tags=["chat"], responses=problem_responses(401, 404, 422, 503)
+    )
     UserId = Annotated[str, Depends(current_user_id)]
 
     @router.post("", response_model=ChatTurnResult)

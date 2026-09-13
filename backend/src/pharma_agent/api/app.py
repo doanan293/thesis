@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pharma_agent.api.deps import session_factory, user_id_dependency
 from pharma_agent.api.errors import install_error_handlers
+from pharma_agent.api.openapi import PharmaAgentAPI
 from pharma_agent.api.routers.chat import build_chat_router
 from pharma_agent.api.routers.conversations import build_conversations_router
 from pharma_agent.api.routers.feedback import build_feedback_router
@@ -32,7 +33,12 @@ def create_app(
             app.state.container = container
             yield
 
-    app = FastAPI(title="Pharma Agent API", version="0.1.0", lifespan=lifespan)
+    app = PharmaAgentAPI(
+        title="Pharma Agent API",
+        version="0.1.0",
+        lifespan=lifespan,
+        generate_unique_id_function=lambda route: route.name,
+    )
     app.state.auth = auth
     app.add_middleware(
         CORSMiddleware,

@@ -1,9 +1,12 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
 from pharma_agent import cli
+from pharma_agent.api.app import create_app
+from pharma_agent.api.openapi import openapi_export_settings, render_openapi
 from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.application.chat.runner import ChatTurnRunner
 from pharma_agent.domain.agent.budget import BudgetLimits
@@ -154,3 +157,22 @@ def test_check_reports_corpus_embedding_and_rerank(monkeypatch) -> None:
     assert "OK  embedding:" in result.output and "-> 2560 dims" in result.output
     assert "OK  rerank:" in result.output
     assert closed == [True]
+
+
+def test_export_openapi_is_deterministic_and_matches_the_app(tmp_path: Path) -> None:
+    nested, flat = tmp_path / "frontend" / "openapi.json", tmp_path / "openapi.json"
+    for output in (nested, flat):
+        result = CliRunner().invoke(
+            cli.app, ["export-openapi", "--output", str(output)]
+        )
+        assert result.exit_code == 0, result.output
+        assert f"wrote {output}" in result.output
+
+    text = nested.read_text(encoding="utf-8")
+    assert nested.read_bytes() == flat.read_bytes()
+    assert text == render_openapi(create_app(openapi_export_settings()))
+    assert text.endswith("\n")
+    document = json.loads(text)
+    assert list(document) == sorted(document)
+    authorize = document["paths"]["/api/v1/auth/google/authorize"]["get"]
+    assert authorize["operationId"] == "oauth:google.jwt.authorize"

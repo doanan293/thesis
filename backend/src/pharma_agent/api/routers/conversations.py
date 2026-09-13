@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, Response
 
 from pharma_agent.api.deps import ContainerDep, UserIdDependency
+from pharma_agent.api.problems import problem_responses
 from pharma_agent.api.schemas import CONVERSATION_ID_PATTERN, RenameConversationRequest
 from pharma_agent.application.conversation.queries import (
     ConversationPage,
@@ -24,7 +25,11 @@ Cursor = Annotated[
 
 
 def build_conversations_router(current_user_id: UserIdDependency) -> APIRouter:
-    router = APIRouter(prefix="/conversations", tags=["conversations"])
+    router = APIRouter(
+        prefix="/conversations",
+        tags=["conversations"],
+        responses=problem_responses(401, 404, 422, 503),
+    )
     UserId = Annotated[str, Depends(current_user_id)]
 
     @router.post("", response_model=ConversationView, status_code=201)

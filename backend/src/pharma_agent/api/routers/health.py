@@ -1,14 +1,25 @@
 import asyncio
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from pharma_agent.api.deps import ContainerDep
+from pharma_agent.api.problems import PROBLEM_MEDIA_TYPE, PROBLEM_SCHEMA_REF
 from pharma_agent.api.schemas import HealthResponse
+
+# 503 is either a degraded HealthResponse or a SERVICE_STARTING problem.
+HEALTH_RESPONSES: dict[int | str, dict[str, Any]] = {
+    503: {
+        "model": HealthResponse,
+        "description": "A dependency is down, or the service is still starting",
+        "content": {PROBLEM_MEDIA_TYPE: {"schema": {"$ref": PROBLEM_SCHEMA_REF}}},
+    }
+}
 
 
 def build_health_router() -> APIRouter:
-    router = APIRouter(tags=["health"])
+    router = APIRouter(tags=["health"], responses=HEALTH_RESPONSES)
 
     @router.get("/health", response_model=HealthResponse)
     async def health(container: ContainerDep) -> JSONResponse:
