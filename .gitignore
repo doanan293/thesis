@@ -1,23 +1,48 @@
-# Python environment
-.venv/
-__pycache__/
-*.pyc
+# Shared ignore rules for every project in this repository.
+# A project's own .gitignore lists only output specific to that project.
 
-# OS files
+# Operating systems
 .DS_Store
 Thumbs.db
-.worktrees/
 
-# Environment files
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local environment and secrets
 .env
 .env.*
 !.env.example
 
-# models and local keys
-ai-models/
-**/ai-models/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
 
-# tool caches
+# Python tool caches and coverage
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .pyrefly/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Local model files
+ai-models/
+
+# Local agent tooling
+.superpowers/
+.worktrees/

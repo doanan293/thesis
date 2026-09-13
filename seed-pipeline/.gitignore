@@ -1,34 +1,17 @@
-# Python cache and test output
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+# Shared rules (Python caches, virtualenvs, .env, logs, editors) live in the repository root .gitignore.
 
-# Virtual environments and local environment files
-.venv/
-venv/
-.env
-
-# Logs and temporary runtime files
-*.log
-*.tmp
-*.bak
+# Temporary runtime directories
 tmp/
 temp/
 
-# Local database/vector runtime state
+# Local database and vector runtime state
 .qdrant/
 .clickhouse/
 *.vector-cache.lock
+
+# Kaggle local state and job workspaces
 .kaggle/
 seed-pipeline-kaggle-*/
 
-# Local tool state
-.superpowers/
-docs/superpowers/
-
-# Archiveable generated and large data boundary
+# Large generated data, archived outside git
 data/heavy/

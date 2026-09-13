@@ -1,11 +1,12 @@
-node_modules/
+# Shared rules (node_modules, .env, logs, editors) live in the repository root .gitignore.
+
+# Build output
 build/
 .react-router/
 *.tsbuildinfo
-.env
-.env.*
-!.env.example
+
+# Test output
 playwright-report/
 test-results/
-__screenshots__/
 .vitest/
+__screenshots__/
