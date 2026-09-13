@@ -1,10 +1,19 @@
-import { useTranslation } from "react-i18next"
+import { ChatThread, ChatThreadFallback } from "~/features/chat/ChatThread"
 
-export default function ChatPage() {
-  const { t } = useTranslation("common")
+import type { Route } from "./+types/chat"
+
+export function clientLoader({ params }: Route.ClientLoaderArgs) {
+  return { conversationId: params.conversationId ?? null }
+}
+
+export function HydrateFallback() {
+  return <ChatThreadFallback />
+}
+
+export default function ChatRoute({ loaderData }: Route.ComponentProps) {
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold">{t("nav.chat")}</h1>
+    <div className="flex h-[calc(100svh-3rem)] min-h-0 flex-col">
+      <ChatThread conversationId={loaderData.conversationId ?? undefined} />
     </div>
   )
 }
