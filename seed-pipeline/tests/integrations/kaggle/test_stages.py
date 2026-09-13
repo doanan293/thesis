@@ -32,15 +32,20 @@ def _request(stage: StageName, model: str, input_path: Path) -> StageRequest:
     )
 
 
-def test_corpus_embed_builds_version_2_single_file_bundle(tmp_path):
-    source = tmp_path / "chunks.jsonl"
-    source.write_text(json.dumps({"chunk_id": "c1"}) + "\n", encoding="utf-8")
+def test_corpus_embed_builds_version_3_text_input_bundle(tmp_path):
+    source = tmp_path / "embedding_inputs.jsonl"
+    source.write_text(
+        json.dumps({"embedding_text_sha256": "0" * 64, "embedding_text": "x"}) + "\n",
+        encoding="utf-8",
+    )
 
     job = CorpusEmbedStage().build_job(
         _request(StageName.CORPUS_EMBED, "qwen3-embedding:4b-fp16", source)
     )
 
-    assert job.contract_version == 2
+    assert job.contract_version == 3
+    assert job.data_filename == "text_embeddings.jsonl"
+    assert job.local_cache_path.name == "text_embeddings.jsonl"
     assert job.identity.payload["input_sha256"] == job.input_bundle.sha256
     assert set(job.input_bundle.descriptors()) == {"input"}
     assert "input_path" not in job.worker_config

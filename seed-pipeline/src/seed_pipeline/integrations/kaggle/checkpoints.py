@@ -20,7 +20,7 @@ from seed_pipeline.integrations.kaggle.models import (
 )
 
 _CHECKPOINT_ARTIFACT_TYPES = {
-    StageName.CORPUS_EMBED: "vector_embedding_cache",
+    StageName.CORPUS_EMBED: "text_embedding_cache",
     StageName.QUERY_EMBED: "query_embedding_cache",
     StageName.RERANK: "rerank_scores",
 }

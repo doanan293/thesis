@@ -80,7 +80,7 @@ class PipelineKernelService:
         }
         if checkpoint_reference:
             checkpoint_filename = {
-                "corpus-embed": "vector_embeddings.jsonl",
+                "corpus-embed": "text_embeddings.jsonl",
                 "query-embed": "query_embeddings.journal.jsonl",
                 "rerank": "rerank_scores.journal.jsonl",
             }.get(job.stage.value)

@@ -5,9 +5,12 @@ import os
 import time
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
-from seed_pipeline.artifacts.jsonl import iter_jsonl_objects
+from seed_pipeline.embeddings.text_cache import (
+    TextEmbeddingCache,
+    embed_missing,
+    read_embedding_inputs,
+)
 from seed_pipeline.integrations.kaggle.models import CloudArtifact
 from seed_pipeline.integrations.kaggle.workers.runtime import (
     artifact_from_output,
@@ -19,11 +22,8 @@ from seed_pipeline.integrations.kaggle.workers.runtime import (
 )
 from seed_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
 from seed_pipeline.runtime.client import LlamaCppClient
-from seed_pipeline.vector_store.embedding_core import (
-    ChunkEmbeddingCache,
-    collect_or_create_embeddings,
-    read_normalized_input_points,
-)
+
+OUTPUT_FILENAME = "text_embeddings.jsonl"
 
 
 def run_corpus_embed_worker(
@@ -36,10 +36,10 @@ def run_corpus_embed_worker(
     input_path = resolve_input_file(config, "input")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = Path(
-        config.get("output_path", output_dir / "vector_embeddings.jsonl")
-    )
+    output_path = Path(config.get("output_path", output_dir / OUTPUT_FILENAME))
     model_name = str(config["model"])
+    vector_dimension = int(config["vector_dimension"])
+    model_sha256 = str(identity.payload.get("model_sha256") or "")
     runtime_overrides = config.get("runtime_overrides")
     if not isinstance(runtime_overrides, dict):
         raise ValueError("runtime_overrides is required")
@@ -50,35 +50,26 @@ def run_corpus_embed_worker(
         and checkpoint_path.is_file()
         and not output_path.exists()
     ):
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(checkpoint_path.read_bytes())
+    inputs = read_embedding_inputs(input_path)
     if command_executor is None:
-        points = read_normalized_input_points(input_path)
-        vector_dimension = int(config["vector_dimension"])
-        cache = ChunkEmbeddingCache(
+        cache = TextEmbeddingCache(
             output_path,
-            vector_dimension,
-            allow_truncated_final_record=True,
-            model_sha256=str(identity.payload.get("model_sha256") or ""),
+            model=model_name,
+            model_sha256=model_sha256,
+            vector_dim=vector_dimension,
         )
-        deadline = worker_deadline(config, clock)
         server_config = dict(config)
         server_config["runtime_overrides"] = runtime_overrides
         with managed_model_servers(server_config, telemetry=telemetry) as servers:
-            args = SimpleNamespace(
-                model=model_name,
-                input_batch_size=int(runtime_overrides["request_batch_size"]),
-                mock=False,
-                llama_clients=[LlamaCppClient(server.base_url) for server in servers],
-                embedding_concurrency=int(runtime_overrides["concurrency"]),
-                runtime_stop_deadline=deadline,
-            )
-            collect_or_create_embeddings(
-                points,
-                args,
-                vector_dimension,
+            embed_missing(
+                inputs,
                 cache,
-                retain_embeddings=False,
+                [LlamaCppClient(server.base_url) for server in servers],
+                batch_size=int(runtime_overrides["request_batch_size"]),
+                concurrency=int(runtime_overrides["concurrency"]),
+                deadline=worker_deadline(config, clock),
+                clock=clock,
             )
         return_code = 0
     else:
@@ -88,13 +79,19 @@ def run_corpus_embed_worker(
     telemetry.close()
     runtime_summary = telemetry.summary()
     telemetry.write_report()
-    total = sum(1 for _ in iter_jsonl_objects(input_path))
-    complete = sum(1 for _ in iter_jsonl_objects(output_path))
+    complete = len(
+        TextEmbeddingCache(
+            output_path,
+            model=model_name,
+            model_sha256=model_sha256,
+            vector_dim=vector_dimension,
+        ).records_for(item.embedding_text_sha256 for item in inputs)
+    )
     return artifact_from_output(
         output_path,
-        artifact_type="vector_embedding_cache",
+        artifact_type="text_embedding_cache",
         identity=identity,
-        total=total,
+        total=len(inputs),
         complete=complete,
         runtime_summary=runtime_summary,
     )

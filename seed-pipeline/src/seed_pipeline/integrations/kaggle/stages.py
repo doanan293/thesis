@@ -92,7 +92,7 @@ def _required_runtime_profile(request: StageRequest) -> RuntimeCandidate:
 @dataclass(frozen=True)
 class CorpusEmbedStage:
     name: StageName = StageName.CORPUS_EMBED
-    contract_version: int = 2
+    contract_version: int = 3
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
@@ -127,8 +127,8 @@ class CorpusEmbedStage:
             identity=identity,
             input_bundle=input_bundle,
             output_dir=output_dir,
-            local_cache_path=output_dir / "vector_embeddings.jsonl",
-            data_filename="vector_embeddings.jsonl",
+            local_cache_path=output_dir / "text_embeddings.jsonl",
+            data_filename="text_embeddings.jsonl",
             expected_total=total,
             worker_module="seed_pipeline.integrations.kaggle.workers.corpus_embed",
             worker_config={

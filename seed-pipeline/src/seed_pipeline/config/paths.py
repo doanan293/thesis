@@ -71,12 +71,16 @@ DATA_CACHE_DIR = HEAVY_DATA_DIR / "cache"
 QUERY_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "query_embeddings"
 RERANK_SCORE_CACHE_DIR = DATA_CACHE_DIR / "rerank_scores"
 VECTOR_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "vector_embeddings"
+TEXT_EMBEDDING_CACHE_DIR = DATA_CACHE_DIR / "text_embeddings"
 
 WORK_DIR = HEAVY_DATA_DIR / ".work"
 RUNTIME_PROFILE_DIR = HEAVY_DATA_DIR / "runtime_kaggle_profiles"
 BUNDLES_DIR = HEAVY_DATA_DIR / "bundles"
 DEFAULT_BUNDLE_DIR = BUNDLES_DIR / "formulary"
 MIGRATION_DIR = HEAVY_DATA_DIR / "migration"
+BUNDLE_EMBED_WORK_DIR = WORK_DIR / "bundle-embed"
+COMPOSE_FILE = PROJECT_ROOT.parent / "docker-compose.yml"
+GGUF_ROOT = PROJECT_ROOT.parent / "ai-models" / "gguf"
 RAG_FINAL_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
 RAG_FINAL_CHUNKS_PATH = RAG_FINAL_DIR / "chunks.jsonl"
 RAG_FINAL_MANIFEST_PATH = RAG_FINAL_DIR / "manifest.json"
@@ -97,6 +101,10 @@ def query_embedding_bundle_dir(model: str, evaluation_sha256: str) -> Path:
 
 def query_embedding_cache_path(model: str) -> Path:
     return QUERY_EMBEDDING_CACHE_DIR / f"{require_model(model).slug}.jsonl"
+
+
+def text_embedding_cache_path(model: str) -> Path:
+    return TEXT_EMBEDDING_CACHE_DIR / f"{require_model(model).slug}.jsonl"
 
 
 def rerank_score_cache_path(
