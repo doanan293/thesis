@@ -131,7 +131,10 @@ class RetrievalRunTable(Base):
     run_id: Mapped[str] = mapped_column(String(32), nullable=False)
     round: Mapped[int] = mapped_column(Integer, nullable=False)
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
-    corpus_version: Mapped[str] = mapped_column(String(200), nullable=False)
+    # str(collection_id) -> str(release_id). No FK into schema corpus, so gc is never blocked.
+    release_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     embedding_model: Mapped[str] = mapped_column(String(200), nullable=False)
     retriever_config: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
@@ -148,9 +151,9 @@ class RetrievalHitTable(Base):
         Uuid, ForeignKey("retrieval_runs.id", ondelete="CASCADE"), primary_key=True
     )
     rank: Mapped[int] = mapped_column(Integer, primary_key=True)
-    chunk_id: Mapped[str] = mapped_column(Text, nullable=False)
-    section_id: Mapped[str] = mapped_column(Text, nullable=False)
-    table_id: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    chunk_version_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    section_key: Mapped[str] = mapped_column(Text, nullable=False)
+    table_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     fusion_score: Mapped[float] = mapped_column(Float, nullable=False)
     rerank_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     hydrate_strategy: Mapped[str] = mapped_column(String(32), nullable=False)

@@ -30,7 +30,8 @@ class ConversationRowMissing(LookupError):
 
 @dataclass(frozen=True)
 class AuditContext:
-    corpus_version: str
+    """Per-deployment audit fields; release ids come from each record."""
+
     embedding_model: str
     retriever_config: dict[str, Any] = field(default_factory=dict)
 
@@ -192,7 +193,7 @@ class PostgresConversationRepository:
                     run_id=assistant_message.run_id or "",
                     round=record.round,
                     query_text=record.query_text,
-                    corpus_version=self._audit_context.corpus_version,
+                    release_ids=dict(record.release_ids),
                     embedding_model=self._audit_context.embedding_model,
                     retriever_config=dict(self._audit_context.retriever_config),
                     created_at=assistant_message.created_at,

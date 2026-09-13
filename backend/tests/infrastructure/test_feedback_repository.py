@@ -41,7 +41,7 @@ async def make_user(database: Database, email: str) -> str:
 
 async def seed_turn(database: Database, owner: str) -> tuple[str, str]:
     conversations = PostgresConversationRepository(
-        database.sessions, AuditContext(corpus_version="t", embedding_model="t")
+        database.sessions, AuditContext(embedding_model="t")
     )
     conversation = Conversation.start(user_id=owner, first_message="hi", now=NOW)
     await conversations.create(conversation)
@@ -72,7 +72,7 @@ async def test_get_message_is_owner_scoped(database: Database) -> None:
     stranger = await make_user(database, "b@example.com")
     user_id, assistant_id = await seed_turn(database, owner)
     conversations = PostgresConversationRepository(
-        database.sessions, AuditContext(corpus_version="t", embedding_model="t")
+        database.sessions, AuditContext(embedding_model="t")
     )
     found = await conversations.get_message(owner, assistant_id)
     assert (

@@ -59,7 +59,7 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         database_holder["db"] = database
         repo = PostgresConversationRepository(
             database.sessions,
-            AuditContext(corpus_version="test", embedding_model="test"),
+            AuditContext(embedding_model="test"),
         )
         runner = ChatTurnRunner(
             build_chat_graph(),

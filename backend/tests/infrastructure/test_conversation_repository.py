@@ -22,7 +22,14 @@ from pharma_agent.infrastructure.persistence.postgres.tables import (
     RetrievalRunTable,
     UserTable,
 )
-from tests.domain.factories import NOW, chunk_uuid, make_citation
+from tests.domain.factories import (
+    COLLECTION_ID,
+    NOW,
+    RELEASE_ID,
+    SECTION_KEY,
+    chunk_uuid,
+    make_citation,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -51,7 +58,6 @@ def repository(database: Database) -> PostgresConversationRepository:
     return PostgresConversationRepository(
         database.sessions,
         AuditContext(
-            corpus_version="thesis_chunks_qwen3_embedding_4b_fp16",
             embedding_model="qwen3-embedding:4b-fp16",
             retriever_config={"mode": "hybrid", "rrf_k": 2},
         ),
@@ -92,12 +98,13 @@ AUDIT = [
     RetrievalRunRecord(
         round=1,
         query_text="paracetamol liều",
+        release_ids={str(COLLECTION_ID): str(RELEASE_ID)},
         hits=[
             RetrievalHitRecord(
                 rank=1,
-                chunk_id="c1",
-                section_id="s1",
-                table_id="",
+                chunk_version_id=chunk_uuid("c1"),
+                section_key=SECTION_KEY,
+                table_key=None,
                 fusion_score=0.5,
                 rerank_score=0.9,
                 hydrate_strategy="chunk_window",
@@ -164,12 +171,15 @@ async def test_append_turn_is_atomic_and_increments_turn_count(
 
     async with database.sessions() as session:
         run = (await session.execute(select(RetrievalRunTable))).scalar_one()
-        assert (
-            run.corpus_version == "thesis_chunks_qwen3_embedding_4b_fp16"
-            and run.round == 1
-        )
+        assert run.release_ids == {str(COLLECTION_ID): str(RELEASE_ID)}
+        assert run.round == 1 and run.embedding_model == "qwen3-embedding:4b-fp16"
         hit = (await session.execute(select(RetrievalHitTable))).scalar_one()
         assert hit.cited is True and hit.rerank_score == 0.9
+        assert (hit.chunk_version_id, hit.section_key, hit.table_key) == (
+            chunk_uuid("c1"),
+            SECTION_KEY,
+            None,
+        )
 
 
 async def test_append_turn_rolls_back_when_conversation_is_missing(

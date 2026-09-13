@@ -103,7 +103,6 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
     repository = PostgresConversationRepository(
         database.sessions,
         AuditContext(
-            corpus_version=settings.retrieval.qdrant_collection,
             embedding_model=settings.retrieval.embedding.model,
             retriever_config=settings.retrieval.model_dump(
                 mode="json", exclude={"embedding": {"api_key"}, "rerank": {"api_key"}}
