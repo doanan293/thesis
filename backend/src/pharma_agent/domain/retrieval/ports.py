@@ -52,3 +52,18 @@ class CorpusReader(Protocol):
     async def load_chunks(self, keys: Sequence[ChunkKey]) -> list[ChunkRecord]:
         """Records for the keys that exist, in no particular order. Raises RetrievalError."""
         ...
+
+    async def section_chunks(
+        self,
+        release_id: UUID,
+        section_revision_id: UUID,
+        *,
+        around: int | None,
+        radius: int,
+    ) -> list[Chunk]:
+        """Chunks of one section revision in one release, ordered by ordinal.
+
+        All of them when `around` is None, otherwise those with ordinal within around ± radius.
+        Raises RetrievalError.
+        """
+        ...

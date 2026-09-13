@@ -1,9 +1,11 @@
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from pharma_agent.domain.retrieval.models import HydrateStrategy
 from pharma_agent.domain.shared.errors import DomainError
 from pharma_agent.domain.shared.ids import new_id
 
@@ -14,16 +16,21 @@ class MessageRole(StrEnum):
 
 
 class Citation(BaseModel):
+    """A cited evidence block: the chunk version the model read and the blocks around it."""
+
     model_config = ConfigDict(frozen=True)
 
     index: int
-    chunk_id: str
-    section_id: str
+    chunk_version_id: UUID
+    release_id: UUID
+    strategy: HydrateStrategy
+    block_chunk_version_ids: list[UUID]
+    source: str
     title: str
     section: str
-    start_page: int
-    end_page: int
-    table_id: str = ""
+    start_page: int | None
+    end_page: int | None
+    snippet: str
 
 
 class Turn(BaseModel):

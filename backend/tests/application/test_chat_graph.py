@@ -23,7 +23,8 @@ from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
 from pharma_agent.domain.llm.port import LlmError
 from pharma_agent.domain.retrieval.ports import RetrievalError
-from tests.domain.factories import make_hit
+from pharma_agent.domain.shared.text import make_snippet
+from tests.domain.factories import chunk_uuid, make_hit
 from tests.fakes import FakeLlm, FakeReranker, FakeRetriever, build_deps
 
 QUESTION = "Paracetamol người lớn uống bao nhiêu?"
@@ -99,8 +100,22 @@ async def test_grounded_answer_in_one_round() -> None:
     assert outcome.run.skills[0].name == "drug-monograph"
     evidence_event = next(e for e in events if e.type is EventType.EVIDENCE)
     assert [i["index"] for i in evidence_event.data["items"]] == [1, 2]
+    assert evidence_event.data["items"][0] == {
+        "index": 1,
+        "source": "Dược thư Quốc gia Việt Nam",
+        "title": "Paracetamol",
+        "section": "Liều dùng",
+        "start_page": 10,
+        "end_page": 11,
+        "snippet": make_snippet("paracetamol 500 mg", 200),
+    }
     assert tokens(events) == outcome.answer_text and "[1]" in outcome.answer_text
     assert [c.index for c in outcome.citations] == [1]
+    citations_event = next(e for e in events if e.type is EventType.CITATIONS)
+    assert citations_event.data["items"][0]["chunk_version_id"] == str(chunk_uuid("c1"))
+    assert citations_event.data["items"][0]["block_chunk_version_ids"] == [
+        str(chunk_uuid("c1"))
+    ]
     assert retriever.calls[0][0].text == "Liều paracetamol cho người lớn"
     done = events[-1]
     assert done.type is EventType.DONE and done.data["status"] == "completed"
@@ -145,7 +160,7 @@ async def test_search_more_then_refine_runs_second_search() -> None:
     assert phases(events).count(Phase.SEARCHING) == 2
     assert outcome.run.usage.search_rounds == 2
     # c1 was scored in round one for the same standalone query, so only c9 is scored again.
-    assert reranker.received == [["c1"], ["c9"]]
+    assert reranker.received == [[chunk_uuid("c1")], [chunk_uuid("c9")]]
 
 
 async def test_smalltalk_skips_retrieval() -> None:

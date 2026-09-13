@@ -12,7 +12,11 @@ from pharma_agent.application.chat.context import TurnContext
 from pharma_agent.application.chat.state import ChatTurnState
 from pharma_agent.application.progress import EventType, Phase, ProgressEvent
 from pharma_agent.domain.agent.budget import BudgetExhausted
-from pharma_agent.domain.agent.citations import CitationSanitizer, citations_from
+from pharma_agent.domain.agent.citations import (
+    SNIPPET_CHARS,
+    CitationSanitizer,
+    citations_from,
+)
 from pharma_agent.domain.agent.prompts import (
     answer_messages,
     fallback_text,
@@ -33,6 +37,7 @@ from pharma_agent.domain.guardrail.models import VerdictSource
 from pharma_agent.domain.llm.models import LlmRole, LlmUsage
 from pharma_agent.domain.llm.port import LlmError
 from pharma_agent.domain.retrieval.models import Query, QueryOrigin
+from pharma_agent.domain.shared.text import make_snippet
 from pharma_agent.domain.skill.models import MAX_CATALOG_SIZE
 from pharma_agent.domain.skill.resolver import resolve_selected
 
@@ -238,11 +243,12 @@ async def answer_node(
                     "items": [
                         {
                             "index": index,
+                            "source": e.hit.source,
                             "title": e.hit.title,
                             "section": e.hit.section,
                             "start_page": e.hit.start_page,
                             "end_page": e.hit.end_page,
-                            "table_id": e.hit.table_id,
+                            "snippet": make_snippet(e.hit.chunk_text, SNIPPET_CHARS),
                         }
                         for index, e in numbered
                     ]
@@ -274,7 +280,7 @@ async def answer_node(
     _emit(
         ProgressEvent(
             type=EventType.CITATIONS,
-            data={"items": [c.model_dump() for c in citations]},
+            data={"items": [c.model_dump(mode="json") for c in citations]},
         )
     )
     run.complete()

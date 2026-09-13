@@ -77,7 +77,7 @@ def _message_row(message: Message) -> MessageTable:
         role=message.role.value,
         content=message.content,
         status=message.status,
-        citations=[citation.model_dump() for citation in message.citations],
+        citations=[citation.model_dump(mode="json") for citation in message.citations],
         phases=list(message.phases),
         usage=dict(message.usage),
         run_id=message.run_id,

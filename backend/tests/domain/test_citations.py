@@ -1,7 +1,12 @@
-from pharma_agent.domain.agent.citations import CitationSanitizer, citations_from
+from pharma_agent.domain.agent.citations import (
+    SNIPPET_CHARS,
+    CitationSanitizer,
+    citations_from,
+)
 from pharma_agent.domain.retrieval.evidence import EvidenceSet
-from pharma_agent.domain.retrieval.models import RetrievedItem
-from tests.domain.factories import make_hit
+from pharma_agent.domain.retrieval.models import HydrateStrategy, RetrievedItem
+from pharma_agent.domain.shared.text import make_snippet
+from tests.domain.factories import RELEASE_ID, SOURCE, chunk_uuid, make_hit, make_item
 
 
 def run_stream(deltas: list[str], valid: set[int]) -> tuple[str, list[int]]:
@@ -37,13 +42,36 @@ def test_citations_from_numbered_evidence() -> None:
     evidence = EvidenceSet()
     evidence.merge(
         [
-            RetrievedItem(hit=make_hit("c1", rerank=0.9)),
-            RetrievedItem(hit=make_hit("c2", rerank=0.8, table_id="t1")),
+            make_item("c1", rerank=0.9),
+            RetrievedItem(
+                hit=make_hit(
+                    "c2", rerank=0.8, table_key="t1", start_page=None, end_page=None
+                )
+            ),
         ]
     )
     packed = evidence.pack(10_000)
     _, numbered = evidence.context_view(packed)
     citations = citations_from(numbered, used=[2, 1])
     assert [c.index for c in citations] == [2, 1]
-    assert citations[0].chunk_id == "c2" and citations[0].table_id == "t1"
-    assert citations[1].title == "Paracetamol" and citations[1].start_page == 10
+    second, first = citations
+    assert (
+        second.chunk_version_id,
+        second.strategy,
+        second.block_chunk_version_ids,
+        second.start_page,
+        second.end_page,
+    ) == (chunk_uuid("c2"), HydrateStrategy.SEARCH_ONLY, [chunk_uuid("c2")], None, None)
+    assert (first.chunk_version_id, first.release_id, first.strategy) == (
+        chunk_uuid("c1"),
+        RELEASE_ID,
+        HydrateStrategy.CHUNK_WINDOW,
+    )
+    assert first.block_chunk_version_ids == [chunk_uuid("c1")]
+    assert (first.source, first.title, first.section, first.start_page) == (
+        SOURCE,
+        "Paracetamol",
+        "Liều dùng",
+        10,
+    )
+    assert first.snippet == make_snippet("paracetamol 500 mg", SNIPPET_CHARS)

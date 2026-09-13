@@ -4,13 +4,12 @@ import pytest
 
 from pharma_agent.domain.agent.run import AnswerMode, AnswerPlan, RunStatus
 from pharma_agent.domain.conversation.models import (
-    Citation,
     Conversation,
     InvalidTitle,
     MessageRole,
 )
 from pharma_agent.domain.conversation.turns import build_turn_messages, pair_turns
-from tests.domain.factories import NOW, make_run
+from tests.domain.factories import NOW, make_citation, make_run
 
 
 def test_start_sets_title_from_first_message() -> None:
@@ -61,15 +60,7 @@ def test_build_turn_messages_and_pair_turns() -> None:
     run = make_run("Liều paracetamol?")
     run.submit_plan(AnswerPlan(mode=AnswerMode.NO_RETRIEVAL), now=NOW)
     run.complete()
-    citation = Citation(
-        index=1,
-        chunk_id="c1",
-        section_id="s1",
-        title="Paracetamol",
-        section="Liều",
-        start_page=1,
-        end_page=2,
-    )
+    citation = make_citation("c1")
     user_msg, assistant_msg = build_turn_messages(
         conversation_id="conv1",
         run=run,

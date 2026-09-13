@@ -6,7 +6,6 @@ import pytest
 from sqlalchemy import func, select, text
 
 from pharma_agent.domain.conversation.models import (
-    Citation,
     Conversation,
     Message,
     MessageRole,
@@ -23,7 +22,7 @@ from pharma_agent.infrastructure.persistence.postgres.tables import (
     RetrievalRunTable,
     UserTable,
 )
-from tests.domain.factories import NOW
+from tests.domain.factories import NOW, chunk_uuid, make_citation
 
 pytestmark = pytest.mark.integration
 
@@ -63,15 +62,7 @@ def turn(
     conversation_id: str, index: int, status: str = "completed"
 ) -> tuple[Message, Message]:
     at = NOW + timedelta(minutes=index)
-    citation = Citation(
-        index=1,
-        chunk_id="c1",
-        section_id="s1",
-        title="T",
-        section="S",
-        start_page=1,
-        end_page=1,
-    )
+    citation = make_citation("c1")
     return (
         Message(
             message_id=uuid.uuid4().hex,
@@ -163,9 +154,9 @@ async def test_append_turn_is_atomic_and_increments_turn_count(
     ] == ["q1", "q2"]
     messages = await repo.messages(conversation.conversation_id, limit=3)
     assert [m.content for m in messages] == ["a1", "q2", "a2"]
-    assert messages[0].citations[0].chunk_id == "c1" and messages[0].usage == {
-        "llm_calls": 5
-    }
+    assert messages[0].citations[0].chunk_version_id == chunk_uuid("c1") and messages[
+        0
+    ].usage == {"llm_calls": 5}
     older = await repo.messages(
         conversation.conversation_id, limit=10, before=messages[0].created_at
     )

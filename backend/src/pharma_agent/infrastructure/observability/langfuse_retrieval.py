@@ -34,7 +34,10 @@ class LangfuseTracedReranker:
                 raise
             observation.update(
                 output=[
-                    {"chunk_id": hit.chunk_id, "rerank_score": hit.rerank_score}
+                    {
+                        "chunk_version_id": str(hit.chunk_version_id),
+                        "rerank_score": hit.rerank_score,
+                    }
                     for hit in ranked
                 ]
             )

@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,11 +57,11 @@ class RetrievalService:
         self,
         queries: Sequence[Query],
         rerank_query: str,
-        known_scores: Mapping[str, float] | None = None,
+        known_scores: Mapping[UUID, float] | None = None,
     ) -> SearchResult:
         """Search every query, keep a capped candidate pool, rerank it and hydrate the top hits.
 
-        `known_scores` maps chunk_id to a rerank score already computed for the same
+        `known_scores` maps chunk_version_id to a rerank score already computed for the same
         `rerank_query` (an earlier round of the same run); those chunks are not scored again.
         """
         try:
@@ -73,11 +74,11 @@ class RetrievalService:
         candidates = _candidate_pool(per_query, self._config.rerank_candidates)
         known = known_scores or {}
         reused = [
-            hit.model_copy(update={"rerank_score": known[hit.chunk_id]})
+            hit.model_copy(update={"rerank_score": known[hit.chunk_version_id]})
             for hit in candidates
-            if hit.chunk_id in known
+            if hit.chunk_version_id in known
         ]
-        fresh = [hit for hit in candidates if hit.chunk_id not in known]
+        fresh = [hit for hit in candidates if hit.chunk_version_id not in known]
         rerank_failed = False
         try:
             scored = (
@@ -119,29 +120,29 @@ def _candidate_pool(per_query: list[list[Hit]], limit: int) -> list[Hit]:
     Round-robin keeps every query's best hits in the pool when several queries run at once;
     merged fields (best fusion score, matched queries in query order) cover every list.
     """
-    merged = {hit.chunk_id: hit for hit in _dedupe(per_query)}
-    selected: list[str] = []
+    merged = {hit.chunk_version_id: hit for hit in _dedupe(per_query)}
+    selected: list[UUID] = []
     depth = max((len(hits) for hits in per_query), default=0)
     for rank in range(depth):
         for hits in per_query:
             if len(selected) >= limit:
                 return [merged[chunk_id] for chunk_id in selected]
-            if rank < len(hits) and hits[rank].chunk_id not in selected:
-                selected.append(hits[rank].chunk_id)
+            if rank < len(hits) and hits[rank].chunk_version_id not in selected:
+                selected.append(hits[rank].chunk_version_id)
     return [merged[chunk_id] for chunk_id in selected]
 
 
 def _dedupe(per_query: list[list[Hit]]) -> list[Hit]:
-    by_chunk: dict[str, Hit] = {}
+    by_chunk: dict[UUID, Hit] = {}
     for hits in per_query:
         for hit in hits:
-            existing = by_chunk.get(hit.chunk_id)
+            existing = by_chunk.get(hit.chunk_version_id)
             if existing is None:
-                by_chunk[hit.chunk_id] = hit
+                by_chunk[hit.chunk_version_id] = hit
                 continue
             queries = list(existing.matched_queries)
             queries.extend(q for q in hit.matched_queries if q not in queries)
-            by_chunk[hit.chunk_id] = existing.model_copy(
+            by_chunk[hit.chunk_version_id] = existing.model_copy(
                 update={
                     "fusion_score": max(existing.fusion_score, hit.fusion_score),
                     "matched_queries": queries,

@@ -34,7 +34,7 @@ class RetrievalRunRecord(BaseModel):
 def audit_from_run(
     run: AgentRun, citations: Sequence[Citation], *, snippet_chars: int = 300
 ) -> list[RetrievalRunRecord]:
-    cited_chunks = {citation.chunk_id for citation in citations}
+    cited_chunks = {citation.chunk_version_id for citation in citations}
     records: list[RetrievalRunRecord] = []
     search_actions = [a for a in run.actions.entries if a.kind is ActionKind.SEARCH]
     for round_number, action in enumerate(search_actions, start=1):
@@ -48,13 +48,13 @@ def audit_from_run(
             hits = [
                 RetrievalHitRecord(
                     rank=rank,
-                    chunk_id=evidence.hit.chunk_id,
-                    section_id=evidence.hit.section_id,
-                    table_id=evidence.hit.table_id,
+                    chunk_id=str(evidence.hit.chunk_version_id),
+                    section_id=evidence.hit.section_key,
+                    table_id=evidence.hit.table_key or "",
                     fusion_score=evidence.hit.fusion_score,
                     rerank_score=evidence.hit.rerank_score,
                     hydrate_strategy=evidence.hit.hydrate_strategy.value,
-                    cited=evidence.hit.chunk_id in cited_chunks,
+                    cited=evidence.hit.chunk_version_id in cited_chunks,
                     snippet=" ".join(evidence.hit.chunk_text.split())[:snippet_chars],
                 )
                 for rank, evidence in enumerate(matching, start=1)

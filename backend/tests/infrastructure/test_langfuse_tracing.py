@@ -27,7 +27,7 @@ from pharma_agent.infrastructure.observability.langfuse_tracing import (
     LangfuseTracing,
 )
 from tests.application.test_chat_graph import QUESTION, passing_llm
-from tests.domain.factories import make_hit
+from tests.domain.factories import chunk_uuid, make_hit
 from tests.fakes import FakeReranker, FakeRetriever, build_deps
 
 
@@ -149,7 +149,7 @@ async def test_rerank_is_a_retriever_observation_inside_the_turn_trace(
     attributes = dict(rerank.attributes or {})
     assert attributes["langfuse.observation.type"] == "retriever"
     assert json.loads(str(attributes["langfuse.observation.output"])) == [
-        {"chunk_id": "c1", "rerank_score": 1.0}
+        {"chunk_version_id": str(chunk_uuid("c1")), "rerank_score": 1.0}
     ]
     client.shutdown()
 

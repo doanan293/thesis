@@ -48,3 +48,22 @@ async def test_open_corpus_services_uses_an_injected_embedder(
     ) as services:
         assert isinstance(services.index, QdrantVectorIndex)
         assert services.index.alias == "e2e_chunks_current"
+
+
+async def test_open_corpus_services_writes_the_alias_retrieval_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__QDRANT_COLLECTION", "chunks_custom")
+    settings = Settings(_env_file=None)
+
+    async with open_corpus_services(settings, embedder=FakeEmbedder()) as services:
+        assert isinstance(services.index, QdrantVectorIndex)
+        assert services.index.alias == settings.retrieval.qdrant_collection
+        assert services.index.alias == "chunks_custom"
+
+    async with open_corpus_services(
+        settings, embedder=FakeEmbedder(), alias="e2e_chunks_current"
+    ) as services:
+        assert isinstance(services.index, QdrantVectorIndex)
+        assert services.index.alias == "e2e_chunks_current"

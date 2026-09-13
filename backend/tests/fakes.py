@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import uuid
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import TypeVar
@@ -15,6 +16,7 @@ from pharma_agent.domain.retrieval.ports import Reranker, RetrievalError
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
 from pharma_agent.domain.shared.clock import FixedClock
 from pharma_agent.domain.skill.models import Skill, SkillMetadata
+from tests.domain.factories import chunk_of
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -90,10 +92,10 @@ class FakeRetriever:
 
 class FakeReranker:
     def __init__(self) -> None:
-        self.received: list[list[str]] = []
+        self.received: list[list[uuid.UUID]] = []
 
     async def rerank(self, query: str, hits: Sequence[Hit], top_n: int) -> list[Hit]:
-        self.received.append([h.chunk_id for h in hits])
+        self.received.append([h.chunk_version_id for h in hits])
         ordered = sorted(hits, key=lambda h: h.fusion_score, reverse=True)[:top_n]
         return [
             h.model_copy(update={"rerank_score": round(1.0 - i * 0.1, 2)})
@@ -105,14 +107,7 @@ class FakeHydrator:
     async def hydrate(self, hit: Hit, strategy: HydrateStrategy) -> list[Chunk]:
         if strategy is HydrateStrategy.SEARCH_ONLY:
             return []
-        return [
-            Chunk(
-                chunk_id=hit.chunk_id,
-                section_id=hit.section_id,
-                chunk_index=hit.chunk_index,
-                text=hit.chunk_text,
-            )
-        ]
+        return [chunk_of(hit)]
 
 
 class FakeSkillCatalog:

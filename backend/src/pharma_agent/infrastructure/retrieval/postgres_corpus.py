@@ -9,12 +9,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from pharma_agent.domain.retrieval.models import (
+    Chunk,
     ChunkRecord,
     ColloquialMapping,
+    Hit,
     HydrateStrategy,
     TermAnnotation,
 )
-from pharma_agent.domain.retrieval.ports import ChunkKey, RetrievalError
+from pharma_agent.domain.retrieval.ports import ChunkKey, CorpusReader, RetrievalError
 from pharma_agent.infrastructure.persistence.postgres.corpus_tables import (
     ChunkVersionTable,
     CollectionTable,
@@ -108,3 +110,65 @@ class PostgresCorpusReader:
             _record(link, chunk, section, document)
             for link, chunk, section, document in rows
         ]
+
+    async def section_chunks(
+        self,
+        release_id: UUID,
+        section_revision_id: UUID,
+        *,
+        around: int | None,
+        radius: int,
+    ) -> list[Chunk]:
+        query = (
+            select(ReleaseChunkTable, ChunkVersionTable)
+            .join(
+                ChunkVersionTable,
+                ChunkVersionTable.id == ReleaseChunkTable.chunk_version_id,
+            )
+            .where(
+                ReleaseChunkTable.release_id == release_id,
+                ReleaseChunkTable.section_revision_id == section_revision_id,
+            )
+            .order_by(ReleaseChunkTable.ordinal)
+        )
+        if around is not None:
+            query = query.where(
+                ReleaseChunkTable.ordinal.between(around - radius, around + radius)
+            )
+        try:
+            async with self._sessions() as session:
+                rows = (await session.execute(query)).tuples().all()
+        except SQLAlchemyError as exc:
+            raise RetrievalError(
+                f"cannot hydrate section revision {section_revision_id}: {exc}"
+            ) from exc
+        return [
+            Chunk(
+                chunk_version_id=chunk.id,
+                section_revision_id=link.section_revision_id,
+                ordinal=link.ordinal,
+                text=chunk.chunk_text,
+                kind=chunk.kind,
+                table_key=chunk.table_key,
+                start_page=chunk.start_page,
+                end_page=chunk.end_page,
+            )
+            for link, chunk in rows
+        ]
+
+
+class PostgresHydrator:
+    """`Hydrator` reading the release that produced the hit: the whole section revision
+    (`full_section`) or the chunks within ordinal ± window (`chunk_window`)."""
+
+    def __init__(self, reader: CorpusReader, *, window: int = 1) -> None:
+        self._reader = reader
+        self._window = window
+
+    async def hydrate(self, hit: Hit, strategy: HydrateStrategy) -> list[Chunk]:
+        if strategy is HydrateStrategy.SEARCH_ONLY:
+            return []
+        around = hit.ordinal if strategy is HydrateStrategy.CHUNK_WINDOW else None
+        return await self._reader.section_chunks(
+            hit.release_id, hit.section_revision_id, around=around, radius=self._window
+        )

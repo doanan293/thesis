@@ -13,7 +13,7 @@ from pharma_agent.infrastructure.retrieval.llama_cpp_reranker import (
     build_reranker,
 )
 from pharma_agent.infrastructure.settings import RerankSettings
-from tests.domain.factories import make_hit
+from tests.domain.factories import chunk_uuid, make_hit
 
 BASE = "http://rerank"
 
@@ -73,7 +73,7 @@ async def test_completion_reranker_scores_and_sorts(
             "Q", [make_hit("a", fusion=0.9), make_hit("b", fusion=0.1)], top_n=2
         )
 
-    assert [h.chunk_id for h in hits] == ["b", "a"]
+    assert [h.chunk_version_id for h in hits] == [chunk_uuid("b"), chunk_uuid("a")]
     assert hits[0].rerank_score == pytest.approx(0.9) and hits[
         1
     ].rerank_score == pytest.approx(0.2)
@@ -117,7 +117,8 @@ async def test_native_reranker_uses_v1_rerank(respx_mock: respx.MockRouter) -> N
         hits = await NativeReranker(http, model="bge-reranker-v2-m3:f16").rerank(
             "Q", [make_hit("a"), make_hit("b")], top_n=1
         )
-    assert [h.chunk_id for h in hits] == ["b"] and hits[0].rerank_score == 0.7
+    assert [h.chunk_version_id for h in hits] == [chunk_uuid("b")]
+    assert hits[0].rerank_score == 0.7
     assert b'"documents"' in route.calls[0].request.content
 
 
@@ -125,7 +126,8 @@ async def test_noop_reranker_keeps_fusion_order() -> None:
     hits = await NoopReranker().rerank(
         "Q", [make_hit("a", fusion=0.1), make_hit("b", fusion=0.9)], top_n=1
     )
-    assert [h.chunk_id for h in hits] == ["b"] and hits[0].rerank_score is None
+    assert [h.chunk_version_id for h in hits] == [chunk_uuid("b")]
+    assert hits[0].rerank_score is None
 
 
 def test_build_reranker_switches_on_protocol() -> None:

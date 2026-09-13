@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Sequence
 
 from pharma_agent.domain.retrieval.models import (
@@ -9,28 +10,19 @@ from pharma_agent.domain.retrieval.models import (
 )
 from pharma_agent.domain.retrieval.ports import RetrievalError
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
+from tests.domain.factories import chunk_of, chunk_uuid, make_hit
 
 
 def hit(
-    chunk_id: str,
+    label: str,
     fusion: float,
     strategy: HydrateStrategy = HydrateStrategy.CHUNK_WINDOW,
 ) -> Hit:
-    return Hit(
-        chunk_id=chunk_id,
-        section_id="s",
-        chunk_index=1,
-        hydrate_strategy=strategy,
-        source="src",
-        title="T",
-        section="S",
-        start_page=1,
-        end_page=1,
-        context_header="T > S",
-        chunk_text=f"text {chunk_id}",
-        embedding_text=f"T > S\n\ntext {chunk_id}",
-        fusion_score=fusion,
-    )
+    return make_hit(label, fusion=fusion, strategy=strategy, text=f"text {label}")
+
+
+def ids(*labels: str) -> list[uuid.UUID]:
+    return [chunk_uuid(label) for label in labels]
 
 
 class FakeRetriever:
@@ -72,14 +64,7 @@ class FakeHydrator:
     async def hydrate(self, hit: Hit, strategy: HydrateStrategy) -> list[Chunk]:
         if strategy is HydrateStrategy.SEARCH_ONLY:
             return []
-        return [
-            Chunk(
-                chunk_id=hit.chunk_id,
-                section_id=hit.section_id,
-                chunk_index=hit.chunk_index,
-                text=hit.chunk_text,
-            )
-        ]
+        return [chunk_of(hit)]
 
 
 def queries(*texts: str) -> list[Query]:
@@ -101,8 +86,10 @@ async def test_search_dedupes_across_queries_then_reranks_and_hydrates() -> None
     result = await service.search(queries("q1", "q2"), rerank_query="q1")
 
     assert retriever.calls[0][1] == 5
-    assert sorted(h.chunk_id for h in reranker.received) == ["a", "b", "c"]
-    b = next(h for h in reranker.received if h.chunk_id == "b")
+    assert sorted(h.chunk_version_id for h in reranker.received) == sorted(
+        ids("a", "b", "c")
+    )
+    b = next(h for h in reranker.received if h.chunk_version_id == chunk_uuid("b"))
     assert b.fusion_score == 0.7 and b.matched_queries == ["q1", "q2"]
     assert len(result.items) == 2
     assert all(item.chunks for item in result.items)
@@ -118,7 +105,7 @@ async def test_rerank_failure_keeps_fusion_order() -> None:
         RetrievalConfig(candidate_k=5, rerank_top_n=2),
     )
     result = await service.search(queries("q1"), rerank_query="q1")
-    assert [i.hit.chunk_id for i in result.items] == ["a", "b"]
+    assert [i.hit.chunk_version_id for i in result.items] == ids("a", "b")
     assert result.rerank_failed is True
 
 
@@ -159,7 +146,9 @@ async def test_candidate_pool_interleaves_queries_by_rank_and_caps_new_chunks() 
 
     result = await service.search(queries("q1", "q2"), rerank_query="q")
 
-    assert [h.chunk_id for h in reranker.received] == ["a1", "b1", "a2", "a3"]
+    assert [h.chunk_version_id for h in reranker.received] == ids(
+        "a1", "b1", "a2", "a3"
+    )
     assert reranker.received[0].matched_queries == ["q1", "q2"]
     assert (result.rerank_scored, result.rerank_reused) == (4, 0)
 
@@ -175,14 +164,14 @@ async def test_known_scores_are_reused_instead_of_rescored() -> None:
     )
 
     result = await service.search(
-        queries("q1"), rerank_query="q1", known_scores={"b": 0.75}
+        queries("q1"), rerank_query="q1", known_scores={chunk_uuid("b"): 0.75}
     )
 
-    assert [h.chunk_id for h in reranker.received] == ["a", "c"]
-    assert [(i.hit.chunk_id, i.hit.rerank_score) for i in result.items] == [
-        ("c", 1.0),
-        ("b", 0.75),
-        ("a", 0.5),
+    assert [h.chunk_version_id for h in reranker.received] == ids("a", "c")
+    assert [(i.hit.chunk_version_id, i.hit.rerank_score) for i in result.items] == [
+        (chunk_uuid("c"), 1.0),
+        (chunk_uuid("b"), 0.75),
+        (chunk_uuid("a"), 0.5),
     ]
     assert (result.rerank_scored, result.rerank_reused) == (2, 1)
 
@@ -197,8 +186,10 @@ async def test_reranker_is_not_called_when_every_candidate_is_known() -> None:
     )
 
     result = await service.search(
-        queries("q1"), rerank_query="q1", known_scores={"a": 0.2, "b": 0.6}
+        queries("q1"),
+        rerank_query="q1",
+        known_scores={chunk_uuid("a"): 0.2, chunk_uuid("b"): 0.6},
     )
 
     assert reranker.calls == 0 and result.rerank_failed is False
-    assert [i.hit.chunk_id for i in result.items] == ["b", "a"]
+    assert [i.hit.chunk_version_id for i in result.items] == ids("b", "a")

@@ -9,7 +9,7 @@ from pharma_agent.domain.agent.run import AgentRun, RunStatus
 from pharma_agent.domain.agent.schemas import JudgeOutcome
 from pharma_agent.domain.guardrail.models import Verdict, VerdictSource
 from pharma_agent.domain.retrieval.models import HydrateStrategy, Query, QueryOrigin
-from tests.domain.factories import NOW, make_run, search_result
+from tests.domain.factories import NOW, chunk_uuid, make_run, search_result
 
 
 def test_checkpoint_types_cover_nested_models_and_enums() -> None:
@@ -38,3 +38,7 @@ def test_agent_run_round_trips_under_strict_allowlist() -> None:
     assert restored.last_judge is JudgeOutcome.ANSWER
     assert restored.guard_verdict is not None
     assert restored.guard_verdict.source is VerdictSource.LLM
+    assert restored.evidence.items[0].hit.chunk_version_id == chunk_uuid("c1")
+    assert restored.evidence.items[0].chunks[0].section_revision_id == (
+        run.evidence.items[0].chunks[0].section_revision_id
+    )

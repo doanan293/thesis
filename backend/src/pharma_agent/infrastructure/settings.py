@@ -106,8 +106,12 @@ class RerankSettings(BaseModel):
 
 
 class RetrievalSettings(BaseModel):
-    collection_alias: str = "thesis_chunks_qwen3_embedding_4b_fp16"
-    mode: Literal["hybrid", "dense"] = "hybrid"
+    # Alias of the physical collection chunks_<embedding model slug> (spec C §8.3).
+    qdrant_collection: str = "chunks_current"
+    # Corpus collections the agent searches; each one needs a current release.
+    collections: list[str] = Field(default_factory=lambda: ["formulary"])
+    # bm25 = sparse only with no query embedding (evaluation baseline).
+    mode: Literal["hybrid", "dense", "bm25"] = "hybrid"
     prefetch_k: int = 50
     rrf_k: int = 2
     candidate_k: int = 30

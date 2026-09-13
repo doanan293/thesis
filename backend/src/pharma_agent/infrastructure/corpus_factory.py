@@ -23,10 +23,7 @@ from pharma_agent.infrastructure.persistence.postgres.embedding_cache import (
     PostgresEmbeddingCache,
 )
 from pharma_agent.infrastructure.retrieval.qdrant_adapter import OpenAiEmbedder
-from pharma_agent.infrastructure.retrieval.qdrant_index import (
-    CURRENT_ALIAS,
-    QdrantVectorIndex,
-)
+from pharma_agent.infrastructure.retrieval.qdrant_index import QdrantVectorIndex
 from pharma_agent.infrastructure.settings import Settings
 
 # A CLI run needs one connection at a time plus one for gc savepoint retries.
@@ -46,14 +43,15 @@ async def open_corpus_services(
     settings: Settings,
     *,
     embedder: Embedder | None = None,
-    alias: str = CURRENT_ALIAS,
+    alias: str | None = None,
 ) -> AsyncGenerator[CorpusServices]:
     """Open resources and yield the services; everything is closed on exit.
 
     `embedder` replaces the OpenAI-compatible embedder built from settings (tests and the
     E2E server pass `FakeEmbedder`); the Qdrant collection follows its model and dimension.
-    `alias` is the Qdrant alias retrieval reads (P3 switches the default to
-    `settings.retrieval.qdrant_collection`; the E2E server passes `e2e_chunks_current`).
+    `alias` is the Qdrant alias imports write. It defaults to
+    `settings.retrieval.qdrant_collection`, the alias retrieval reads, so both sides always
+    agree; the E2E server passes its own alias.
     """
     database = Database(
         settings.postgres.dsn, pool_size=CORPUS_POOL_SIZE, echo=settings.postgres.echo
@@ -84,7 +82,10 @@ async def open_corpus_services(
         repository = PostgresCorpusRepository(database.sessions)
         cache = PostgresEmbeddingCache(database.sessions)
         index = QdrantVectorIndex(
-            qdrant, model=embedder.model, dimension=embedder.dimension, alias=alias
+            qdrant,
+            model=embedder.model,
+            dimension=embedder.dimension,
+            alias=alias if alias is not None else settings.retrieval.qdrant_collection,
         )
         clock = SystemClock()
         corpus = settings.corpus

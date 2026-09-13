@@ -1,29 +1,26 @@
-"""Qdrant adapters matching the corpus-pipeline collection layout (dense + BM25 sparse, RRF)."""
+"""Qdrant hybrid search over the corpus index (spec C §8.3, §9).
+
+Qdrant holds vectors and routing payload only (`collection_id`, `release_ids`). A search reads
+the current release of every scoped collection from Postgres, asks Qdrant for chunk version ids
+and fused scores inside those releases, then loads the chunks from Postgres in one query.
+"""
 
 import asyncio
-from collections.abc import Sequence
-from typing import Any, Literal, Protocol
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal
+from uuid import UUID
 
 from qdrant_client import models
 
-from pharma_agent.domain.retrieval.models import (
-    Chunk,
-    ColloquialMapping,
-    Hit,
-    HydrateStrategy,
-    Query,
-    TermAnnotation,
-)
-from pharma_agent.domain.retrieval.ports import RetrievalError
+from pharma_agent.domain.corpus.ports import Embedder
+from pharma_agent.domain.retrieval.models import Hit, Query
+from pharma_agent.domain.retrieval.ports import ChunkKey, CorpusReader, RetrievalError
 
 DENSE_VECTOR_NAME = "dense_vector"
 BM25_SPARSE_VECTOR_NAME = "bm25_sparse_vector"
 BM25_MODEL_NAME = "Qdrant/bm25"
-_SCROLL_LIMIT = 256
-
-
-class Embedder(Protocol):
-    async def embed(self, texts: Sequence[str]) -> list[list[float]]: ...
+COLLECTION_ID_KEY = "collection_id"
+RELEASE_IDS_KEY = "release_ids"
 
 
 class OpenAiEmbedder:
@@ -65,32 +62,32 @@ class OpenAiEmbedder:
         return vectors
 
 
-def hit_from_point(payload: dict[str, Any], score: float, query_text: str) -> Hit:
-    mapping = payload.get("colloquial_mapping")
-    annotations = payload.get("term_annotations") or []
-    return Hit(
-        chunk_id=str(payload["chunk_id"]),
-        section_id=str(payload["section_id"]),
-        chunk_index=int(payload["chunk_index"]),
-        hydrate_strategy=HydrateStrategy(payload["hydrate_strategy"]),
-        source=str(payload.get("source", "")),
-        title=str(payload.get("title", "")),
-        section=str(payload.get("section", "")),
-        start_page=int(payload.get("start_page", 0)),
-        end_page=int(payload.get("end_page", 0)),
-        context_header=str(payload.get("context_header", "")),
-        chunk_text=str(payload.get("chunk_text", "")),
-        embedding_text=str(payload.get("embedding_text", "")),
-        content_type=str(payload.get("content_type", "") or ""),
-        table_id=str(payload.get("table_id", "") or ""),
-        colloquial_mapping=ColloquialMapping.model_validate(mapping)
-        if isinstance(mapping, dict)
-        else None,
-        term_annotations=[
-            TermAnnotation.model_validate(a) for a in annotations if isinstance(a, dict)
-        ],
-        fusion_score=float(score),
-        matched_queries=[query_text],
+def release_scope_filter(releases: Mapping[UUID, UUID]) -> models.Filter:
+    """Points of each scoped collection that belong to that collection's current release."""
+    branches: list[models.Condition] = [
+        models.Filter(
+            must=[
+                models.FieldCondition(
+                    key=COLLECTION_ID_KEY,
+                    match=models.MatchValue(value=str(collection_id)),
+                ),
+                models.FieldCondition(
+                    key=RELEASE_IDS_KEY, match=models.MatchValue(value=str(release_id))
+                ),
+            ]
+        )
+        for collection_id, release_id in releases.items()
+    ]
+    return models.Filter(should=branches)
+
+
+def _scored_point(point: Any) -> tuple[UUID, UUID, float]:
+    """(chunk_version_id, collection_id, fused score) of one Qdrant point."""
+    payload = point.payload or {}
+    return (
+        UUID(str(point.id)),
+        UUID(str(payload[COLLECTION_ID_KEY])),
+        float(point.score or 0.0),
     )
 
 
@@ -99,16 +96,20 @@ class QdrantHybridRetriever:
         self,
         client: Any,
         embedder: Embedder,
-        collection: str,
+        reader: CorpusReader,
         *,
-        mode: Literal["hybrid", "dense"] = "hybrid",
+        collection: str,
+        scope: Sequence[str],
+        mode: Literal["hybrid", "dense", "bm25"] = "hybrid",
         prefetch_k: int = 50,
         rrf_k: int = 2,
         max_concurrent: int = 3,
     ) -> None:
         self._client = client
         self._embedder = embedder
+        self._reader = reader
         self._collection = collection
+        self._scope = list(scope)
         self._mode = mode
         self._prefetch_k = prefetch_k
         self._rrf_k = rrf_k
@@ -119,14 +120,22 @@ class QdrantHybridRetriever:
     ) -> list[list[Hit]]:
         if not queries:
             return []
-        vectors = await self._embedder.embed([q.text for q in queries])
+        releases = await self._reader.current_releases(self._scope)
+        if not releases:
+            raise RetrievalError(
+                f"no current release for collections {', '.join(self._scope)}"
+            )
+        # bm25 needs no query vector, so the embedding endpoint is not called at all.
+        vectors: list[list[float] | None] = [None] * len(queries)
+        if self._mode != "bm25":
+            embedded = await self._embedder.embed([q.text for q in queries])
+            vectors = [*embedded]
+        scope = release_scope_filter(releases)
         try:
-            return list(
-                await asyncio.gather(
-                    *(
-                        self._search_one(q, v, top_k)
-                        for q, v in zip(queries, vectors, strict=True)
-                    )
+            ranked = await asyncio.gather(
+                *(
+                    self._search_one(q, v, top_k, scope)
+                    for q, v in zip(queries, vectors, strict=True)
                 )
             )
         except RetrievalError:
@@ -134,17 +143,55 @@ class QdrantHybridRetriever:
         except Exception as exc:
             raise RetrievalError(f"qdrant query failed: {exc}") from exc
 
+        per_query: list[list[tuple[ChunkKey, float]]] = [
+            [
+                ((releases[collection_id], chunk_id), score)
+                for chunk_id, collection_id, score in points
+                if collection_id in releases
+            ]
+            for points in ranked
+        ]
+        keys = list(dict.fromkeys(key for scored in per_query for key, _ in scored))
+        records = {
+            (record.release_id, record.chunk_version_id): record
+            for record in await self._reader.load_chunks(keys)
+        }
+        return [
+            [
+                records[key].to_hit(fusion_score=score, query_text=query.text)
+                for key, score in scored
+                if key in records
+            ]
+            for query, scored in zip(queries, per_query, strict=True)
+        ]
+
     async def _search_one(
-        self, query: Query, vector: list[float], top_k: int
-    ) -> list[Hit]:
+        self,
+        query: Query,
+        vector: list[float] | None,
+        top_k: int,
+        scope: models.Filter,
+    ) -> list[tuple[UUID, UUID, float]]:
         async with self._semaphore:
-            if self._mode == "hybrid":
+            if self._mode == "bm25":
+                response = await self._client.query_points(
+                    collection_name=self._collection,
+                    query=models.Document(text=query.text, model=BM25_MODEL_NAME),
+                    using=BM25_SPARSE_VECTOR_NAME,
+                    query_filter=scope,
+                    limit=top_k,
+                    with_payload=[COLLECTION_ID_KEY],
+                )
+            elif vector is None:
+                raise RetrievalError(f"{self._mode} search needs a query vector")
+            elif self._mode == "hybrid":
                 response = await self._client.query_points(
                     collection_name=self._collection,
                     prefetch=[
                         models.Prefetch(
                             query=vector,
                             using=DENSE_VECTOR_NAME,
+                            filter=scope,
                             limit=self._prefetch_k,
                         ),
                         models.Prefetch(
@@ -152,27 +199,28 @@ class QdrantHybridRetriever:
                                 text=query.text, model=BM25_MODEL_NAME
                             ),
                             using=BM25_SPARSE_VECTOR_NAME,
+                            filter=scope,
                             limit=self._prefetch_k,
                         ),
                     ],
                     query=models.RrfQuery(rrf=models.Rrf(k=self._rrf_k)),
+                    query_filter=scope,
                     limit=top_k,
-                    with_payload=True,
+                    with_payload=[COLLECTION_ID_KEY],
                 )
             else:
                 response = await self._client.query_points(
                     collection_name=self._collection,
                     query=vector,
                     using=DENSE_VECTOR_NAME,
+                    query_filter=scope,
                     limit=top_k,
-                    with_payload=True,
+                    with_payload=[COLLECTION_ID_KEY],
                 )
-        return [
-            hit_from_point(point.payload or {}, float(point.score or 0.0), query.text)
-            for point in response.points
-        ]
+        return [_scored_point(point) for point in response.points]
 
-    async def verify_collection(self, expected_dimension: int) -> None:
+    async def verify_collection(self, *, embedding_model: str, dimension: int) -> None:
+        """Raise RetrievalError unless the collection was built for this embedding model."""
         try:
             info = await self._client.get_collection(collection_name=self._collection)
         except Exception as exc:
@@ -182,58 +230,16 @@ class QdrantHybridRetriever:
         vectors = info.config.params.vectors
         params = vectors[DENSE_VECTOR_NAME] if isinstance(vectors, dict) else vectors
         size = int(getattr(params, "size", 0))
-        if size != expected_dimension:
+        if size != dimension:
             raise RetrievalError(
-                f"collection {self._collection} dense vector dimension {size} != configured {expected_dimension}"
+                f"collection {self._collection} dense vector dimension {size} != configured {dimension}"
             )
-
-
-class QdrantHydrator:
-    def __init__(self, client: Any, collection: str, *, window: int = 1) -> None:
-        self._client = client
-        self._collection = collection
-        self._window = window
-
-    async def hydrate(self, hit: Hit, strategy: HydrateStrategy) -> list[Chunk]:
-        if strategy is HydrateStrategy.SEARCH_ONLY:
-            return []
-        must: list[models.Condition] = [
-            models.FieldCondition(
-                key="section_id", match=models.MatchValue(value=hit.section_id)
-            )
-        ]
-        if strategy is HydrateStrategy.CHUNK_WINDOW:
-            must.append(
-                models.FieldCondition(
-                    key="chunk_index",
-                    range=models.Range(
-                        gte=hit.chunk_index - self._window,
-                        lte=hit.chunk_index + self._window,
-                    ),
-                )
-            )
-        try:
-            points, _ = await self._client.scroll(
-                collection_name=self._collection,
-                scroll_filter=models.Filter(must=must),
-                limit=_SCROLL_LIMIT,
-                with_payload=True,
-                with_vectors=False,
-            )
-        except Exception as exc:
+        metadata = info.config.metadata or {}
+        if (
+            metadata.get("embedding_model") != embedding_model
+            or metadata.get("dims") != dimension
+        ):
             raise RetrievalError(
-                f"hydrate failed for section {hit.section_id}: {exc}"
-            ) from exc
-        chunks = [
-            Chunk(
-                chunk_id=str(p.payload["chunk_id"]),
-                section_id=str(p.payload["section_id"]),
-                chunk_index=int(p.payload["chunk_index"]),
-                text=str(p.payload.get("chunk_text", "")),
-                content_type=str(p.payload.get("content_type", "") or ""),
-                table_id=str(p.payload.get("table_id", "") or ""),
+                f"collection {self._collection} metadata {metadata!r} does not match "
+                f"embedding model {embedding_model} with {dimension} dims"
             )
-            for p in points
-            if p.payload
-        ]
-        return sorted(chunks, key=lambda c: c.chunk_index)

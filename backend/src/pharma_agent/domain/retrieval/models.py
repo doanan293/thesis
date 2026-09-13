@@ -39,23 +39,37 @@ class ColloquialMapping(BaseModel):
     product_names: list[str] = Field(default_factory=list)
 
 
-class Hit(BaseModel):
-    """One Qdrant point payload (see corpus-pipeline qdrant_payload_contract) plus scores."""
+def page_label(start_page: int | None, end_page: int | None) -> str:
+    """Vietnamese page label; empty when the source has no page numbers (leaflets)."""
+    if start_page is None and end_page is None:
+        return ""
+    if start_page is None or end_page is None or start_page == end_page:
+        return f"trang {start_page if start_page is not None else end_page}"
+    return f"trang {start_page}-{end_page}"
 
-    chunk_id: str
-    section_id: str
-    chunk_index: int
+
+class Hit(BaseModel):
+    """One chunk version found by search, as published in one release, plus scores."""
+
+    chunk_version_id: UUID
+    release_id: UUID
+    collection_id: UUID
+    document_key: str
+    section_key: str
+    section_revision_id: UUID
+    ordinal: int
     hydrate_strategy: HydrateStrategy
     source: str
     title: str
     section: str
-    start_page: int
-    end_page: int
+    start_page: int | None
+    end_page: int | None
     context_header: str
     chunk_text: str
+    # What was embedded and what the reranker scores, unchanged from today.
     embedding_text: str
-    content_type: str = ""
-    table_id: str = ""
+    kind: str
+    table_key: str | None
     colloquial_mapping: ColloquialMapping | None = None
     term_annotations: list[TermAnnotation] = Field(default_factory=list)
     fusion_score: float = 0.0
@@ -68,9 +82,7 @@ class Hit(BaseModel):
 
     @property
     def page_label(self) -> str:
-        if self.start_page == self.end_page:
-            return f"trang {self.start_page}"
-        return f"trang {self.start_page}-{self.end_page}"
+        return page_label(self.start_page, self.end_page)
 
     def term_hints(self) -> list[str]:
         hints: list[str] = []
@@ -92,16 +104,20 @@ class Hit(BaseModel):
 
 
 class Chunk(BaseModel):
-    chunk_id: str
-    section_id: str
-    chunk_index: int
+    """One chunk of a section revision in the release a hit came from."""
+
+    chunk_version_id: UUID
+    section_revision_id: UUID
+    ordinal: int
     text: str
-    content_type: str = ""
-    table_id: str = ""
+    kind: str
+    table_key: str | None = None
+    start_page: int | None = None
+    end_page: int | None = None
 
     @property
     def is_table(self) -> bool:
-        return self.content_type == "table" or bool(self.table_id)
+        return self.kind == "table"
 
 
 class RetrievedItem(BaseModel):
@@ -134,3 +150,12 @@ class ChunkRecord(BaseModel):
     table_key: str | None
     colloquial_mapping: ColloquialMapping | None = None
     term_annotations: list[TermAnnotation] = Field(default_factory=list)
+
+    def to_hit(self, *, fusion_score: float, query_text: str) -> Hit:
+        return Hit.model_validate(
+            {
+                **self.model_dump(),
+                "fusion_score": fusion_score,
+                "matched_queries": [query_text],
+            }
+        )

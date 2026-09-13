@@ -4,8 +4,12 @@ from collections.abc import AsyncIterator
 import pytest
 
 from pharma_agent.domain.corpus.hydrate import hydrate_strategy_for
+from pharma_agent.domain.retrieval.models import HydrateStrategy
 from pharma_agent.infrastructure.persistence.postgres.database import Database
-from pharma_agent.infrastructure.retrieval.postgres_corpus import PostgresCorpusReader
+from pharma_agent.infrastructure.retrieval.postgres_corpus import (
+    PostgresCorpusReader,
+    PostgresHydrator,
+)
 from tests.corpus_rows import (
     DOSAGE_KEY,
     GLOSSARY,
@@ -108,3 +112,38 @@ async def test_load_chunks_returns_display_fields_for_release_chunk_pairs(
     assert record.term_annotations == first.term_annotations
     assert record.colloquial_mapping == first.colloquial
     assert await reader.load_chunks([]) == []
+
+
+async def test_hydrator_reads_full_section_and_window_from_the_hit_release(
+    database: Database,
+) -> None:
+    seeded = await seed_release(
+        database.sessions,
+        collection_key="formulary",
+        document=paracetamol_document(),
+        sections=[dosage_section(blocks=5), table_section()],
+    )
+    reader = PostgresCorpusReader(database.sessions)
+    drafts = seeded.drafts[DOSAGE_KEY]
+    middle = drafts[len(drafts) // 2]
+    [found] = await reader.load_chunks([(seeded.release_id, middle.chunk_version_id)])
+    hit = found.to_hit(fusion_score=0.5, query_text="q")
+    hydrator = PostgresHydrator(reader, window=1)
+
+    full = await hydrator.hydrate(hit, HydrateStrategy.FULL_SECTION)
+    assert [c.chunk_version_id for c in full] == [d.chunk_version_id for d in drafts]
+    assert [c.ordinal for c in full] == sorted(d.ordinal for d in drafts)
+    assert all(c.section_revision_id == seeded.revisions[DOSAGE_KEY] for c in full)
+    assert (full[0].text, full[0].kind) == (drafts[0].chunk_text, drafts[0].kind.value)
+
+    window = await hydrator.hydrate(hit, HydrateStrategy.CHUNK_WINDOW)
+    assert [c.ordinal for c in window] == [
+        d.ordinal for d in drafts if abs(d.ordinal - middle.ordinal) <= 1
+    ]
+    assert await hydrator.hydrate(hit, HydrateStrategy.SEARCH_ONLY) == []
+    assert (
+        await reader.section_chunks(
+            uuid.uuid4(), seeded.revisions[DOSAGE_KEY], around=None, radius=0
+        )
+        == []
+    )

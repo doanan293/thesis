@@ -14,9 +14,12 @@ from pharma_agent.application.corpus.import_bundle import ImportReport
 from pharma_agent.application.progress import EventType, ProgressEvent
 from pharma_agent.domain.corpus.bundle import BundleValidationError, read_bundle
 from pharma_agent.domain.corpus.models import ReleaseSummary
-from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy
+from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy, page_label
 from pharma_agent.domain.shared.errors import DomainError
-from pharma_agent.infrastructure.composition import build_application
+from pharma_agent.infrastructure.composition import (
+    build_application,
+    build_retrieval_service,
+)
 from pharma_agent.infrastructure.corpus_factory import (
     CorpusServices,
     open_corpus_services,
@@ -64,7 +67,7 @@ async def _run_turn(application: Any, question: str, json_output: bool) -> None:
                 {
                     "status": outcome.run.status.value,
                     "answer": outcome.answer_text,
-                    "citations": [c.model_dump() for c in outcome.citations],
+                    "citations": [c.model_dump(mode="json") for c in outcome.citations],
                     "evidence": evidence,
                     "trace": outcome.run.to_trace(),
                 },
@@ -75,14 +78,9 @@ async def _run_turn(application: Any, question: str, json_output: bool) -> None:
         return
     typer.echo("")
     for citation in outcome.citations:
-        pages = (
-            f"trang {citation.start_page}"
-            if citation.start_page == citation.end_page
-            else f"trang {citation.start_page}-{citation.end_page}"
-        )
-        typer.echo(
-            f"[{citation.index}] {citation.title} > {citation.section} ({pages})"
-        )
+        label = page_label(citation.start_page, citation.end_page)
+        pages = f" ({label})" if label else ""
+        typer.echo(f"[{citation.index}] {citation.title} > {citation.section}{pages}")
     usage = outcome.run.usage
     typer.echo(
         f"status: {outcome.run.status.value} | llm calls: {usage.llm_calls} | tokens: {usage.total_tokens} | search rounds: {usage.search_rounds}"
@@ -107,7 +105,7 @@ def _render(event: ProgressEvent, evidence: list[dict[str, Any]]) -> None:
 
 @app.command()
 def check() -> None:
-    """Kiểm tra kết nối Qdrant, embedding, reranker và cấu hình LLM."""
+    """Kiểm tra cấu hình LLM, Qdrant, embedding và reranker."""
     settings = Settings()
     failures = asyncio.run(_check(settings))
     for name, ok, detail in failures:
@@ -117,8 +115,7 @@ def check() -> None:
 
 
 async def _check(settings: Settings) -> list[tuple[str, bool, str]]:
-    results: list[tuple[str, bool, str]] = []
-    results.append(
+    results: list[tuple[str, bool, str]] = [
         (
             "llm",
             settings.llm.configured,
@@ -126,37 +123,32 @@ async def _check(settings: Settings) -> list[tuple[str, bool, str]]:
             if settings.llm.configured
             else "missing PHARMA_LLM__DEFAULT__API_KEY",
         )
-    )
-    if not settings.llm.configured:
-        return results
-    application = build_application(settings)
+    ]
+    retrieval = build_retrieval_service(settings)
+    embedding = settings.retrieval.embedding
     try:
         try:
-            await application.retriever.verify_collection(
-                settings.retrieval.embedding.dimension
+            await retrieval.retriever.verify_collection(
+                embedding_model=embedding.model, dimension=embedding.dimension
             )
             results.append(
                 (
                     "qdrant",
                     True,
-                    f"{settings.retrieval.collection_alias} dimension {settings.retrieval.embedding.dimension}",
+                    f"{settings.retrieval.qdrant_collection} {embedding.model} dimension {embedding.dimension}",
                 )
             )
         except Exception as exc:
             results.append(("qdrant", False, str(exc)))
         try:
-            vectors = await application.embedder.embed(["kiểm tra"])
+            vectors = await retrieval.embedder.embed(["kiểm tra"])
             results.append(
-                (
-                    "embedding",
-                    True,
-                    f"{settings.retrieval.embedding.model} -> {len(vectors[0])} dims",
-                )
+                ("embedding", True, f"{embedding.model} -> {len(vectors[0])} dims")
             )
         except Exception as exc:
             results.append(("embedding", False, str(exc)))
         try:
-            ranked = await application.reranker.rerank(
+            ranked = await retrieval.reranker.rerank(
                 "liều paracetamol", [_PROBE_HIT], top_n=1
             )
             results.append(
@@ -169,23 +161,30 @@ async def _check(settings: Settings) -> list[tuple[str, bool, str]]:
         except Exception as exc:
             results.append(("rerank", False, str(exc)))
     finally:
-        await application.aclose()
+        await retrieval.aclose()
     return results
 
 
+_PROBE_ID = uuid.UUID(int=0)
 _PROBE_HIT = Hit(
-    chunk_id="probe",
-    section_id="probe",
-    chunk_index=0,
+    chunk_version_id=_PROBE_ID,
+    release_id=_PROBE_ID,
+    collection_id=_PROBE_ID,
+    document_key="probe",
+    section_key="probe",
+    section_revision_id=_PROBE_ID,
+    ordinal=1,
     hydrate_strategy=HydrateStrategy.SEARCH_ONLY,
     source="probe",
     title="Paracetamol",
     section="Liều dùng",
-    start_page=1,
-    end_page=1,
+    start_page=None,
+    end_page=None,
     context_header="Paracetamol > Liều dùng",
     chunk_text="Người lớn 500 mg",
     embedding_text="Paracetamol > Liều dùng\n\nNgười lớn 500 mg",
+    kind="prose",
+    table_key=None,
 )
 
 

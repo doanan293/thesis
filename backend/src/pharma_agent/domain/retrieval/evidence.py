@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from pharma_agent.domain.retrieval.models import (
@@ -6,6 +8,7 @@ from pharma_agent.domain.retrieval.models import (
     HydrateStrategy,
     RetrievedItem,
 )
+from pharma_agent.domain.shared.text import make_snippet
 
 
 class Evidence(BaseModel):
@@ -22,14 +25,23 @@ class Evidence(BaseModel):
     def ordered_chunks(self) -> list[Chunk]:
         tables = [c for c in self.chunks if c.is_table]
         body = [c for c in self.chunks if not c.is_table]
-        return sorted(tables, key=lambda c: c.chunk_index) + sorted(
-            body, key=lambda c: c.chunk_index
+        return sorted(tables, key=lambda c: c.ordinal) + sorted(
+            body, key=lambda c: c.ordinal
         )
 
+    def _uses_hit_text(self) -> bool:
+        return self.applied_strategy is HydrateStrategy.SEARCH_ONLY or not self.chunks
+
     def text(self) -> str:
-        if self.applied_strategy is HydrateStrategy.SEARCH_ONLY or not self.chunks:
+        if self._uses_hit_text():
             return self.hit.chunk_text
         return "\n\n".join(c.text for c in self.ordered_chunks())
+
+    def text_chunk_version_ids(self) -> list[UUID]:
+        """Chunk versions whose text `text()` joins, in the same order."""
+        if self._uses_hit_text():
+            return [self.hit.chunk_version_id]
+        return [c.chunk_version_id for c in self.ordered_chunks()]
 
     def char_count(self) -> int:
         return len(self.text())
@@ -45,10 +57,10 @@ class EvidenceSet(BaseModel):
             reverse=True,
         )
 
-    def rerank_scores(self) -> dict[str, float]:
+    def rerank_scores(self) -> dict[UUID, float]:
         """Rerank scores already computed in this run, superseded evidence included."""
         return {
-            e.hit.chunk_id: e.hit.rerank_score
+            e.hit.chunk_version_id: e.hit.rerank_score
             for e in self.items
             if e.hit.rerank_score is not None
         }
@@ -58,9 +70,9 @@ class EvidenceSet(BaseModel):
             evidence.superseded = True
 
     def merge(self, retrieved: list[RetrievedItem]) -> list[Evidence]:
-        by_chunk = {e.hit.chunk_id: e for e in self.items}
+        by_chunk = {e.hit.chunk_version_id: e for e in self.items}
         for item in retrieved:
-            existing = by_chunk.get(item.hit.chunk_id)
+            existing = by_chunk.get(item.hit.chunk_version_id)
             if existing is None:
                 evidence = Evidence(
                     ref=f"E{len(self.items) + 1}",
@@ -71,7 +83,7 @@ class EvidenceSet(BaseModel):
                     else HydrateStrategy.SEARCH_ONLY,
                 )
                 self.items.append(evidence)
-                by_chunk[item.hit.chunk_id] = evidence
+                by_chunk[item.hit.chunk_version_id] = evidence
                 continue
             merged_queries = list(existing.hit.matched_queries)
             merged_queries.extend(
@@ -111,12 +123,13 @@ class EvidenceSet(BaseModel):
         lines: list[str] = []
         for evidence in self.active():
             hit = evidence.hit
-            snippet = " ".join(hit.chunk_text.split())
-            if len(snippet) > snippet_chars:
-                snippet = snippet[: snippet_chars - 1] + "…"
-            line = (
-                f"{evidence.ref} | {hit.context_header} | {hit.page_label} | {snippet}"
-            )
+            parts = [
+                evidence.ref,
+                hit.context_header,
+                hit.page_label,
+                make_snippet(hit.chunk_text, snippet_chars),
+            ]
+            line = " | ".join(part for part in parts if part)
             hints = hit.term_hints()
             if hints:
                 line += f" | gợi ý thuật ngữ: {', '.join(hints[:6])}"
@@ -131,9 +144,8 @@ class EvidenceSet(BaseModel):
         for index, evidence in enumerate(packed, start=1):
             numbered.append((index, evidence))
             hit = evidence.hit
-            blocks.append(
-                f"[{index}] {hit.context_header} ({hit.page_label})\n{evidence.text()}"
-            )
+            label = f" ({hit.page_label})" if hit.page_label else ""
+            blocks.append(f"[{index}] {hit.context_header}{label}\n{evidence.text()}")
         return "\n\n".join(blocks), numbered
 
 
@@ -146,8 +158,8 @@ def _max_optional(a: float | None, b: float | None) -> float | None:
 
 
 def _window(evidence: Evidence, radius: int = 1) -> list[Chunk]:
-    centre = evidence.hit.chunk_index
-    return [c for c in evidence.chunks if abs(c.chunk_index - centre) <= radius]
+    centre = evidence.hit.ordinal
+    return [c for c in evidence.chunks if abs(c.ordinal - centre) <= radius]
 
 
 def _fit(evidence: Evidence, remaining: int) -> Evidence | None:

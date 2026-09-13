@@ -1,8 +1,7 @@
-from pharma_agent.domain.conversation.models import Citation
 from pharma_agent.domain.retrieval.audit import audit_from_run
 from pharma_agent.domain.retrieval.models import Query, QueryOrigin, RetrievedItem
 from pharma_agent.domain.retrieval.service import SearchResult
-from tests.domain.factories import NOW, make_hit, make_run
+from tests.domain.factories import NOW, chunk_uuid, make_citation, make_hit, make_run
 
 
 def result_for(query: str, *hits: tuple[str, float]) -> SearchResult:
@@ -26,17 +25,7 @@ def test_one_record_per_query_per_round_with_ranked_hits_and_citations() -> None
     q3 = Query(text="paracetamol trẻ em", origin=QueryOrigin.REFINED)
     run.record_search([q2, q3], result_for(q2.text, ("c3", 0.7)), now=NOW)
 
-    citations = [
-        Citation(
-            index=1,
-            chunk_id="c2",
-            section_id="sec-1",
-            title="t",
-            section="s",
-            start_page=1,
-            end_page=1,
-        )
-    ]
+    citations = [make_citation("c2")]
     records = audit_from_run(run, citations, snippet_chars=5)
 
     assert [(r.round, r.query_text) for r in records] == [
@@ -46,11 +35,11 @@ def test_one_record_per_query_per_round_with_ranked_hits_and_citations() -> None
     ]
     first = records[0]
     assert [(h.rank, h.chunk_id, h.cited) for h in first.hits] == [
-        (1, "c2", True),
-        (2, "c1", False),
+        (1, str(chunk_uuid("c2")), True),
+        (2, str(chunk_uuid("c1")), False),
     ]
     assert first.hits[0].rerank_score == 0.9 and first.hits[0].snippet == "parac"
-    assert [h.chunk_id for h in records[1].hits] == ["c3"]
+    assert [h.chunk_id for h in records[1].hits] == [str(chunk_uuid("c3"))]
     assert records[2].hits == []
 
 

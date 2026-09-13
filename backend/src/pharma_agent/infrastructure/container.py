@@ -61,10 +61,13 @@ class Container:
 ContainerFactory = Callable[[Settings], AbstractAsyncContextManager[Container]]
 
 
-def _qdrant_check(agent: Application, dimension: int) -> HealthCheck:
+def _qdrant_check(agent: Application, settings: Settings) -> HealthCheck:
     async def check() -> bool:
         try:
-            await agent.retriever.verify_collection(dimension)
+            await agent.retrieval.retriever.verify_collection(
+                embedding_model=settings.retrieval.embedding.model,
+                dimension=settings.retrieval.embedding.dimension,
+            )
         except RetrievalError:
             return False
         return True
@@ -100,7 +103,7 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
     repository = PostgresConversationRepository(
         database.sessions,
         AuditContext(
-            corpus_version=settings.retrieval.collection_alias,
+            corpus_version=settings.retrieval.qdrant_collection,
             embedding_model=settings.retrieval.embedding.model,
             retriever_config=settings.retrieval.model_dump(
                 mode="json", exclude={"embedding": {"api_key"}, "rerank": {"api_key"}}
@@ -145,6 +148,7 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
                     checkpointer=checkpointer,
                     skills=skill_repository,
                     tracer=tracing,
+                    database=database,
                 )
                 stack.push_async_callback(agent.aclose)
                 container.chat = ChatService(
@@ -163,9 +167,7 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
                     every=settings.memory.summary_every_turns,
                     max_chars=settings.memory.summary_max_chars,
                 )
-                container.health_checks["qdrant"] = _qdrant_check(
-                    agent, settings.retrieval.embedding.dimension
-                )
+                container.health_checks["qdrant"] = _qdrant_check(agent, settings)
             yield container
     finally:
         await database.dispose()

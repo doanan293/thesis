@@ -5,17 +5,23 @@ from langfuse import get_client
 from openai.resources.embeddings import AsyncEmbeddings
 
 from pharma_agent.application.chat.runner import ChatTurnRunner
-from pharma_agent.infrastructure.composition import build_application
+from pharma_agent.infrastructure.composition import (
+    build_application,
+    build_retrieval_service,
+)
 from pharma_agent.infrastructure.llm.openai_adapter import OpenAiLlmAdapter
 from pharma_agent.infrastructure.observability.langfuse_retrieval import (
     LangfuseTracedReranker,
 )
+from pharma_agent.infrastructure.persistence.postgres.database import Database
 from pharma_agent.infrastructure.retrieval.llama_cpp_reranker import (
     LlamaCppCompletionReranker,
     NoopReranker,
 )
+from pharma_agent.infrastructure.retrieval.postgres_corpus import PostgresCorpusReader
 from pharma_agent.infrastructure.retrieval.qdrant_adapter import QdrantHybridRetriever
 from pharma_agent.infrastructure.settings import Settings
+from tests.fakes import FakeEmbedder
 
 
 async def test_build_application_wires_real_adapters(
@@ -27,8 +33,8 @@ async def test_build_application_wires_real_adapters(
     app = build_application(Settings(_env_file=None))
     assert isinstance(app.runner, ChatTurnRunner)
     assert isinstance(app.deps.llm, OpenAiLlmAdapter)
-    assert isinstance(app.retriever, QdrantHybridRetriever)
-    assert isinstance(app.reranker, LlamaCppCompletionReranker)
+    assert isinstance(app.retrieval.retriever, QdrantHybridRetriever)
+    assert isinstance(app.retrieval.reranker, LlamaCppCompletionReranker)
     await app.aclose()
 
 
@@ -40,7 +46,7 @@ async def test_build_application_respects_rerank_none(
     monkeypatch.setenv("PHARMA_SKILLS_DIR", str(tmp_path))
     monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
     app = build_application(Settings(_env_file=None))
-    assert isinstance(app.reranker, NoopReranker)
+    assert isinstance(app.retrieval.reranker, NoopReranker)
     await app.aclose()
 
 
@@ -71,8 +77,39 @@ async def test_langfuse_traces_embeddings_and_rerank(
 
     app = build_application(Settings(_env_file=None))
 
-    assert isinstance(app.reranker, LangfuseTracedReranker)
+    assert isinstance(app.retrieval.reranker, LangfuseTracedReranker)
     # The Langfuse OpenAI integration is installed when the app is built, before any call.
     assert hasattr(AsyncEmbeddings.create, "__wrapped__")
     await app.aclose()
     get_client(public_key=public_key).shutdown()
+
+
+async def test_build_retrieval_service_owns_its_database_unless_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
+    settings = Settings(_env_file=None)
+
+    stack = build_retrieval_service(settings)
+    assert isinstance(stack.retriever, QdrantHybridRetriever)
+    assert isinstance(stack.reader, PostgresCorpusReader)
+    assert stack.owns_database is True
+    await stack.aclose()
+
+    shared = Database(settings.postgres.dsn, pool_size=1)
+    borrowed = build_retrieval_service(settings, database=shared)
+    assert borrowed.database is shared and borrowed.owns_database is False
+    await borrowed.aclose()
+    await shared.dispose()
+
+
+async def test_build_retrieval_service_uses_an_injected_embedder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
+    embedder = FakeEmbedder()
+
+    stack = build_retrieval_service(Settings(_env_file=None), embedder=embedder)
+
+    assert stack.embedder is embedder and stack.embed_client is None
+    await stack.aclose()
