@@ -1,4 +1,5 @@
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -106,3 +107,30 @@ class Chunk(BaseModel):
 class RetrievedItem(BaseModel):
     hit: Hit
     chunks: list[Chunk] = Field(default_factory=list)
+
+
+class ChunkRecord(BaseModel):
+    """One chunk version as published in one release, with the fields a search hit shows."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunk_version_id: UUID
+    release_id: UUID
+    collection_id: UUID
+    document_key: str
+    section_key: str
+    section_revision_id: UUID
+    ordinal: int
+    hydrate_strategy: HydrateStrategy
+    source: str
+    title: str
+    section: str
+    start_page: int | None
+    end_page: int | None
+    context_header: str
+    chunk_text: str
+    embedding_text: str
+    kind: str
+    table_key: str | None
+    colloquial_mapping: ColloquialMapping | None = None
+    term_annotations: list[TermAnnotation] = Field(default_factory=list)

@@ -1,7 +1,14 @@
 from collections.abc import Sequence
 from typing import Protocol
+from uuid import UUID
 
-from pharma_agent.domain.retrieval.models import Chunk, Hit, HydrateStrategy, Query
+from pharma_agent.domain.retrieval.models import (
+    Chunk,
+    ChunkRecord,
+    Hit,
+    HydrateStrategy,
+    Query,
+)
 from pharma_agent.domain.shared.errors import DomainError
 
 
@@ -26,4 +33,22 @@ class Reranker(Protocol):
 class Hydrator(Protocol):
     async def hydrate(self, hit: Hit, strategy: HydrateStrategy) -> list[Chunk]:
         """Return neighbouring chunks for the strategy (empty for SEARCH_ONLY). Raises RetrievalError."""
+        ...
+
+
+type ChunkKey = tuple[UUID, UUID]
+"""(release_id, chunk_version_id): one chunk version as published in one release."""
+
+
+class CorpusReader(Protocol):
+    """Read side of the corpus schema used by retrieval."""
+
+    async def current_releases(
+        self, collection_keys: Sequence[str]
+    ) -> dict[UUID, UUID]:
+        """collection_id -> current release_id for the keys that exist and have a current release. Raises RetrievalError."""
+        ...
+
+    async def load_chunks(self, keys: Sequence[ChunkKey]) -> list[ChunkRecord]:
+        """Records for the keys that exist, in no particular order. Raises RetrievalError."""
         ...
