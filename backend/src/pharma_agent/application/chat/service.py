@@ -161,6 +161,10 @@ class ChatService:
             if found is None:
                 raise ConversationNotFound(conversation_id)
             conversation = found
+            # A conversation created by POST /conversations gets its title from
+            # the first question, unless the user renamed it first.
+            if conversation.title_from_first_message(message):
+                await self._conversations.update_title(conversation)
             turns = await self._conversations.recent_turns(
                 conversation_id, self._policy.context_turns
             )

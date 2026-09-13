@@ -129,3 +129,20 @@ async def test_pages_have_no_duplicates_or_gaps_when_timestamps_tie() -> None:
     assert len(first_page.items) == 2
     with pytest.raises(InvalidCursor):
         await queries.list_conversations(OWNER, limit=2, cursor="nope")
+
+
+async def test_create_starts_an_empty_unlisted_conversation() -> None:
+    repo = InMemoryConversationRepository()
+    queries = ConversationQueries(repo, FixedClock(NOW))
+
+    view = await queries.create(OWNER)
+
+    assert (view.title, view.turn_count, view.created_at, view.updated_at) == (
+        "Cuộc trò chuyện mới",
+        0,
+        NOW,
+        NOW,
+    )
+    assert repo.rows[view.id].user_id == OWNER
+    assert (await queries.get_conversation(OWNER, view.id)).id == view.id
+    assert (await queries.list_conversations(OWNER, limit=10)).items == []

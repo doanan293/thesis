@@ -15,6 +15,7 @@ from pharma_agent.domain.agent.schemas import (
     RephraseResult,
     SkillSelection,
 )
+from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
 from pharma_agent.domain.shared.clock import FixedClock
@@ -153,3 +154,49 @@ async def test_persist_failure_reports_error_after_done() -> None:
     assert events[-1].data["code"] == "PERSIST_FAILED"
     assert session.result is not None and session.result.persisted is False
     assert session.result.content  # the answer is still delivered
+
+
+async def test_first_turn_names_a_pre_created_conversation() -> None:
+    llm, repo = FakeLlm(), InMemoryConversationRepository()
+    scripted_turn(llm, "Liều paracetamol cho người lớn")
+    scripted_turn(llm, "Paracetamol có dùng cho trẻ em không")
+    service = service_with(llm, repo)
+    empty = Conversation.create_empty(user_id=OWNER, now=NOW)
+    await repo.create(empty)
+
+    session = await service.open_turn(
+        user_id=OWNER,
+        message="Paracetamol uống bao nhiêu?",
+        conversation_id=empty.conversation_id,
+    )
+    events = await collect(session.events())
+
+    assert events[0].data == {
+        "conversation_id": empty.conversation_id,
+        "title": "Paracetamol uống bao nhiêu?",
+        "created": False,
+    }
+    stored = repo.rows[empty.conversation_id]
+    assert stored.title == "Paracetamol uống bao nhiêu?" and stored.turn_count == 1
+
+    await service.ask(
+        user_id=OWNER,
+        message="Còn trẻ em thì sao?",
+        conversation_id=empty.conversation_id,
+    )
+    assert repo.rows[empty.conversation_id].title == "Paracetamol uống bao nhiêu?"
+
+
+async def test_renamed_empty_conversation_keeps_its_title() -> None:
+    llm, repo = FakeLlm(), InMemoryConversationRepository()
+    scripted_turn(llm, "Liều paracetamol")
+    service = service_with(llm, repo)
+    empty = Conversation.create_empty(user_id=OWNER, now=NOW)
+    empty.rename("Hỏi về thuốc hạ sốt", now=NOW)
+    await repo.create(empty)
+
+    await service.ask(
+        user_id=OWNER, message="Paracetamol?", conversation_id=empty.conversation_id
+    )
+
+    assert repo.rows[empty.conversation_id].title == "Hỏi về thuốc hạ sốt"

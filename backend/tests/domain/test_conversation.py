@@ -4,6 +4,7 @@ import pytest
 
 from pharma_agent.domain.agent.run import AnswerMode, AnswerPlan, RunStatus
 from pharma_agent.domain.conversation.models import (
+    DEFAULT_TITLE,
     Conversation,
     InvalidTitle,
     MessageRole,
@@ -88,3 +89,40 @@ def test_build_turn_messages_and_pair_turns() -> None:
         and turns[0].assistant_text == "500 mg [1]"
     )
     assert turns[0].status == "completed"
+
+
+def test_create_empty_uses_the_default_title() -> None:
+    conversation = Conversation.create_empty(user_id="u1", now=NOW)
+    assert conversation.title == DEFAULT_TITLE == "Cuộc trò chuyện mới"
+    assert conversation.turn_count == 0
+    assert conversation.created_at == conversation.updated_at == NOW
+    assert len(conversation.conversation_id) == 32
+    assert Conversation.start(user_id="u1", first_message="   ", now=NOW).title == (
+        DEFAULT_TITLE
+    )
+
+
+def test_first_message_names_only_an_untouched_conversation() -> None:
+    fresh = Conversation.create_empty(user_id="u1", now=NOW)
+    later = NOW + timedelta(minutes=1)
+    assert fresh.title_from_first_message("  Paracetamol   uống bao nhiêu? ") is True
+    assert fresh.title == "Paracetamol uống bao nhiêu?" and fresh.updated_at == NOW
+    assert fresh.title_from_first_message("Còn trẻ em?") is False
+
+    long_message = Conversation.create_empty(user_id="u1", now=NOW)
+    assert long_message.title_from_first_message("x" * 200) is True
+    assert len(long_message.title) == 80
+
+    blank = Conversation.create_empty(user_id="u1", now=NOW)
+    assert blank.title_from_first_message("   ") is False
+    assert blank.title == DEFAULT_TITLE
+
+    renamed = Conversation.create_empty(user_id="u1", now=NOW)
+    renamed.rename("Thuốc hạ sốt", now=later)
+    assert renamed.title_from_first_message("Paracetamol?") is False
+    assert renamed.title == "Thuốc hạ sốt"
+
+    answered = Conversation.create_empty(user_id="u1", now=NOW)
+    answered.record_turn(later)
+    assert answered.title_from_first_message("Paracetamol?") is False
+    assert answered.title == DEFAULT_TITLE

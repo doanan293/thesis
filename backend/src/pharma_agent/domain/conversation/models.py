@@ -62,6 +62,7 @@ class ConversationSummary(BaseModel):
 
 
 MAX_TITLE_CHARS = 80
+DEFAULT_TITLE = "Cuộc trò chuyện mới"
 
 
 class InvalidTitle(DomainError):
@@ -83,6 +84,18 @@ class Conversation(BaseModel):
     updated_at: datetime
 
     @classmethod
+    def create_empty(
+        cls, *, user_id: str, now: datetime, conversation_id: str | None = None
+    ) -> "Conversation":
+        return cls(
+            conversation_id=conversation_id or new_id(),
+            user_id=user_id,
+            title=DEFAULT_TITLE,
+            created_at=now,
+            updated_at=now,
+        )
+
+    @classmethod
     def start(
         cls,
         *,
@@ -91,17 +104,24 @@ class Conversation(BaseModel):
         now: datetime,
         conversation_id: str | None = None,
     ) -> "Conversation":
-        title = (
-            _clean_title(first_message)[:MAX_TITLE_CHARS].rstrip()
-            or "Cuộc trò chuyện mới"
+        conversation = cls.create_empty(
+            user_id=user_id, now=now, conversation_id=conversation_id
         )
-        return cls(
-            conversation_id=conversation_id or new_id(),
-            user_id=user_id,
-            title=title,
-            created_at=now,
-            updated_at=now,
-        )
+        conversation.title_from_first_message(first_message)
+        return conversation
+
+    def title_from_first_message(self, message: str) -> bool:
+        """Name a conversation nobody has named or used yet after its first question.
+
+        Returns whether the title changed. `updated_at` is left to the turn itself.
+        """
+        if self.turn_count > 0 or self.title != DEFAULT_TITLE:
+            return False
+        title = _clean_title(message)[:MAX_TITLE_CHARS].rstrip()
+        if not title or title == self.title:
+            return False
+        self.title = title
+        return True
 
     def record_turn(self, now: datetime) -> None:
         self.turn_count += 1

@@ -93,6 +93,11 @@ class ConversationQueries:
     ) -> ConversationView:
         return ConversationView.of(await self._owned(user_id, conversation_id))
 
+    async def create(self, user_id: str) -> ConversationView:
+        conversation = Conversation.create_empty(user_id=user_id, now=self._clock.now())
+        await self._conversations.create(conversation)
+        return ConversationView.of(conversation)
+
     async def list_messages(
         self,
         user_id: str,

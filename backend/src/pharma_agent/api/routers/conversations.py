@@ -27,6 +27,12 @@ def build_conversations_router(current_user_id: UserIdDependency) -> APIRouter:
     router = APIRouter(prefix="/conversations", tags=["conversations"])
     UserId = Annotated[str, Depends(current_user_id)]
 
+    @router.post("", response_model=ConversationView, status_code=201)
+    async def create_conversation(
+        user_id: UserId, container: ContainerDep
+    ) -> ConversationView:
+        return await container.queries.create(user_id)
+
     @router.get("", response_model=ConversationPage)
     async def list_conversations(
         user_id: UserId,

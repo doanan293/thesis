@@ -4,6 +4,7 @@ from pharma_agent.domain.agent.run import AnswerMode, AnswerPlan
 from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.conversation.turns import build_turn_messages
 from tests.api.harness import OWNER, Harness, build_harness
+from tests.api.test_chat_api import script_turn
 from tests.domain.factories import make_run
 
 
@@ -140,3 +141,32 @@ async def test_list_parameters_are_validated() -> None:
     for response in (too_many, too_long):
         assert response.status_code == 422
         assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+async def test_create_conversation_then_first_message_names_it() -> None:
+    harness = build_harness()
+    script_turn(harness.llm)
+    async with harness.client() as client:
+        created = await client.post("/api/v1/conversations")
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert set(body) == {"id", "title", "turn_count", "created_at", "updated_at"}
+        assert body["title"] == "Cuộc trò chuyện mới" and body["turn_count"] == 0
+        conversation_id = body["id"]
+        assert harness.repo.rows[conversation_id].user_id == OWNER.hex
+        assert (await client.get("/api/v1/conversations")).json()["items"] == []
+
+        chat = await client.post(
+            "/api/v1/chat",
+            json={
+                "message": "Paracetamol uống bao nhiêu?",
+                "conversation_id": conversation_id,
+            },
+        )
+        assert chat.status_code == 200, chat.text
+        assert chat.json()["conversation_id"] == conversation_id
+
+        listed = (await client.get("/api/v1/conversations")).json()["items"]
+        assert [(i["id"], i["title"], i["turn_count"]) for i in listed] == [
+            (conversation_id, "Paracetamol uống bao nhiêu?", 1)
+        ]
