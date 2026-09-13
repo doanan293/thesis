@@ -19,6 +19,8 @@ from pharma_agent.application.feedback.service import FeedbackService
 from pharma_agent.application.memory.summarize import SummarizeConversation
 from pharma_agent.application.skill.service import SkillService
 from pharma_agent.application.tracing import NullTracing, Tracing
+from pharma_agent.domain.corpus.ports import Embedder
+from pharma_agent.domain.llm.port import LlmPort
 from pharma_agent.domain.retrieval.ports import RetrievalError
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.composition import Application, build_application
@@ -101,7 +103,13 @@ async def _cancel(task: asyncio.Task[None]) -> None:
 
 
 @asynccontextmanager
-async def open_container(settings: Settings) -> AsyncGenerator[Container]:
+async def open_container(
+    settings: Settings,
+    *,
+    llm: LlmPort | None = None,
+    embedder: Embedder | None = None,
+) -> AsyncGenerator[Container]:
+    """Open every long-lived resource; `llm` and `embedder` replace the settings-built adapters."""
     database = Database(
         settings.postgres.dsn,
         pool_size=settings.postgres.pool_size,
@@ -144,7 +152,7 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
                 stack.callback(tracing.shutdown)
             if container.skills is not None:
                 await container.skills.sync_system(settings.skills_dir)
-            if settings.llm.configured:
+            if settings.llm.configured or llm is not None:
                 checkpointer = await stack.enter_async_context(
                     open_postgres_checkpointer(settings.postgres.conninfo)
                 )
@@ -160,6 +168,8 @@ async def open_container(settings: Settings) -> AsyncGenerator[Container]:
                     skills=skill_repository,
                     tracer=tracing,
                     database=database,
+                    llm=llm,
+                    embedder=embedder,
                 )
                 stack.push_async_callback(agent.aclose)
                 container.chat = ChatService(

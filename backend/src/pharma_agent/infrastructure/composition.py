@@ -14,6 +14,7 @@ from pharma_agent.application.chat.runner import ChatTurnRunner
 from pharma_agent.application.tracing import TurnTracer
 from pharma_agent.domain.corpus.ports import Embedder
 from pharma_agent.domain.guardrail.service import GuardrailService
+from pharma_agent.domain.llm.port import LlmPort
 from pharma_agent.domain.retrieval.ports import CorpusReader, Reranker
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
 from pharma_agent.domain.shared.clock import SystemClock
@@ -182,16 +183,23 @@ def build_application(
     skills: SkillCatalog | None = None,
     tracer: TurnTracer | None = None,
     database: Database | None = None,
+    llm: LlmPort | None = None,
+    embedder: Embedder | None = None,
 ) -> Application:
+    """`llm` and `embedder` replace the OpenAI-compatible adapters built from settings."""
     _export_langfuse_environment(settings)
     client_factory = (
         langfuse_client_factory if settings.langfuse.enabled else default_client_factory
     )
-    llm = OpenAiLlmAdapter(settings.llm, client_factory=client_factory)
-    retrieval = build_retrieval_service(settings, database=database)
+    llm_port: LlmPort = (
+        llm
+        if llm is not None
+        else OpenAiLlmAdapter(settings.llm, client_factory=client_factory)
+    )
+    retrieval = build_retrieval_service(settings, database=database, embedder=embedder)
     deps = TurnDeps(
-        llm=llm,
-        guardrail=GuardrailService(llm),
+        llm=llm_port,
+        guardrail=GuardrailService(llm_port),
         retrieval=retrieval.service,
         skills=skills
         if skills is not None
