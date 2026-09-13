@@ -22,7 +22,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # Same rule as the domain's portable Agent Skills name, in PostgreSQL regex syntax.
@@ -109,9 +109,6 @@ class MessageTable(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
-    citations: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=False, server_default=text("'[]'::jsonb")
-    )
     phases: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
@@ -121,6 +118,37 @@ class MessageTable(Base):
     run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+
+class MessageCitationTable(Base):
+    """A citation of an assistant message; chunk versions and releases are immutable corpus rows."""
+
+    __tablename__ = "message_citations"
+    __table_args__ = (
+        CheckConstraint(
+            "strategy IN ('search_only', 'chunk_window', 'full_section')",
+            name="strategy",
+        ),
+        Index("ix_message_citations_chunk_version_id", "chunk_version_id"),
+        Index("ix_message_citations_release_id", "release_id"),
+    )
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chunk_version_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("corpus.chunk_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    release_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("corpus.releases.id", ondelete="RESTRICT"), nullable=False
+    )
+    strategy: Mapped[str] = mapped_column(String(16), nullable=False)
+    block_chunk_version_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid), nullable=False
     )
 
 

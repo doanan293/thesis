@@ -16,6 +16,10 @@ from pharma_agent.domain.conversation.models import (
 )
 from pharma_agent.domain.conversation.turns import pair_turns
 from pharma_agent.domain.retrieval.audit import RetrievalRunRecord
+from pharma_agent.infrastructure.persistence.postgres.citation_rows import (
+    citation_link_rows,
+    load_citations,
+)
 from pharma_agent.infrastructure.persistence.postgres.tables import (
     ConversationTable,
     MessageTable,
@@ -56,14 +60,14 @@ def _conversation(row: ConversationTable) -> Conversation:
     )
 
 
-def _message(row: MessageTable) -> Message:
+def _message(row: MessageTable, citations: Sequence[Citation]) -> Message:
     return Message(
         message_id=row.id.hex,
         conversation_id=row.conversation_id.hex,
         role=MessageRole(row.role),
         content=row.content,
         status=row.status,
-        citations=[Citation.model_validate(item) for item in row.citations],
+        citations=list(citations),
         phases=list(row.phases),
         usage=dict(row.usage),
         run_id=row.run_id,
@@ -78,7 +82,6 @@ def _message_row(message: Message) -> MessageTable:
         role=message.role.value,
         content=message.content,
         status=message.status,
-        citations=[citation.model_dump(mode="json") for citation in message.citations],
         phases=list(message.phases),
         usage=dict(message.usage),
         run_id=message.run_id,
@@ -205,6 +208,8 @@ class PostgresConversationRepository:
                 [_message_row(user_message), _message_row(assistant_message)]
             )
             await session.flush()
+            session.add_all(citation_link_rows(assistant_message))
+            await session.flush()
             for record in audit:
                 run_row = RetrievalRunTable(
                     message_id=assistant_id,
@@ -240,7 +245,7 @@ class PostgresConversationRepository:
         )
         async with self._sessions() as session:
             rows = (await session.execute(query)).scalars().all()
-        return pair_turns([_message(row) for row in rows])
+        return pair_turns([_message(row, []) for row in rows])
 
     async def messages(
         self,
@@ -270,7 +275,8 @@ class PostgresConversationRepository:
         ).limit(limit)
         async with self._sessions() as session:
             rows = (await session.execute(query)).scalars().all()
-        return [_message(row) for row in reversed(rows)]
+            citations = await load_citations(session, [row.id for row in rows])
+        return [_message(row, citations.get(row.id, [])) for row in reversed(rows)]
 
     async def get_message(self, user_id: str, message_id: str) -> Message | None:
         owner, key = _uuid(user_id), _uuid(message_id)
@@ -285,7 +291,10 @@ class PostgresConversationRepository:
         )
         async with self._sessions() as session:
             row = (await session.execute(query)).scalar_one_or_none()
-        return _message(row) if row is not None else None
+            if row is None:
+                return None
+            citations = await load_citations(session, [row.id])
+        return _message(row, citations.get(row.id, []))
 
     async def _update(self, conversation: Conversation, **values: object) -> None:
         async with self._sessions.begin() as session:

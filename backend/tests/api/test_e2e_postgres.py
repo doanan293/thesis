@@ -40,7 +40,7 @@ from tests.api.asgi import running
 from tests.api.harness import ui_chunks
 from tests.api.test_chat_api import script_turn
 from tests.contract.invariants import assert_stream_invariants
-from tests.domain.factories import make_hit
+from tests.corpus_rows import hit_for, seed_cited_release
 from tests.fakes import FakeLlm, FakeRetriever, build_deps
 
 pytestmark = pytest.mark.integration
@@ -62,9 +62,10 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
             database.sessions,
             AuditContext(embedding_model="test"),
         )
+        seeded = await seed_cited_release(database.sessions)
         runner = ChatTurnRunner(
             build_chat_graph(),
-            build_deps(llm, FakeRetriever([make_hit("c1", fusion=0.9)])),
+            build_deps(llm, FakeRetriever([hit_for(seeded)])),
             BudgetLimits(),
         )
         clock = SystemClock()

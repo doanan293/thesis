@@ -1,26 +1,41 @@
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import IntegrityError
 
 from pharma_agent.domain.conversation.models import (
+    Citation,
     Conversation,
     Message,
     MessageRole,
 )
 from pharma_agent.domain.retrieval.audit import RetrievalHitRecord, RetrievalRunRecord
+from pharma_agent.domain.retrieval.models import HydrateStrategy
 from pharma_agent.infrastructure.persistence.postgres.conversation_repository import (
     AuditContext,
     ConversationRowMissing,
     PostgresConversationRepository,
 )
+from pharma_agent.infrastructure.persistence.postgres.corpus_tables import (
+    ChunkVersionTable,
+    ReleaseChunkTable,
+    ReleaseTable,
+)
 from pharma_agent.infrastructure.persistence.postgres.database import Database
 from pharma_agent.infrastructure.persistence.postgres.tables import (
+    MessageCitationTable,
     RetrievalHitTable,
     RetrievalRunTable,
     UserTable,
+)
+from tests.corpus_rows import (
+    add_release,
+    citation_for,
+    dosage_drafts,
+    seed_cited_release,
 )
 from tests.domain.factories import (
     COLLECTION_ID,
@@ -28,7 +43,6 @@ from tests.domain.factories import (
     RELEASE_ID,
     SECTION_KEY,
     chunk_uuid,
-    make_citation,
 )
 
 pytestmark = pytest.mark.integration
@@ -40,7 +54,8 @@ async def database(migrated_dsn: str) -> AsyncIterator[Database]:
     async with db.engine.begin() as connection:
         await connection.execute(
             text(
-                'TRUNCATE "user", conversations, messages, retrieval_runs, retrieval_hits CASCADE'
+                'TRUNCATE "user", conversations, messages, message_citations, '
+                "retrieval_runs, retrieval_hits CASCADE"
             )
         )
     yield db
@@ -65,10 +80,13 @@ def repository(database: Database) -> PostgresConversationRepository:
 
 
 def turn(
-    conversation_id: str, index: int, status: str = "completed"
+    conversation_id: str,
+    index: int,
+    status: str = "completed",
+    *,
+    citations: Sequence[Citation] = (),
 ) -> tuple[Message, Message]:
     at = NOW + timedelta(minutes=index)
-    citation = make_citation("c1")
     return (
         Message(
             message_id=uuid.uuid4().hex,
@@ -85,7 +103,7 @@ def turn(
             role=MessageRole.ASSISTANT,
             content=f"a{index}",
             status=status,
-            citations=[citation],
+            citations=list(citations),
             phases=["answering"],
             usage={"llm_calls": 5},
             run_id="r" * 32,
@@ -161,9 +179,7 @@ async def test_append_turn_is_atomic_and_increments_turn_count(
     ] == ["q1", "q2"]
     messages = await repo.messages(conversation.conversation_id, limit=3)
     assert [m.content for m in messages] == ["a1", "q2", "a2"]
-    assert messages[0].citations[0].chunk_version_id == chunk_uuid("c1") and messages[
-        0
-    ].usage == {"llm_calls": 5}
+    assert messages[0].citations == [] and messages[0].usage == {"llm_calls": 5}
     older = await repo.messages(
         conversation.conversation_id,
         limit=10,
@@ -334,3 +350,140 @@ async def test_keyset_pages_have_no_duplicates_or_gaps_with_tied_timestamps(
         position = (page[0].created_at, page[0].message_id)
     assert [len(ids) for ids in pages] == [3, 3, 2]
     assert [mid for ids in reversed(pages) for mid in ids] == everything
+
+
+async def test_citations_round_trip_through_message_citations(
+    database: Database,
+) -> None:
+    repo = repository(database)
+    owner = await make_user(database)
+    seeded = await seed_cited_release(database.sessions)
+    unpublished = await add_release(database.sessions, seeded.collection_id, number=2)
+    drafts = dosage_drafts(seeded)
+    conversation = Conversation.start(user_id=owner, first_message="hi", now=NOW)
+    await repo.create(conversation)
+    cited = [
+        citation_for(seeded, index=1, position=1),
+        citation_for(
+            seeded,
+            index=2,
+            position=2,
+            release_id=unpublished,
+            strategy=HydrateStrategy.SEARCH_ONLY,
+            block=(2,),
+        ),
+    ]
+    user_msg, assistant_msg = turn(conversation.conversation_id, 0, citations=cited)
+    conversation.record_turn(assistant_msg.created_at)
+    await repo.append_turn(conversation, user_msg, assistant_msg, [])
+
+    messages = await repo.messages(conversation.conversation_id, limit=10)
+    assert [message.citations for message in messages] == [[], cited]
+    loaded = await repo.get_message(owner, assistant_msg.message_id)
+    assert loaded is not None and loaded.citations == cited
+
+    async with database.sessions() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(MessageCitationTable).order_by(MessageCitationTable.index)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert [
+        (
+            row.index,
+            row.chunk_version_id,
+            row.release_id,
+            row.strategy,
+            row.block_chunk_version_ids,
+        )
+        for row in rows
+    ] == [
+        (
+            1,
+            drafts[1].chunk_version_id,
+            seeded.release_id,
+            "full_section",
+            [draft.chunk_version_id for draft in drafts],
+        ),
+        (
+            2,
+            drafts[2].chunk_version_id,
+            unpublished,
+            "search_only",
+            [drafts[2].chunk_version_id],
+        ),
+    ]
+
+
+async def test_append_turn_rolls_back_when_a_citation_is_dangling(
+    database: Database,
+) -> None:
+    repo = repository(database)
+    owner = await make_user(database)
+    seeded = await seed_cited_release(database.sessions)
+    conversation = Conversation.start(user_id=owner, first_message="hi", now=NOW)
+    await repo.create(conversation)
+    dangling = citation_for(seeded, index=1, position=0).model_copy(
+        update={"chunk_version_id": uuid.uuid4()}
+    )
+    user_msg, assistant_msg = turn(
+        conversation.conversation_id, 0, citations=[dangling]
+    )
+
+    with pytest.raises(IntegrityError):
+        await repo.append_turn(conversation, user_msg, assistant_msg, [])
+
+    loaded = await repo.get(owner, conversation.conversation_id)
+    assert loaded is not None and loaded.turn_count == 0
+    assert await repo.messages(conversation.conversation_id, limit=10) == []
+
+
+async def test_cited_chunk_version_and_release_are_kept_until_the_conversation_goes(
+    database: Database,
+) -> None:
+    repo = repository(database)
+    owner = await make_user(database)
+    seeded = await seed_cited_release(database.sessions)
+    unpublished = await add_release(database.sessions, seeded.collection_id, number=2)
+    cited_chunk = dosage_drafts(seeded)[0].chunk_version_id
+    conversation = Conversation.start(user_id=owner, first_message="hi", now=NOW)
+    await repo.create(conversation)
+    cited = citation_for(seeded, index=1, position=0, release_id=unpublished)
+    user_msg, assistant_msg = turn(conversation.conversation_id, 0, citations=[cited])
+    conversation.record_turn(assistant_msg.created_at)
+    await repo.append_turn(conversation, user_msg, assistant_msg, [])
+    # Take the chunk out of its release, as gc does, so only message_citations holds it.
+    async with database.sessions.begin() as session:
+        await session.execute(
+            delete(ReleaseChunkTable).where(
+                ReleaseChunkTable.chunk_version_id == cited_chunk
+            )
+        )
+
+    with pytest.raises(
+        IntegrityError, match="fk_message_citations_chunk_version_id_chunk_versions"
+    ):
+        async with database.sessions.begin() as session:
+            await session.execute(
+                delete(ChunkVersionTable).where(ChunkVersionTable.id == cited_chunk)
+            )
+    with pytest.raises(
+        IntegrityError, match="fk_message_citations_release_id_releases"
+    ):
+        async with database.sessions.begin() as session:
+            await session.execute(
+                delete(ReleaseTable).where(ReleaseTable.id == unpublished)
+            )
+
+    assert await repo.delete(owner, conversation.conversation_id) is True
+    async with database.sessions.begin() as session:
+        await session.execute(
+            delete(ChunkVersionTable).where(ChunkVersionTable.id == cited_chunk)
+        )
+        await session.execute(
+            delete(ReleaseTable).where(ReleaseTable.id == unpublished)
+        )

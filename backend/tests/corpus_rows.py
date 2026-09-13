@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from pharma_agent.domain.agent.citations import SNIPPET_CHARS
+from pharma_agent.domain.conversation.models import Citation
 from pharma_agent.domain.corpus.bundle import (
     BlockKind,
     BlockRecord,
@@ -26,6 +28,8 @@ from pharma_agent.domain.corpus.chunking import (
 )
 from pharma_agent.domain.corpus.hydrate import hydrate_strategy_for, section_char_count
 from pharma_agent.domain.corpus.identity import section_revision_id
+from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy
+from pharma_agent.domain.shared.text import make_snippet
 from pharma_agent.infrastructure.persistence.postgres.corpus_tables import (
     ChunkVersionTable,
     CollectionTable,
@@ -291,4 +295,112 @@ async def seed_release(
         release_id=release_id,
         drafts=drafts,
         revisions=revisions,
+    )
+
+
+# P6: citations must point at real chunk versions and releases (message_citations FKs).
+CITED_SOURCE = "Dược thư Quốc gia Việt Nam"
+CITED_TITLE = "Paracetamol"
+CITED_SECTION = "Liều lượng và cách dùng"
+
+
+async def seed_cited_release(
+    sessions: async_sessionmaker[AsyncSession], *, publish: bool = True
+) -> SeededRelease:
+    """A three-chunk dosage release with a unique collection key and unique chunk texts.
+
+    Chunk and revision ids derive from the text, so unique markers let tests that share
+    the migrated database seed as often as they like.
+    """
+    suffix = uuid.uuid4().hex[:8]
+    return await seed_release(
+        sessions,
+        collection_key=f"cited-{suffix}",
+        document=paracetamol_document(),
+        sections=[dosage_section(markers=[f"{suffix}a", f"{suffix}b", f"{suffix}c"])],
+        publish=publish,
+    )
+
+
+def dosage_drafts(seeded: SeededRelease) -> list[ChunkDraft]:
+    return seeded.drafts[DOSAGE_KEY]
+
+
+async def add_release(
+    sessions: async_sessionmaker[AsyncSession],
+    collection_id: uuid.UUID,
+    *,
+    number: int,
+) -> uuid.UUID:
+    """A ready, unpublished release without chunks in an existing collection."""
+    release_id = uuid.uuid4()
+    async with sessions.begin() as session:
+        session.add(
+            ReleaseTable(
+                id=release_id,
+                collection_id=collection_id,
+                number=number,
+                status="ready",
+                bundle_digest=f"seed-{number}",
+                chunker_version=CHUNKER_VERSION,
+                embedding_model="fake-embedding-4d",
+                stats={},
+                created_at=NOW,
+                ready_at=NOW,
+                published_at=None,
+            )
+        )
+    return release_id
+
+
+def citation_for(
+    seeded: SeededRelease,
+    *,
+    index: int,
+    position: int,
+    block: Sequence[int] = (0, 1, 2),
+    release_id: uuid.UUID | None = None,
+    strategy: HydrateStrategy = HydrateStrategy.FULL_SECTION,
+) -> Citation:
+    """The exact `Citation` the repository rebuilds from the seeded rows."""
+    drafts = dosage_drafts(seeded)
+    matched = drafts[position]
+    return Citation(
+        index=index,
+        chunk_version_id=matched.chunk_version_id,
+        release_id=release_id if release_id is not None else seeded.release_id,
+        strategy=strategy,
+        block_chunk_version_ids=[drafts[n].chunk_version_id for n in block],
+        source=CITED_SOURCE,
+        title=CITED_TITLE,
+        section=CITED_SECTION,
+        start_page=matched.start_page,
+        end_page=matched.end_page,
+        snippet=make_snippet(matched.chunk_text, SNIPPET_CHARS),
+    )
+
+
+def hit_for(seeded: SeededRelease, position: int = 0, *, fusion: float = 0.9) -> Hit:
+    draft = dosage_drafts(seeded)[position]
+    return Hit(
+        chunk_version_id=draft.chunk_version_id,
+        release_id=seeded.release_id,
+        collection_id=seeded.collection_id,
+        document_key=paracetamol_document().key,
+        section_key=DOSAGE_KEY,
+        section_revision_id=seeded.revisions[DOSAGE_KEY],
+        ordinal=draft.ordinal,
+        hydrate_strategy=HydrateStrategy.SEARCH_ONLY,
+        source=CITED_SOURCE,
+        title=CITED_TITLE,
+        section=CITED_SECTION,
+        start_page=draft.start_page,
+        end_page=draft.end_page,
+        context_header=draft.context_header,
+        chunk_text=draft.chunk_text,
+        embedding_text=draft.embedding_text,
+        kind=draft.kind.value,
+        table_key=draft.table_key,
+        fusion_score=fusion,
+        matched_queries=[],
     )

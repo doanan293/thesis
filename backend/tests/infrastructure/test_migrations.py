@@ -26,6 +26,7 @@ EXPECTED_TABLES = {
     "oauth_account",
     "conversations",
     "messages",
+    "message_citations",
     "retrieval_runs",
     "retrieval_hits",
 }
