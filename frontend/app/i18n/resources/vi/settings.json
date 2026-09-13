@@ -1,1 +1,34 @@
-{}
+{
+  "title": "Cài đặt",
+  "profile": {
+    "heading": "Hồ sơ",
+    "displayName": "Tên hiển thị",
+    "submit": "Lưu",
+    "saved": "Đã lưu tên hiển thị.",
+    "required": "Hãy nhập tên hiển thị.",
+    "tooLong": "Tên hiển thị tối đa 100 ký tự."
+  },
+  "password": {
+    "heading": "Đổi mật khẩu",
+    "new": "Mật khẩu mới",
+    "confirm": "Nhập lại mật khẩu mới",
+    "submit": "Đổi mật khẩu",
+    "saved": "Đã đổi mật khẩu.",
+    "tooShort": "Mật khẩu tối thiểu 8 ký tự.",
+    "tooLong": "Mật khẩu tối đa 128 ký tự.",
+    "mismatch": "Hai mật khẩu không khớp."
+  },
+  "appearance": {
+    "heading": "Ngôn ngữ và giao diện"
+  },
+  "language": {
+    "label": "Ngôn ngữ",
+    "description": "Áp dụng cho toàn bộ ứng dụng trên trình duyệt này."
+  },
+  "theme": {
+    "label": "Giao diện",
+    "light": "Sáng",
+    "dark": "Tối",
+    "system": "Theo hệ thống"
+  }
+}

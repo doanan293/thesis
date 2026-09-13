@@ -1,1 +1,42 @@
-{}
+{
+  "title": "Skills",
+  "subtitle": "Skills tell the agent how to search and answer. System skills are always on; your own skills can be enabled, disabled or deleted.",
+  "loadFailed": "Could not load skills.",
+  "own": {
+    "heading": "Your skills",
+    "empty": "You have not uploaded any skills yet."
+  },
+  "system": {
+    "heading": "System skills"
+  },
+  "card": {
+    "system": "System",
+    "version": "Version {{version}}",
+    "enable": "Enable {{name}}",
+    "toggleFailed": "Could not change skill {{name}}."
+  },
+  "delete": {
+    "trigger": "Delete {{name}}",
+    "title": "Delete skill {{name}}?",
+    "description": "The skill is deleted permanently and the agent stops using it.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "done": "Deleted skill {{name}}.",
+    "failed": "Could not delete skill {{name}}."
+  },
+  "upload": {
+    "description": "A file following the Agent Skills specification, named SKILL.md, at most 64 KB.",
+    "fileLabel": "SKILL.md file",
+    "choose": "Choose a SKILL.md file",
+    "noFile": "No file chosen",
+    "size": "{{size}} KB",
+    "submit": "Upload",
+    "success": "Added skill {{title}}.",
+    "errors": {
+      "required": "Choose a SKILL.md file.",
+      "wrongName": "The file must be named SKILL.md.",
+      "tooLarge": "SKILL.md must be at most 64 KB.",
+      "invalid": "Invalid SKILL.md: {{detail}}"
+    }
+  }
+}

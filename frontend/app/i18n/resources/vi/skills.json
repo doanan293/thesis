@@ -1,1 +1,42 @@
-{}
+{
+  "title": "Kỹ năng",
+  "subtitle": "Kỹ năng hướng dẫn agent cách tìm kiếm và trả lời. Kỹ năng hệ thống luôn bật; kỹ năng của bạn có thể bật, tắt hoặc xoá.",
+  "loadFailed": "Không tải được danh sách kỹ năng.",
+  "own": {
+    "heading": "Kỹ năng của bạn",
+    "empty": "Bạn chưa tải lên kỹ năng nào."
+  },
+  "system": {
+    "heading": "Kỹ năng hệ thống"
+  },
+  "card": {
+    "system": "Hệ thống",
+    "version": "Phiên bản {{version}}",
+    "enable": "Bật {{name}}",
+    "toggleFailed": "Không đổi được trạng thái kỹ năng {{name}}."
+  },
+  "delete": {
+    "trigger": "Xoá {{name}}",
+    "title": "Xoá kỹ năng {{name}}?",
+    "description": "Kỹ năng bị xoá vĩnh viễn và agent sẽ không dùng nó nữa.",
+    "cancel": "Huỷ",
+    "confirm": "Xoá",
+    "done": "Đã xoá kỹ năng {{name}}.",
+    "failed": "Không xoá được kỹ năng {{name}}."
+  },
+  "upload": {
+    "description": "Tệp theo đặc tả Agent Skills, tên SKILL.md, tối đa 64 KB.",
+    "fileLabel": "Tệp SKILL.md",
+    "choose": "Chọn tệp SKILL.md",
+    "noFile": "Chưa chọn tệp",
+    "size": "{{size}} KB",
+    "submit": "Tải lên",
+    "success": "Đã thêm kỹ năng {{title}}.",
+    "errors": {
+      "required": "Hãy chọn tệp SKILL.md.",
+      "wrongName": "Tệp phải có tên SKILL.md.",
+      "tooLarge": "SKILL.md tối đa 64 KB.",
+      "invalid": "SKILL.md không hợp lệ: {{detail}}"
+    }
+  }
+}

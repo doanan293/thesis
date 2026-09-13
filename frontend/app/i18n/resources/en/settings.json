@@ -1,1 +1,34 @@
-{}
+{
+  "title": "Settings",
+  "profile": {
+    "heading": "Profile",
+    "displayName": "Display name",
+    "submit": "Save",
+    "saved": "Display name saved.",
+    "required": "Enter a display name.",
+    "tooLong": "Display name must be at most 100 characters."
+  },
+  "password": {
+    "heading": "Change password",
+    "new": "New password",
+    "confirm": "Repeat new password",
+    "submit": "Change password",
+    "saved": "Password changed.",
+    "tooShort": "Password must be at least 8 characters.",
+    "tooLong": "Password must be at most 128 characters.",
+    "mismatch": "The passwords do not match."
+  },
+  "appearance": {
+    "heading": "Language and appearance"
+  },
+  "language": {
+    "label": "Language",
+    "description": "Applies to the whole app in this browser."
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  }
+}
