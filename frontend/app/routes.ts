@@ -3,6 +3,9 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes"
 export default [
   index("routes/public/landing.tsx", { id: "landing-vi" }),
   route("en", "routes/public/landing.tsx", { id: "landing-en" }),
+  route("login", "routes/auth/login.tsx"),
+  route("register", "routes/auth/register.tsx"),
+  route("auth/google/callback", "routes/auth/google-callback.tsx"),
   route("actions/locale", "routes/actions/locale.ts"),
   route("actions/theme", "routes/actions/theme.ts"),
   route("*", "routes/not-found.tsx"),
