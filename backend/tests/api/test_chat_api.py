@@ -10,7 +10,8 @@ from pharma_agent.domain.agent.schemas import (
 from pharma_agent.domain.conversation.models import ConversationSummary
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
-from tests.api.harness import OWNER, build_harness, parse_sse
+from tests.api.harness import OWNER, build_harness, ui_chunks
+from tests.contract.invariants import assert_stream_invariants
 from tests.fakes import FakeLlm
 
 
@@ -33,28 +34,52 @@ def script_turn(llm: FakeLlm) -> None:
     )
 
 
-async def test_stream_emits_conversation_first_and_done_last() -> None:
+async def test_stream_speaks_ui_message_stream_v1() -> None:
     harness = build_harness()
     script_turn(harness.llm)
     async with harness.client() as client:
         response = await client.post(
             "/api/v1/chat/stream", json={"message": "Paracetamol uống bao nhiêu?"}
         )
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("text/event-stream")
-        events = parse_sse(response.text)
 
-    names = [name for name, _ in events]
-    assert names[0] == "conversation" and names[-1] == "done"
-    assert {"phase", "evidence", "token", "citations"} <= set(names)
-    done = events[-1][1]
-    conversation_id = str(events[0][1]["conversation_id"])
-    assert (
-        done["status"] == "completed"
-        and done["message_id"]
-        and done["conversation_id"] == conversation_id
-    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["x-vercel-ai-ui-message-stream"] == "v1"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert "event:" not in response.text
+
+    chunks = ui_chunks(response.text)
+    assert_stream_invariants(chunks)
+    assert {"data-phase", "data-evidence", "text-delta", "source-document"} <= {
+        chunk["type"] for chunk in chunks
+    }
+    conversation_id = str(chunks[1]["data"]["id"])
+    _, assistant = harness.repo.message_log[conversation_id]
+    assert chunks[0] == {"type": "start", "messageId": assistant.message_id}
+    assert [
+        chunk["providerMetadata"]["pharma"]["index"]
+        for chunk in chunks
+        if chunk["type"] == "source-document"
+    ] == [citation.index for citation in assistant.citations]
+    finish = chunks[-1]
+    assert finish["finishReason"] == "stop"
+    assert finish["messageMetadata"]["status"] == "completed"
+    assert finish["messageMetadata"]["persisted"] is True
+    assert finish["messageMetadata"]["runId"] == assistant.run_id
     assert harness.repo.rows[conversation_id].user_id == OWNER.hex
+
+
+async def test_stream_errors_before_streaming_are_problem_json() -> None:
+    harness = build_harness()
+    async with harness.client() as client:
+        response = await client.post(
+            "/api/v1/chat/stream",
+            json={"message": "hi", "conversation_id": "f" * 32},
+        )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "CONVERSATION_NOT_FOUND"
 
 
 async def test_non_stream_chat_and_background_summary() -> None:

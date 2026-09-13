@@ -37,8 +37,9 @@ from pharma_agent.infrastructure.persistence.postgres.tables import (
 )
 from pharma_agent.infrastructure.settings import Settings
 from tests.api.asgi import running
-from tests.api.harness import parse_sse
+from tests.api.harness import ui_chunks
 from tests.api.test_chat_api import script_turn
+from tests.contract.invariants import assert_stream_invariants
 from tests.domain.factories import make_hit
 from tests.fakes import FakeLlm, FakeRetriever, build_deps
 
@@ -120,9 +121,11 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
             json={"message": "Paracetamol uống bao nhiêu?"},
             headers=headers,
         )
-        events = parse_sse(response.text)
-        conversation_id = str(events[0][1]["conversation_id"])
-        assert events[-1][0] == "done" and events[-1][1]["message_id"]
+        chunks = ui_chunks(response.text)
+        assert_stream_invariants(chunks)
+        conversation_id = str(chunks[1]["data"]["id"])
+        message_id = str(chunks[0]["messageId"])
+        assert chunks[-1]["messageMetadata"]["persisted"] is True
 
         listed = await client.get("/api/v1/conversations", headers=headers)
         assert [item["id"] for item in listed.json()["items"]] == [conversation_id]
@@ -156,7 +159,6 @@ async def test_register_login_stream_and_persist(migrated_dsn: str) -> None:
         visible = await client.get("/api/v1/skills", headers=headers)
         assert uploaded.json()["name"] in {item["name"] for item in visible.json()}
 
-        message_id = str(events[-1][1]["message_id"])
         rated = await client.post(
             f"/api/v1/messages/{message_id}/feedback",
             headers=headers,

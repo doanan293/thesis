@@ -5,6 +5,7 @@ import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
@@ -118,15 +119,22 @@ async def _ok() -> bool:
     return True
 
 
-def parse_sse(body: str) -> list[tuple[str, dict[str, object]]]:
-    events: list[tuple[str, dict[str, object]]] = []
+def parse_sse(body: str) -> list[str]:
+    """The data payload of every SSE event; comment lines such as pings are skipped."""
+    payloads: list[str] = []
     for block in body.replace("\r\n", "\n").split("\n\n"):
-        name, data = "", ""
-        for line in block.split("\n"):
-            if line.startswith("event:"):
-                name = line.removeprefix("event:").strip()
-            elif line.startswith("data:"):
-                data += line.removeprefix("data:").strip()
-        if name and data:
-            events.append((name, json.loads(data)))
-    return events
+        lines = [
+            line.removeprefix("data:").removeprefix(" ")
+            for line in block.split("\n")
+            if line.startswith("data:")
+        ]
+        if lines:
+            payloads.append("\n".join(lines))
+    return payloads
+
+
+def ui_chunks(body: str) -> list[dict[str, Any]]:
+    """Decoded UI Message Stream chunks; the stream must end with `data: [DONE]`."""
+    payloads = parse_sse(body)
+    assert payloads and payloads[-1] == "[DONE]", payloads[-1:]
+    return [json.loads(payload) for payload in payloads[:-1]]

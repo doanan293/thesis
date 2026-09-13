@@ -1,15 +1,14 @@
 import logging
-from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from sse_starlette import EventSourceResponse, ServerSentEvent
+from sse_starlette import EventSourceResponse
 from starlette.background import BackgroundTask
 
 from pharma_agent.api.deps import ContainerDep, UserIdDependency, require_chat
 from pharma_agent.api.problems import problem_responses
 from pharma_agent.api.schemas import ChatRequest
-from pharma_agent.api.sse import to_server_sent_event
+from pharma_agent.api.ui_stream import UI_MESSAGE_STREAM_HEADERS, ui_message_stream
 from pharma_agent.application.chat.service import ChatTurnResult
 from pharma_agent.application.memory.summarize import SummarizeConversation
 
@@ -57,15 +56,10 @@ def build_chat_router(current_user_id: UserIdDependency) -> APIRouter:
         session = await service.open_turn(
             user_id=user_id, message=body.message, conversation_id=body.conversation_id
         )
-
-        async def stream() -> AsyncIterator[ServerSentEvent]:
-            async for event in session.events():
-                yield to_server_sent_event(event)
-
         return EventSourceResponse(
-            stream(),
+            ui_message_stream(session.events()),
             ping=15,
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers=UI_MESSAGE_STREAM_HEADERS,
             background=BackgroundTask(
                 summarize_quietly,
                 container.summarizer,
