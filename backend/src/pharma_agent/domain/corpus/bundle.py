@@ -6,20 +6,36 @@ backend import calls ``read_bundle``. Both run the same content checks.
 
 import base64
 import binascii
+import hashlib
+import json
 import re
 import struct
 from collections.abc import Sequence
 from enum import StrEnum
+from pathlib import Path
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from pharma_agent.domain.shared.errors import DomainError
 
 BUNDLE_SCHEMA_VERSION: Final = "knowledge-bundle/v1"
+MANIFEST_FILE: Final = "manifest.json"
+DOCUMENTS_FILE: Final = "documents.jsonl"
+SECTIONS_FILE: Final = "sections.jsonl"
+GLOSSARY_FILE: Final = "glossary.json"
+COLLOQUIAL_MAPPINGS_FILE: Final = "colloquial_mappings.json"
+EMBEDDINGS_DIR: Final = "embeddings"
+REQUIRED_FILES: Final = (
+    DOCUMENTS_FILE,
+    SECTIONS_FILE,
+    GLOSSARY_FILE,
+    COLLOQUIAL_MAPPINGS_FILE,
+)
 
 _STRICT = ConfigDict(extra="forbid", strict=True)
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class DocumentKind(StrEnum):
@@ -193,3 +209,397 @@ def decode_vector(data: str, dims: int) -> list[float]:
     if len(raw) != dims * 4:
         raise ValueError(f"vector has {len(raw)} bytes, expected {dims * 4} (dims * 4)")
     return list(struct.unpack(f"<{dims}f", raw))
+
+
+class _EmbeddingLine(BaseModel):
+    model_config = _STRICT
+
+    embedding_text_sha256: str = Field(pattern=_SHA256_RE.pattern)
+    dims: int
+    vector: str
+
+
+_GLOSSARY_ADAPTER = TypeAdapter(list[GlossaryEntry])
+_MAPPINGS_ADAPTER = TypeAdapter(list[ColloquialMappingRecord])
+
+
+def read_bundle(directory: Path) -> KnowledgeBundle:
+    """Read and validate a bundle directory; every problem is reported at once."""
+    manifest_path = directory / MANIFEST_FILE
+    if not manifest_path.is_file():
+        raise BundleValidationError([f"{MANIFEST_FILE}: file is missing"])
+    try:
+        manifest = BundleManifest.model_validate_json(manifest_path.read_bytes())
+    except ValidationError as error:
+        raise BundleValidationError(
+            _validation_problems(MANIFEST_FILE, error)
+        ) from error
+
+    problems: list[str] = []
+    texts = _read_manifest_files(directory, manifest, problems)
+    documents = _parse_jsonl(
+        DOCUMENTS_FILE, texts.get(DOCUMENTS_FILE, ""), DocumentRecord, problems
+    )
+    sections = _parse_jsonl(
+        SECTIONS_FILE, texts.get(SECTIONS_FILE, ""), SectionRecord, problems
+    )
+    glossary = _parse_json_list(
+        GLOSSARY_FILE, texts.get(GLOSSARY_FILE), _GLOSSARY_ADAPTER, problems
+    )
+    mappings = _parse_json_list(
+        COLLOQUIAL_MAPPINGS_FILE,
+        texts.get(COLLOQUIAL_MAPPINGS_FILE),
+        _MAPPINGS_ADAPTER,
+        problems,
+    )
+    for name, field, expected in (
+        (DOCUMENTS_FILE, "document_count", manifest.document_count),
+        (SECTIONS_FILE, "section_count", manifest.section_count),
+    ):
+        if name in texts and expected != _record_count(texts[name]):
+            problems.append(
+                f"{MANIFEST_FILE}: {field}: {expected} does not match "
+                f"{name} ({_record_count(texts[name])} records)"
+            )
+    problems.extend(_content_problems(documents, sections, glossary, mappings))
+
+    embeddings: dict[str, dict[str, list[float]]] = {}
+    for entry in manifest.embeddings:
+        text = texts.get(entry.file)
+        if text is not None and entry.dims >= 1:
+            embeddings[entry.model] = _parse_embeddings(
+                entry.file, text, entry.dims, problems
+            )
+
+    if problems:
+        raise BundleValidationError(problems)
+    return KnowledgeBundle(
+        manifest=manifest,
+        documents=[record for _, record in documents],
+        sections=[record for _, record in sections],
+        glossary=glossary,
+        colloquial_mappings=mappings,
+        embeddings=embeddings,
+    )
+
+
+def write_bundle(bundle: KnowledgeBundle, directory: Path) -> BundleManifest:
+    """Validate, write every file and return the manifest with computed digests."""
+    problems = _content_problems(
+        list(enumerate(bundle.documents, start=1)),
+        list(enumerate(bundle.sections, start=1)),
+        bundle.glossary,
+        bundle.colloquial_mappings,
+    )
+    payloads: dict[str, bytes] = {
+        DOCUMENTS_FILE: _jsonl_bytes(bundle.documents),
+        SECTIONS_FILE: _jsonl_bytes(bundle.sections),
+        GLOSSARY_FILE: _json_list_bytes(bundle.glossary),
+        COLLOQUIAL_MAPPINGS_FILE: _json_list_bytes(bundle.colloquial_mappings),
+    }
+    embedding_files: list[BundleEmbeddingFile] = []
+    for model, vectors in sorted(bundle.embeddings.items()):
+        where = f"embeddings[{model!r}]"
+        file_name = f"{EMBEDDINGS_DIR}/{model_slug(model)}.jsonl"
+        lengths = sorted({len(vector) for vector in vectors.values()})
+        if not model_slug(model):
+            problems.append(f"{where}: model name must contain letters or digits")
+        elif file_name in payloads:
+            problems.append(f"{where}: model slug collides with another model")
+        elif len(lengths) != 1 or lengths[0] < 1:
+            problems.append(
+                f"{where}: vectors must share one non-zero length, got {lengths}"
+            )
+        else:
+            problems.extend(
+                f"{where}: {sha!r} is not a sha256 hex digest"
+                for sha in vectors
+                if not _SHA256_RE.match(sha)
+            )
+            lines = [
+                json.dumps(
+                    {
+                        "embedding_text_sha256": sha,
+                        "dims": lengths[0],
+                        "vector": encode_vector(vector),
+                    },
+                    separators=(",", ":"),
+                )
+                for sha, vector in sorted(vectors.items())
+            ]
+            payloads[file_name] = "".join(f"{line}\n" for line in lines).encode()
+            embedding_files.append(
+                BundleEmbeddingFile(model=model, dims=lengths[0], file=file_name)
+            )
+    if problems:
+        raise BundleValidationError(problems)
+
+    manifest = BundleManifest(
+        schema_version=bundle.manifest.schema_version,
+        collection=bundle.manifest.collection,
+        generator=bundle.manifest.generator,
+        source_digests=dict(bundle.manifest.source_digests),
+        document_count=len(bundle.documents),
+        section_count=len(bundle.sections),
+        files={
+            name: BundleFile(sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
+            for name, data in payloads.items()
+        },
+        embeddings=embedding_files,
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    if embedding_files:
+        (directory / EMBEDDINGS_DIR).mkdir(exist_ok=True)
+    for name, data in payloads.items():
+        (directory / name).write_bytes(data)
+    (directory / MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    return manifest
+
+
+def _format_loc(loc: Sequence[int | str]) -> str:
+    text = ""
+    for part in loc:
+        if isinstance(part, int):
+            text += f"[{part}]"
+        else:
+            text += f".{part}" if text else part
+    return text or "(root)"
+
+
+def _validation_problems(where: str, error: ValidationError) -> list[str]:
+    return [
+        f"{where}: {_format_loc(detail['loc'])}: {detail['msg']}"
+        for detail in error.errors()
+    ]
+
+
+def _read_manifest_files(
+    directory: Path, manifest: BundleManifest, problems: list[str]
+) -> dict[str, str]:
+    expected_embedding_files: set[str] = set()
+    seen_models: set[str] = set()
+    for index, entry in enumerate(manifest.embeddings):
+        where = f"{MANIFEST_FILE}: embeddings[{index}]"
+        expected_file = f"{EMBEDDINGS_DIR}/{model_slug(entry.model)}.jsonl"
+        if not model_slug(entry.model):
+            problems.append(f"{where}.model: must contain letters or digits")
+            continue
+        if entry.model in seen_models:
+            problems.append(f"{where}.model: duplicate model {entry.model!r}")
+        seen_models.add(entry.model)
+        if entry.dims < 1:
+            problems.append(f"{where}.dims: must be >= 1, got {entry.dims}")
+        if entry.file != expected_file:
+            problems.append(
+                f"{where}.file: expected {expected_file!r}, got {entry.file!r}"
+            )
+        elif entry.file not in manifest.files:
+            problems.append(f"{where}.file: {entry.file!r} is not listed in files")
+        expected_embedding_files.add(expected_file)
+
+    problems.extend(
+        f"{MANIFEST_FILE}: files.{name}: missing entry"
+        for name in REQUIRED_FILES
+        if name not in manifest.files
+    )
+    texts: dict[str, str] = {}
+    for name, expected in manifest.files.items():
+        if name not in REQUIRED_FILES and name not in expected_embedding_files:
+            problems.append(
+                f"{MANIFEST_FILE}: files.{name}: not part of {BUNDLE_SCHEMA_VERSION}"
+            )
+            continue
+        path = directory / name
+        if not path.is_file():
+            problems.append(f"{name}: file is missing")
+            continue
+        data = path.read_bytes()
+        if len(data) != expected.bytes:
+            problems.append(
+                f"{name}: size {len(data)} bytes does not match manifest "
+                f"({expected.bytes})"
+            )
+        if hashlib.sha256(data).hexdigest() != expected.sha256:
+            problems.append(f"{name}: sha256 does not match manifest")
+        try:
+            texts[name] = data.decode("utf-8")
+        except UnicodeDecodeError:
+            problems.append(f"{name}: file is not valid UTF-8")
+    return texts
+
+
+def _record_count(text: str) -> int:
+    return sum(1 for line in text.split("\n") if line.strip())
+
+
+def _parse_jsonl[RecordT: BaseModel](
+    name: str, text: str, model: type[RecordT], problems: list[str]
+) -> list[tuple[int, RecordT]]:
+    records: list[tuple[int, RecordT]] = []
+    for line_number, line in enumerate(text.split("\n"), start=1):
+        if not line.strip():
+            continue
+        try:
+            records.append((line_number, model.model_validate_json(line)))
+        except ValidationError as error:
+            problems.extend(_validation_problems(f"{name}:{line_number}", error))
+    return records
+
+
+def _parse_json_list[RecordT](
+    name: str,
+    text: str | None,
+    adapter: TypeAdapter[list[RecordT]],
+    problems: list[str],
+) -> list[RecordT]:
+    if text is None:
+        return []
+    try:
+        return adapter.validate_json(text)
+    except ValidationError as error:
+        problems.extend(_validation_problems(name, error))
+        return []
+
+
+def _page_problems(
+    where: str, prefix: str, start_page: int | None, end_page: int | None
+) -> list[str]:
+    problems = [
+        f"{where}: {prefix}{field}: must be >= 1, got {page}"
+        for field, page in (("start_page", start_page), ("end_page", end_page))
+        if page is not None and page < 1
+    ]
+    if start_page is not None and end_page is not None and start_page > end_page:
+        problems.append(
+            f"{where}: {prefix}start_page: {start_page} is after end_page {end_page}"
+        )
+    return problems
+
+
+def _content_problems(
+    documents: Sequence[tuple[int, DocumentRecord]],
+    sections: Sequence[tuple[int, SectionRecord]],
+    glossary: Sequence[GlossaryEntry],
+    mappings: Sequence[ColloquialMappingRecord],
+) -> list[str]:
+    problems: list[str] = []
+    document_lines: dict[str, int] = {}
+    for line, document in documents:
+        where = f"{DOCUMENTS_FILE}:{line}"
+        if not document.key.strip():
+            problems.append(f"{where}: key: must not be empty")
+        elif document.key in document_lines:
+            problems.append(
+                f"{where}: key: duplicate document key {document.key!r} "
+                f"(first on line {document_lines[document.key]})"
+            )
+        else:
+            document_lines[document.key] = line
+
+    section_lines: dict[str, int] = {}
+    ordinal_lines: dict[tuple[str, int], int] = {}
+    for line, section in sections:
+        where = f"{SECTIONS_FILE}:{line}"
+        if not section.key.strip():
+            problems.append(f"{where}: key: must not be empty")
+        elif section.key in section_lines:
+            problems.append(
+                f"{where}: key: duplicate section key {section.key!r} "
+                f"(first on line {section_lines[section.key]})"
+            )
+        else:
+            section_lines[section.key] = line
+        if section.document_key not in document_lines:
+            problems.append(
+                f"{where}: document_key: unknown document {section.document_key!r}"
+            )
+        ordinal_key = (section.document_key, section.ordinal)
+        if ordinal_key in ordinal_lines:
+            problems.append(
+                f"{where}: ordinal: duplicate ordinal {section.ordinal} in document "
+                f"{section.document_key!r} (first on line {ordinal_lines[ordinal_key]})"
+            )
+        else:
+            ordinal_lines[ordinal_key] = line
+        problems.extend(_page_problems(where, "", section.start_page, section.end_page))
+        if not section.blocks:
+            problems.append(f"{where}: blocks: must contain at least one block")
+        for index, block in enumerate(section.blocks):
+            prefix = f"blocks[{index}]."
+            if not block.markdown.strip():
+                problems.append(f"{where}: {prefix}markdown: must not be empty")
+            problems.extend(
+                _page_problems(where, prefix, block.start_page, block.end_page)
+            )
+
+    term_indexes: dict[str, int] = {}
+    for index, entry in enumerate(glossary):
+        where = f"{GLOSSARY_FILE}: [{index}].term"
+        term = entry.term.strip()
+        if not term:
+            problems.append(f"{where}: must not be empty")
+        elif term.casefold() in term_indexes:
+            problems.append(
+                f"{where}: duplicate term {term!r} (case-insensitive, first at "
+                f"[{term_indexes[term.casefold()]}])"
+            )
+        else:
+            term_indexes[term.casefold()] = index
+
+    mapped_by: dict[str, int] = {}
+    for index, record in enumerate(mappings):
+        for key_index, section_key in enumerate(record.section_keys):
+            where = f"{COLLOQUIAL_MAPPINGS_FILE}: [{index}].section_keys[{key_index}]"
+            if section_key not in section_lines:
+                problems.append(f"{where}: unknown section {section_key!r}")
+            elif section_key in mapped_by:
+                problems.append(
+                    f"{where}: section {section_key!r} is already mapped by "
+                    f"[{mapped_by[section_key]}]"
+                )
+            else:
+                mapped_by[section_key] = index
+    return problems
+
+
+def _parse_embeddings(
+    name: str, text: str, dims: int, problems: list[str]
+) -> dict[str, list[float]]:
+    vectors: dict[str, list[float]] = {}
+    first_lines: dict[str, int] = {}
+    for line_number, line in enumerate(text.split("\n"), start=1):
+        if not line.strip():
+            continue
+        where = f"{name}:{line_number}"
+        try:
+            record = _EmbeddingLine.model_validate_json(line)
+        except ValidationError as error:
+            problems.extend(_validation_problems(where, error))
+            continue
+        sha = record.embedding_text_sha256
+        if record.dims != dims:
+            problems.append(
+                f"{where}: dims: {record.dims} does not match manifest dims {dims}"
+            )
+        elif sha in first_lines:
+            problems.append(
+                f"{where}: embedding_text_sha256: duplicate of line {first_lines[sha]}"
+            )
+        else:
+            first_lines[sha] = line_number
+            try:
+                vectors[sha] = decode_vector(record.vector, dims)
+            except ValueError as error:
+                problems.append(f"{where}: vector: {error}")
+    return vectors
+
+
+def _jsonl_bytes(records: Sequence[BaseModel]) -> bytes:
+    return "".join(f"{record.model_dump_json()}\n" for record in records).encode()
+
+
+def _json_list_bytes(records: Sequence[BaseModel]) -> bytes:
+    payload = [record.model_dump(mode="json") for record in records]
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode()
