@@ -1,6 +1,9 @@
 import type { ReactNode } from "react"
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router"
 
+import { Toaster } from "~/components/ui/toast"
+import { TooltipProvider } from "~/components/ui/tooltip"
+
 import type { Route } from "./+types/root"
 import stylesheet from "./app.css?url"
 
@@ -27,5 +30,11 @@ export function Layout({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />
+  return (
+    <Toaster>
+      <TooltipProvider>
+        <Outlet />
+      </TooltipProvider>
+    </Toaster>
+  )
 }
