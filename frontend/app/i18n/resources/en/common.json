@@ -12,6 +12,15 @@
     "skills": "Skills",
     "settings": "Settings"
   },
+  "userMenu": {
+    "open": "Account menu",
+    "logout": "Sign out"
+  },
+  "shell": {
+    "toggleSidebar": "Toggle sidebar",
+    "sidebarTitle": "Sidebar",
+    "sidebarDescription": "Move between chat, skills and settings."
+  },
   "errorPage": {
     "title": "Something went wrong",
     "description": "This page could not be loaded. Please try again.",

@@ -8,3 +8,4 @@ build/
 playwright-report/
 test-results/
 __screenshots__/
+.vitest/

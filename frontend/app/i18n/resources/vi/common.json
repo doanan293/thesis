@@ -12,6 +12,15 @@
     "skills": "Kỹ năng",
     "settings": "Cài đặt"
   },
+  "userMenu": {
+    "open": "Menu tài khoản",
+    "logout": "Đăng xuất"
+  },
+  "shell": {
+    "toggleSidebar": "Ẩn hoặc hiện thanh bên",
+    "sidebarTitle": "Thanh bên",
+    "sidebarDescription": "Chuyển giữa trò chuyện, kỹ năng và cài đặt."
+  },
   "errorPage": {
     "title": "Đã xảy ra lỗi",
     "description": "Không tải được trang này. Vui lòng thử lại.",

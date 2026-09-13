@@ -4,6 +4,8 @@ import { render } from "vitest-browser-react"
 
 import { Toaster, useToastManager } from "~/components/ui/toast"
 
+import { TestProviders } from "../../../tests/utils/providers"
+
 function SaveButton() {
   const manager = useToastManager()
   return (
@@ -20,9 +22,11 @@ function SaveButton() {
 
 test("Toaster shows a toast added through its manager", async () => {
   await render(
-    <Toaster>
-      <SaveButton />
-    </Toaster>
+    <TestProviders>
+      <Toaster>
+        <SaveButton />
+      </Toaster>
+    </TestProviders>
   )
 
   await page.getByRole("button", { name: "Lưu" }).click()
