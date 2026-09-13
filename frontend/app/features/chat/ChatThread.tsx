@@ -16,6 +16,7 @@ import { toast } from "~/components/ui/toast"
 import { apiErrorMessage } from "~/i18n/error-message"
 
 import { ChatSession } from "./components/ChatSession"
+import { NewChat } from "./components/NewChat"
 import { toPharmaMessage } from "./lib/chat-messages"
 import { readInitialQuestion } from "./lib/location-state"
 
@@ -124,7 +125,7 @@ function ConversationChat({ conversationId }: { conversationId: string }) {
 
 export function ChatThread({ conversationId }: ChatThreadProps) {
   if (conversationId === undefined) {
-    return null
+    return <NewChat />
   }
   return (
     <ConversationChat key={conversationId} conversationId={conversationId} />
