@@ -34,6 +34,14 @@ class OpenAiEmbedder:
         self._model = model
         self._dimension = dimension
 
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []

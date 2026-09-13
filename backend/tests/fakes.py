@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import TypeVar
@@ -130,6 +131,42 @@ class FakeSkillCatalog:
         return [s for s in self.skills if s.enabled and s.name in wanted]
 
 
+FAKE_EMBEDDING_MODEL = "fake-embedding-4d"
+FAKE_EMBEDDING_DIMENSION = 4
+
+
+def fake_vector(text: str) -> list[float]:
+    """Deterministic vector from sha256(text).
+
+    Components are k/16 (k in 1..16), so they survive float32 encoding exactly and are never
+    all zero.
+    """
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return [(digest[i] % 16 + 1) / 16 for i in range(FAKE_EMBEDDING_DIMENSION)]
+
+
+class FakeEmbedder:
+    """Implements `pharma_agent.domain.corpus.ports.Embedder`; records every batch."""
+
+    def __init__(self, *, fail_on_batch: int | None = None) -> None:
+        self.batches: list[list[str]] = []
+        self._fail_on_batch = fail_on_batch
+
+    @property
+    def model(self) -> str:
+        return FAKE_EMBEDDING_MODEL
+
+    @property
+    def dimension(self) -> int:
+        return FAKE_EMBEDDING_DIMENSION
+
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        self.batches.append(list(texts))
+        if self._fail_on_batch is not None and len(self.batches) == self._fail_on_batch:
+            raise RetrievalError("fake embedding endpoint unavailable")
+        return [fake_vector(text) for text in texts]
+
+
 MONOGRAPH_SKILL_MD = """---
 name: drug-monograph
 description: Tra cứu chuyên luận thuốc. Dùng khi hỏi liều, chỉ định, chống chỉ định của một thuốc.
@@ -172,6 +209,9 @@ def build_deps(
 
 
 __all__ = [
+    "FAKE_EMBEDDING_DIMENSION",
+    "FAKE_EMBEDDING_MODEL",
+    "FakeEmbedder",
     "FakeHydrator",
     "FakeLlm",
     "FakeReranker",
@@ -180,5 +220,6 @@ __all__ = [
     "LlmError",
     "RetrievalError",
     "build_deps",
+    "fake_vector",
     "monograph_skill",
 ]

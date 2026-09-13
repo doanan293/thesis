@@ -1,0 +1,47 @@
+{
+  "schema_version": "knowledge-bundle/v1",
+  "collection": {
+    "key": "formulary",
+    "title": "Dược thư Quốc gia Việt Nam (fixture)"
+  },
+  "generator": {
+    "name": "pharma-agent-tests",
+    "version": "1",
+    "build_id": "knowledge-bundle-small"
+  },
+  "source_digests": {
+    "source_pdf_sha256": "c250b033cb4eef91ea25765805e36867e0f2a759337959ef9b53e0968edb324e",
+    "snapshot_sha256": "842ef7e7cb6a252400737dfbfb4d2fb87cf849154623fece5f2ca49c5f5257cd"
+  },
+  "document_count": 2,
+  "section_count": 5,
+  "files": {
+    "documents.jsonl": {
+      "sha256": "acd0519fb4a7c4a23158adea5abb0e8b000bdfe3ec001b37fe8bfd5535bb114f",
+      "bytes": 427
+    },
+    "sections.jsonl": {
+      "sha256": "1e88e2399a9dd3e45118405f83320cdc6ad63a1d6b75b026611f05749c69403f",
+      "bytes": 25841
+    },
+    "glossary.json": {
+      "sha256": "518b98adb69ae082668bc29c23444e998bbb221e9aab6e5ecf7f85ba7f212b95",
+      "bytes": 631
+    },
+    "colloquial_mappings.json": {
+      "sha256": "24180327936b96e668c184d19778fabe18dd1427013acdf317c27f723a0c5dcf",
+      "bytes": 328
+    },
+    "embeddings/fake_embedding_4d.jsonl": {
+      "sha256": "0e78f00278aeb14d97cc22ea134922fcadb7c6c463c92fe7ee38e6905ac7329b",
+      "bytes": 1794
+    }
+  },
+  "embeddings": [
+    {
+      "model": "fake-embedding-4d",
+      "dims": 4,
+      "file": "embeddings/fake_embedding_4d.jsonl"
+    }
+  ]
+}

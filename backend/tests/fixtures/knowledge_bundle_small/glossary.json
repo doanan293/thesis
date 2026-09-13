@@ -1,0 +1,30 @@
+[
+  {
+    "term": "NSAID",
+    "case_sensitive": true,
+    "vietnamese_expansions": [
+      "thuốc chống viêm không steroid"
+    ],
+    "english_expansions": [
+      "non-steroidal anti-inflammatory drug"
+    ],
+    "aliases": [],
+    "category": "drug_class",
+    "confidence": "high",
+    "source": "fixture"
+  },
+  {
+    "term": "G6PD",
+    "case_sensitive": true,
+    "vietnamese_expansions": [
+      "glucose-6-phosphat dehydrogenase"
+    ],
+    "english_expansions": [
+      "glucose-6-phosphate dehydrogenase"
+    ],
+    "aliases": [],
+    "category": "enzyme",
+    "confidence": "high",
+    "source": "fixture"
+  }
+]

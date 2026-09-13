@@ -1,0 +1,16 @@
+[
+  {
+    "key": "panadol-extra",
+    "aliases": [
+      "panadol đỏ",
+      "thuốc giảm đau viên đỏ"
+    ],
+    "visual_sign": "viên nén dài bao phim màu đỏ",
+    "product_names": [
+      "Panadol Extra"
+    ],
+    "section_keys": [
+      "leaflet:ankhang:thuoc-giam-dau:panadol-extra:cong-dung"
+    ]
+  }
+]
