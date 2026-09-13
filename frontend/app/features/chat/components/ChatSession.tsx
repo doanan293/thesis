@@ -96,6 +96,9 @@ export function ChatSession({
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [citation, setCitation] = useState<CitationTarget | null>(null)
   const [userScrolled, setUserScrolled] = useState(false)
+  const [contentFits, setContentFits] = useState(false)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const lastQuestionRef = useRef("")
   const appliedPagesRef = useRef(1)
   const initialSentRef = useRef(false)
@@ -219,6 +222,20 @@ export function ChatSession({
   const markUserScrolled = useCallback(() => setUserScrolled(true), [])
 
   useEffect(() => {
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (viewport === null || content === null) {
+      return undefined
+    }
+    const observer = new ResizeObserver(() => {
+      setContentFits(viewport.scrollHeight <= viewport.clientHeight + 1)
+    })
+    observer.observe(viewport)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
     if (pages.length <= appliedPagesRef.current) {
       return
     }
@@ -246,15 +263,20 @@ export function ChatSession({
             hasOlder={hasOlder}
             loadingOlder={loadingOlder}
             userScrolled={userScrolled}
+            contentFits={contentFits}
             onLoadOlder={onLoadOlder}
           />
           <MessageScrollerViewport
+            ref={viewportRef}
             aria-label={t("thread.label")}
             onWheel={markUserScrolled}
             onTouchMove={markUserScrolled}
             onKeyDown={markUserScrolled}
           >
-            <MessageScrollerContent className="mx-auto w-full max-w-3xl px-4 py-6">
+            <MessageScrollerContent
+              ref={contentRef}
+              className="mx-auto w-full max-w-3xl px-4 py-6"
+            >
               {messages.map((message) => (
                 <MessageScrollerItem
                   key={message.id}

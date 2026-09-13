@@ -8,6 +8,7 @@ export type OlderMessagesLoaderProps = {
   hasOlder: boolean
   loadingOlder: boolean
   userScrolled: boolean
+  contentFits: boolean
   onLoadOlder: () => void
 }
 
@@ -15,12 +16,16 @@ export function OlderMessagesLoader({
   hasOlder,
   loadingOlder,
   userScrolled,
+  contentFits,
   onLoadOlder,
 }: OlderMessagesLoaderProps) {
   const { t } = useTranslation("chat")
-  const { start, end } = useMessageScrollerScrollable()
+  const { start } = useMessageScrollerScrollable()
+  // The scrollable state is {start: false, end: false} until the scroller measures anything,
+  // which reads as "at the top of a thread that fits". Load only after the user scrolled to the
+  // top, or once ChatSession has measured that the thread fits in the viewport.
   const shouldLoad =
-    hasOlder && !loadingOlder && !start && (userScrolled || !end)
+    hasOlder && !loadingOlder && ((userScrolled && !start) || contentFits)
 
   useEffect(() => {
     if (shouldLoad) {

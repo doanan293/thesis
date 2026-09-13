@@ -50,6 +50,11 @@ describe("loading older messages", () => {
     await expect
       .element(page.getByText("Câu hỏi new 15", { exact: true }))
       .toBeVisible()
+    // A thread taller than the viewport requests nothing older until the user scrolls to the top.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 300)
+    })
+    expect(cursors).toEqual([null])
 
     const viewport = document.querySelector<HTMLElement>(
       '[data-slot="message-scroller-viewport"]'
