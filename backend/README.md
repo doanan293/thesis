@@ -31,7 +31,7 @@ uv run pharma-agent ask "..." --json           # kèm trace đầy đủ
 
 ## Chạy toàn bộ bằng Docker
 
-Chạy từ repo root. Cần `backend/.env` có LLM key và `PHARMA_AUTH__JWT_SECRET`. Port, file model
+Chạy từ repo root. Cần `backend/.env` có LLM key, `PHARMA_AUTH__JWT_SECRET` và `PHARMA_AUTH__CSRF_SECRET`. Cookie phiên có cờ `Secure`, trình duyệt chỉ nhận qua `http://localhost`; mở stack qua HTTP bằng tên máy khác (ví dụ IP LAN) thì đặt `COOKIE_SECURE=false` trong `.env` ở root. Port, file model
 và số luồng CPU đặt trong `.env` ở root, xem `.env.example`.
 
 ```bash
@@ -62,33 +62,93 @@ uv run pharma-agent migrate
 uv run pharma-agent serve            # http://127.0.0.1:8000/docs
 ```
 
-Cần thêm `PHARMA_AUTH__JWT_SECRET` (ít nhất 32 ký tự) trong `.env`. Không có
-`PHARMA_LLM__DEFAULT__API_KEY` thì API vẫn chạy, riêng `/chat` trả 503.
+Cần `PHARMA_AUTH__JWT_SECRET` và `PHARMA_AUTH__CSRF_SECRET` (mỗi giá trị ít nhất 32 ký tự) trong
+`.env`. Không có `PHARMA_LLM__DEFAULT__API_KEY` thì API vẫn chạy, riêng chat trả 503
+`AGENT_UNAVAILABLE`.
 
-Thử nhanh bằng curl:
+### Xác thực
+
+- **Trình duyệt**: cookie `pharma_session` (HttpOnly, `SameSite=Lax`, `Secure` theo
+  `PHARMA_AUTH__COOKIE_SECURE`, sống `PHARMA_AUTH__SESSION_LIFETIME_SECONDS` giây, mặc định 7 ngày).
+  Phiên lưu trong bảng `access_tokens`; đăng xuất xoá phiên trong DB.
+- **CSRF**: request có cookie `pharma_session` với method không an toàn (POST, PATCH, PUT, DELETE)
+  phải gửi header `x-csrftoken` bằng giá trị cookie `csrftoken` (cookie này có sau request GET
+  đầu tiên, ví dụ `/users/me`). Thiếu hoặc sai trả 403 `CSRF_FAILED`.
+- **CLI và test**: bearer JWT qua `/auth/jwt/login`, không bị kiểm tra CSRF.
+- **Google OAuth** (khi đặt `PHARMA_AUTH__GOOGLE_CLIENT_ID` và `PHARMA_AUTH__GOOGLE_CLIENT_SECRET`):
+  frontend gọi `GET /api/v1/auth/google/authorize`, Google chuyển về
+  `{PHARMA_AUTH__FRONTEND_URL}/auth/google/callback`, frontend gọi
+  `GET /api/v1/auth/google/callback?code=…&state=…` và nhận 204 kèm cookie `pharma_session`.
+
+Luồng cookie bằng curl (curl coi `localhost` là origin an toàn nên giữ cookie `Secure`):
 
 ```bash
-curl -s -X POST localhost:8000/api/v1/auth/register -H 'content-type: application/json' \
-  -d '{"email":"an@example.com","password":"S3cure-password!"}'
+JAR=$(mktemp)
+curl -s -c "$JAR" -b "$JAR" -X POST localhost:8000/api/v1/auth/register \
+  -H 'content-type: application/json' -d '{"email":"an@example.com","password":"S3cure-password!"}'
+curl -s -c "$JAR" -b "$JAR" -X POST localhost:8000/api/v1/auth/cookie/login \
+  -d 'username=an@example.com&password=S3cure-password!'
+curl -s -c "$JAR" -b "$JAR" localhost:8000/api/v1/users/me          # nhận thêm cookie csrftoken
+CSRF=$(awk '$6 == "csrftoken" {print $7}' "$JAR")
+CONVERSATION=$(curl -s -c "$JAR" -b "$JAR" -X POST localhost:8000/api/v1/conversations \
+  -H "x-csrftoken: $CSRF" | python -c 'import sys, json; print(json.load(sys.stdin)["id"])')
+curl -N -c "$JAR" -b "$JAR" -X POST localhost:8000/api/v1/chat/stream -H "x-csrftoken: $CSRF" \
+  -H 'content-type: application/json' \
+  -d "{\"message\":\"Paracetamol người lớn uống bao nhiêu?\",\"conversation_id\":\"$CONVERSATION\"}"
+curl -s -c "$JAR" -b "$JAR" -X POST localhost:8000/api/v1/auth/cookie/logout -H "x-csrftoken: $CSRF"
+```
+
+Luồng bearer:
+
+```bash
 TOKEN=$(curl -s -X POST localhost:8000/api/v1/auth/jwt/login \
   -d 'username=an@example.com&password=S3cure-password!' \
   | python -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+CONVERSATION=$(curl -s -X POST localhost:8000/api/v1/conversations -H "Authorization: Bearer $TOKEN" \
+  | python -c 'import sys, json; print(json.load(sys.stdin)["id"])')
 curl -N -X POST localhost:8000/api/v1/chat/stream -H "Authorization: Bearer $TOKEN" \
-  -H 'content-type: application/json' -d '{"message":"Paracetamol người lớn uống bao nhiêu?"}'
+  -H 'content-type: application/json' \
+  -d "{\"message\":\"Paracetamol người lớn uống bao nhiêu?\",\"conversation_id\":\"$CONVERSATION\"}"
 ```
 
-Luồng SSE lần lượt gồm `conversation`, `phase`, `skills_selected`, `evidence`, `token`,
-`citations`, `done`. Nếu không lưu được lượt hội thoại thì có thêm `error` với mã `PERSIST_FAILED`.
+### Dạng stream
 
-| Endpoint | Mô tả |
+`POST /api/v1/chat/stream` theo AI SDK UI Message Stream v1 (encoder `pharma_agent.api.ui_stream`).
+Header phản hồi: `x-vercel-ai-ui-message-stream: v1`, `Cache-Control: no-cache`,
+`X-Accel-Buffering: no`. Mỗi frame chỉ có một dòng `data: {json}` (không có `event:`), ping
+keepalive dạng comment mỗi 15 giây, frame cuối là `data: [DONE]`.
+
+| Chunk | Nội dung |
 | --- | --- |
-| `POST /api/v1/auth/register`, `/auth/jwt/login`, `/auth/google/*` | Đăng ký, đăng nhập (JWT), Google OAuth khi đã cấu hình |
-| `GET /api/v1/users/me` | Người dùng hiện tại |
-| `POST /api/v1/chat`, `/chat/stream` | Hỏi đáp một lượt (JSON hoặc SSE) |
-| `GET/PATCH/DELETE /api/v1/conversations/{id}`, `GET .../messages` | Lịch sử hội thoại |
-| `GET /api/v1/health` | Postgres, `corpus` (collection Qdrant khớp model embedding và mọi collection trong `PHARMA_RETRIEVAL__COLLECTIONS` có release hiện hành; nếu không, `reasons.corpus = "CORPUS_NOT_READY"`), trạng thái agent |
-| `GET/POST /api/v1/skills`, `PATCH/DELETE /api/v1/skills/{id}` | Skill hệ thống và skill tự tải lên (`SKILL.md` tối đa 64 KB) |
-| `POST /api/v1/messages/{id}/feedback` | Đánh giá câu trả lời (`up`/`down`), gửi thêm score sang Langfuse |
+| `{"type":"start","messageId":…}` | Chunk đầu; `messageId` là ID tin nhắn trợ lý |
+| `{"type":"data-conversation","transient":true,"data":{"id":…,"title":…}}` | Chunk thứ hai; không lưu vào tin nhắn |
+| `{"type":"data-phase","id":"phase","data":{"phase":…,"round":…}}` | `phase` là `guarding`, `understanding`, `selecting_skills`, `searching`, `reading` hoặc `answering`; `round` chỉ có khi `searching`; cùng `id` nên client cập nhật tại chỗ |
+| `{"type":"data-skills","data":{"skills":[{"name":…,"title":…}]}}` | Skill đã chọn |
+| `{"type":"data-evidence","id":"evidence","data":{"items":[…]}}` | Mỗi item: `index`, `source`, `title`, `section`, `startPage`, `endPage` (`null` khi không có), `snippet` |
+| `{"type":"text-start","id":"text"}`, `{"type":"text-delta","id":"text","delta":…}`, `{"type":"text-end","id":"text"}` | Câu trả lời; marker `[n]` không bị cắt giữa hai `text-delta` |
+| `{"type":"source-document","sourceId":…,"mediaType":"text/markdown","title":…,"providerMetadata":{"pharma":{…}}}` | Sau `text-end`, một chunk cho mỗi `[n]`: `sourceId` là `chunk_version_id`, `title` là `"{title} › {section}"`, `pharma` gồm `index`, `source`, `title`, `section`, `startPage`, `endPage`, `snippet`, `isCurrent` |
+| `{"type":"finish","finishReason":…,"messageMetadata":{…}}` | Chunk cuối trước `[DONE]`; `finishReason` là `error` khi `status` là `error` hoặc `timeout`, còn lại `stop`; `messageMetadata` gồm `status`, `errorCode`, `usage`, `runId`, `persisted`, `createdAt` |
+
+Mọi lỗi REST và lỗi trước khi stream bắt đầu trả `application/problem+json` (RFC 9457):
+`type`, `title`, `status`, `detail`, `code`, thêm `errors` khi 422.
+
+| Endpoint (tiền tố `/api/v1`) | Mô tả |
+| --- | --- |
+| `POST /auth/register` | Đăng ký |
+| `POST /auth/cookie/login`, `POST /auth/cookie/logout` | Đăng nhập, đăng xuất bằng cookie (trình duyệt) |
+| `POST /auth/jwt/login`, `POST /auth/jwt/logout` | Bearer JWT (CLI, test) |
+| `GET /auth/google/authorize`, `GET /auth/google/callback` | Google OAuth, đăng nhập bằng cookie |
+| `GET/PATCH /users/me`, `GET/PATCH/DELETE /users/{id}` | Người dùng hiện tại; quản trị người dùng (superuser) |
+| `POST /chat/stream`, `POST /chat` | Hỏi đáp một lượt (UI Message Stream hoặc JSON) |
+| `POST /conversations`, `GET /conversations?limit=&cursor=` | Tạo hội thoại; danh sách `{items, next_cursor}` |
+| `GET/PATCH/DELETE /conversations/{id}` | Xem, đổi tên, xoá hội thoại |
+| `GET /conversations/{id}/messages?limit=&cursor=` | Lịch sử dạng `UIMessage`, phân trang cursor |
+| `GET /messages/{message_id}/citations/{index}` | Toàn văn khối mà mô hình đã đọc cho citation |
+| `POST /messages/{message_id}/feedback` | Đánh giá câu trả lời (`up`/`down`), gửi score sang Langfuse |
+| `GET/POST /skills`, `PATCH/DELETE /skills/{id}` | Skill hệ thống và skill tự tải lên (`SKILL.md` tối đa 64 KB) |
+| `GET /health` | Postgres, `corpus` (collection Qdrant khớp model embedding và mọi collection trong `PHARMA_RETRIEVAL__COLLECTIONS` có release hiện hành; nếu không, `reasons.corpus = "CORPUS_NOT_READY"`), trạng thái agent |
+
+Schema OpenAPI cho frontend: `uv run pharma-agent export-openapi --output ../frontend/openapi.json`.
 
 ## Quan sát và dọn dẹp
 
@@ -105,6 +165,35 @@ một lần khi service khởi động. Có thể chạy tay:
 ```bash
 uv run pharma-agent cleanup-checkpoints --days 7
 ```
+
+Phiên cookie hết hạn không tự bị xoá khỏi `access_tokens` (fastapi-users chỉ bỏ qua chúng).
+Chạy định kỳ:
+
+```bash
+uv run pharma-agent cleanup-sessions
+```
+
+## Server E2E
+
+Playwright của frontend chạy backend bằng server E2E: app thật trên Postgres và Qdrant thật,
+LLM giả theo kịch bản và embedding giả 4 chiều. Mọi thứ giả nằm trong `tests/`, code production
+không có cờ "chế độ giả".
+
+```bash
+docker compose up -d postgres qdrant     # chạy từ repo root
+cd backend
+uv run python -m tests.e2e.server --port 8001
+```
+
+- Mỗi lần khởi động: xoá và tạo lại database của `E2E_POSTGRES_DSN` (mặc định
+  `postgresql+psycopg://thesis:thesis@localhost:5433/pharma_e2e`; tên database phải chứa `e2e`),
+  chạy migration, xoá collection `chunks_fake_embedding_4d` trong `E2E_QDRANT_URL` (mặc định
+  `http://localhost:6333`), import và publish bundle `tests/fixtures/knowledge_bundle_small`.
+  Index dùng alias riêng `e2e_chunks_current` (`PHARMA_RETRIEVAL__QDRANT_COLLECTION`), nên database dev
+  `thesis` và alias `chunks_current` không bị động tới.
+- Kịch bản theo câu hỏi: chứa `[e2e:blocked]` thì lượt kết thúc `blocked`; chứa `[e2e:timeout]`
+  thì `timeout` sau 5 giây; còn lại là câu trả lời có citation `[1]`.
+- Cookie phiên không đặt `Secure` để mọi trình duyệt nhận qua `http://`.
 
 ## Kiểm tra
 
