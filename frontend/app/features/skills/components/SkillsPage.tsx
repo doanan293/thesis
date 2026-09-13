@@ -5,6 +5,7 @@ import type { SkillView } from "~/api/gen/schemas"
 import { Spinner } from "~/components/ui/spinner"
 
 import { SkillCard } from "./SkillCard"
+import { UploadSkillForm } from "./UploadSkillForm"
 
 function SkillList({ items }: { items: SkillView[] }) {
   return (
@@ -45,6 +46,7 @@ export function SkillsPage() {
             <h2 id="own-skills-heading" className="text-lg font-medium">
               {t("own.heading")}
             </h2>
+            <UploadSkillForm />
             {own.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("own.empty")}</p>
             ) : (
