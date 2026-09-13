@@ -1,3 +1,27 @@
 {
-  "UNKNOWN": "Đã xảy ra lỗi. Vui lòng thử lại."
+  "UNKNOWN": "Đã xảy ra lỗi. Vui lòng thử lại.",
+  "UNAUTHORIZED": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+  "CSRF_FAILED": "Phiên làm việc không hợp lệ. Vui lòng tải lại trang.",
+  "VALIDATION_ERROR": "Dữ liệu gửi lên không hợp lệ.",
+  "INVALID_INPUT": "Dữ liệu gửi lên không hợp lệ.",
+  "INVALID_CURSOR": "Không tải được trang tiếp theo. Vui lòng tải lại.",
+  "CONVERSATION_NOT_FOUND": "Không tìm thấy cuộc trò chuyện.",
+  "MESSAGE_NOT_FOUND": "Không tìm thấy tin nhắn.",
+  "CITATION_NOT_FOUND": "Không tìm thấy nguồn trích dẫn.",
+  "SKILL_NOT_FOUND": "Không tìm thấy kỹ năng.",
+  "SKILL_NAME_TAKEN": "Tên kỹ năng đã được dùng.",
+  "SKILL_PARSE_ERROR": "Tệp SKILL.md không đúng định dạng.",
+  "PAYLOAD_TOO_LARGE": "Tệp quá lớn.",
+  "AGENT_UNAVAILABLE": "Agent tạm thời không sẵn sàng.",
+  "REGISTER_USER_ALREADY_EXISTS": "Email này đã được đăng ký.",
+  "REGISTER_INVALID_PASSWORD": "Mật khẩu không đạt yêu cầu.",
+  "LOGIN_BAD_CREDENTIALS": "Email hoặc mật khẩu không đúng.",
+  "LOGIN_USER_NOT_VERIFIED": "Tài khoản chưa được xác thực.",
+  "OAUTH_NOT_AVAILABLE_EMAIL": "Tài khoản Google không cung cấp email.",
+  "OAUTH_USER_ALREADY_EXISTS": "Email này đã liên kết với một tài khoản khác.",
+  "OAUTH_INVALID_STATE": "Phiên đăng nhập Google không hợp lệ. Vui lòng thử lại.",
+  "ACCESS_TOKEN_DECODE_ERROR": "Phiên đăng nhập Google không hợp lệ. Vui lòng thử lại.",
+  "ACCESS_TOKEN_ALREADY_EXPIRED": "Phiên đăng nhập Google đã hết hạn. Vui lòng thử lại.",
+  "UPDATE_USER_EMAIL_ALREADY_EXISTS": "Email này đã được dùng.",
+  "UPDATE_USER_INVALID_PASSWORD": "Mật khẩu mới không đạt yêu cầu."
 }

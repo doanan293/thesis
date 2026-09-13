@@ -1,3 +1,27 @@
 {
-  "UNKNOWN": "Something went wrong. Please try again."
+  "UNKNOWN": "Something went wrong. Please try again.",
+  "UNAUTHORIZED": "Your session has expired. Please sign in again.",
+  "CSRF_FAILED": "Your session is no longer valid. Please reload the page.",
+  "VALIDATION_ERROR": "The submitted data is not valid.",
+  "INVALID_INPUT": "The submitted data is not valid.",
+  "INVALID_CURSOR": "The next page could not be loaded. Please reload.",
+  "CONVERSATION_NOT_FOUND": "Conversation not found.",
+  "MESSAGE_NOT_FOUND": "Message not found.",
+  "CITATION_NOT_FOUND": "Citation source not found.",
+  "SKILL_NOT_FOUND": "Skill not found.",
+  "SKILL_NAME_TAKEN": "This skill name is already used.",
+  "SKILL_PARSE_ERROR": "The SKILL.md file is not valid.",
+  "PAYLOAD_TOO_LARGE": "The file is too large.",
+  "AGENT_UNAVAILABLE": "The agent is temporarily unavailable.",
+  "REGISTER_USER_ALREADY_EXISTS": "This email is already registered.",
+  "REGISTER_INVALID_PASSWORD": "The password does not meet the requirements.",
+  "LOGIN_BAD_CREDENTIALS": "Incorrect email or password.",
+  "LOGIN_USER_NOT_VERIFIED": "This account is not verified.",
+  "OAUTH_NOT_AVAILABLE_EMAIL": "The Google account did not share an email address.",
+  "OAUTH_USER_ALREADY_EXISTS": "This email is already linked to another account.",
+  "OAUTH_INVALID_STATE": "The Google sign-in session is not valid. Please try again.",
+  "ACCESS_TOKEN_DECODE_ERROR": "The Google sign-in session is not valid. Please try again.",
+  "ACCESS_TOKEN_ALREADY_EXPIRED": "The Google sign-in session has expired. Please try again.",
+  "UPDATE_USER_EMAIL_ALREADY_EXISTS": "This email is already used.",
+  "UPDATE_USER_INVALID_PASSWORD": "The new password does not meet the requirements."
 }
