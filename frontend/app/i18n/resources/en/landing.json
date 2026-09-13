@@ -1,1 +1,35 @@
-{}
+{
+  "meta": {
+    "title": "Pharma Agent – Drug information with cited sources",
+    "description": "Ask about medicines and get answers that link to the exact passage in the Vietnamese National Drug Formulary and package leaflets."
+  },
+  "hero": {
+    "title": "Drug information, with cited sources",
+    "subtitle": "Ask about dosage, contraindications, side effects or interactions. The agent searches official documents and shows which passage each answer uses.",
+    "signIn": "Sign in",
+    "register": "Create account"
+  },
+  "features": {
+    "title": "Features",
+    "citations": {
+      "title": "Every point cited",
+      "description": "Click [1], [2] to open the exact passage an answer relies on."
+    },
+    "streaming": {
+      "title": "See what the agent is doing",
+      "description": "Follow the search, reading and writing steps in real time."
+    },
+    "skills": {
+      "title": "Custom skills",
+      "description": "Upload a SKILL.md file so the agent answers the way you need."
+    }
+  },
+  "sources": {
+    "title": "Data sources",
+    "formulary": "Vietnamese National Drug Formulary",
+    "leaflets": "Medicine package leaflets"
+  },
+  "language": {
+    "switch": "Tiếng Việt"
+  }
+}

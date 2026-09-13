@@ -1,1 +1,35 @@
-{}
+{
+  "meta": {
+    "title": "Pharma Agent – Tra cứu thông tin thuốc có trích dẫn nguồn",
+    "description": "Hỏi đáp về thuốc bằng tiếng Việt. Mỗi câu trả lời dẫn tới đoạn gốc trong Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng."
+  },
+  "hero": {
+    "title": "Tra cứu thông tin thuốc, có trích dẫn nguồn",
+    "subtitle": "Hỏi về liều dùng, chống chỉ định, tác dụng phụ hay tương tác thuốc. Agent tìm trong tài liệu chính thống và chỉ rõ đoạn đã dùng để trả lời.",
+    "signIn": "Đăng nhập",
+    "register": "Tạo tài khoản"
+  },
+  "features": {
+    "title": "Tính năng",
+    "citations": {
+      "title": "Trích dẫn từng ý",
+      "description": "Bấm vào [1], [2] để xem đúng đoạn tài liệu mà câu trả lời dựa vào."
+    },
+    "streaming": {
+      "title": "Thấy agent đang làm gì",
+      "description": "Theo dõi các bước tìm kiếm, đọc tài liệu và soạn câu trả lời theo thời gian thực."
+    },
+    "skills": {
+      "title": "Kỹ năng tuỳ chỉnh",
+      "description": "Tải lên tệp SKILL.md để agent trả lời theo cách bạn cần."
+    }
+  },
+  "sources": {
+    "title": "Nguồn dữ liệu",
+    "formulary": "Dược thư Quốc gia Việt Nam",
+    "leaflets": "Tờ hướng dẫn sử dụng thuốc"
+  },
+  "language": {
+    "switch": "English"
+  }
+}

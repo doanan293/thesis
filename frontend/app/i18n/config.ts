@@ -78,3 +78,26 @@ export function localeFromPath(pathname: string): Language | null {
     ) ?? null
   )
 }
+
+/** Public pages get their language from the URL so SSR, prerendered files and hreflang agree. */
+export function publicPageLocale(pathname: string): Language | null {
+  if (pathname === "/") {
+    return FALLBACK_LANGUAGE
+  }
+  return localeFromPath(pathname)
+}
+
+/**
+ * The page path behind a React Router single-fetch data request.
+ *
+ * Middleware sees the raw request URL (`/_.data`, `/en.data`, `/en/_.data`); React Router
+ * normalizes it internally with the same two rules but does not export that helper.
+ */
+export function documentPathname(pathname: string): string {
+  if (pathname.endsWith("/_.data")) {
+    return pathname.slice(0, -"_.data".length)
+  }
+  return pathname.endsWith(".data")
+    ? pathname.slice(0, -".data".length)
+    : pathname
+}
