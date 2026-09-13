@@ -1,7 +1,8 @@
-# Shared hooks for every project in this repo (seed-pipeline, backend).
+# Shared hooks for every project in this repo (seed-pipeline, backend, frontend).
 # Install once from the repo root: `uv run --project backend pre-commit install`.
+# Frontend hooks need `npm ci` in frontend/ first.
 # Specs and plans under backend/docs/superpowers are immutable records; hooks never rewrite them.
-exclude: '.*(data/|\.venv/|ai-models/|\.agents/|backend/docs/superpowers/)'
+exclude: '.*(data/|\.venv/|ai-models/|\.agents/|node_modules/|backend/docs/superpowers/)'
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -52,6 +53,30 @@ repos:
         language: system
         files: ^backend/skills/
         pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: oxlint --type-aware (frontend)
+        entry: npm --prefix frontend run lint
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|mjs|json)$
+        pass_filenames: false
+        require_serial: true
+      - id: frontend-format
+        name: prettier --check (frontend)
+        entry: npm --prefix frontend run format
+        language: system
+        files: ^frontend/
+        pass_filenames: false
+        require_serial: true
+      - id: frontend-typecheck
+        name: typecheck (frontend)
+        entry: npm --prefix frontend run typecheck
+        language: system
+        files: ^frontend/.*\.(ts|tsx|json)$
+        pass_filenames: false
+        require_serial: true
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
