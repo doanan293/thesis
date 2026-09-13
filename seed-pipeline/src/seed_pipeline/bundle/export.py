@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from importlib.metadata import version
@@ -25,11 +24,10 @@ from pharma_agent.domain.corpus.bundle import (
     RetrievalMode,
     SectionRecord,
     SourceInfo,
-    read_bundle,
-    write_bundle,
 )
 from pharma_agent.domain.corpus.chunking import MAX_CHUNK_CHARS
 
+from seed_pipeline.bundle.io import write_validated_bundle
 from seed_pipeline.corpus.canonical.build_canonical_rag import (
     APPENDIX_LIST_SECTION_IDS,
     BRAND_INDEX_SECTION_ID,
@@ -193,15 +191,7 @@ def export_bundle(request: ExportRequest) -> ExportResult:
         glossary=_glossary(request.glossary_path),
         colloquial_mappings=mappings.records(),
     )
-    staging = output_dir.with_name(f".{output_dir.name}.next")
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
-    manifest = write_bundle(bundle, staging)
-    read_bundle(staging)
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    staging.replace(output_dir)
+    manifest = write_validated_bundle(bundle, output_dir)
     return ExportResult(manifest=manifest, skipped_sections=tuple(skipped))
 
 

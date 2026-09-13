@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from seed_pipeline.cli.app import app
@@ -104,3 +105,47 @@ def test_bundle_parity_command_fails_on_a_changed_chunk(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "mismatches=" in result.output
+
+
+def test_bundle_embed_command_uses_the_selected_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.bundle.test_embed import CacheFillingBackend
+
+    import seed_pipeline.cli.commands.bundle as bundle_command
+
+    _export(tmp_path / "bundle")
+    created: list[CacheFillingBackend] = []
+
+    def kaggle_backend() -> CacheFillingBackend:
+        backend = CacheFillingBackend()
+        created.append(backend)
+        return backend
+
+    monkeypatch.setattr(bundle_command, "KaggleTextEmbeddingBackend", kaggle_backend)
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "bundle",
+            "embed",
+            "--bundle",
+            str(tmp_path / "bundle"),
+            "--backend",
+            "kaggle",
+            "--model",
+            "qwen3-embedding:4b-fp16",
+            "--cache",
+            str(tmp_path / "cache.jsonl"),
+            "--work-dir",
+            str(tmp_path / "work"),
+            "--kaggle-account",
+            "acc2",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    details = json.loads(result.output)["details"]
+    assert (details["inputs"], details["vectors"]) == (6, 6)
+    assert created[0].requests[0].kaggle_account == "acc2"
