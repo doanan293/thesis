@@ -1,9 +1,18 @@
 import tailwindcss from "@tailwindcss/vite"
 import { playwright } from "@vitest/browser-playwright"
+import { searchForWorkspaceRoot } from "vite"
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   resolve: { tsconfigPaths: true },
+  server: {
+    fs: {
+      allow: [
+        searchForWorkspaceRoot(process.cwd()),
+        "../backend/tests/contract/fixtures",
+      ],
+    },
+  },
   test: {
     projects: [
       {
