@@ -1,0 +1,10 @@
+node_modules
+build
+.react-router
+tests
+docs
+coverage
+playwright-report
+test-results
+.env
+.env.*
