@@ -6,6 +6,26 @@ Public API. Splitting is ported from corpus-pipeline ``build_final_chunk_records
 """
 
 import re
+import uuid
+from collections.abc import Sequence
+
+from pydantic import BaseModel, ConfigDict
+
+from pharma_agent.domain.corpus.bundle import (
+    BlockKind,
+    ColloquialMappingRecord,
+    DocumentRecord,
+    GlossaryEntry,
+    SectionRecord,
+)
+from pharma_agent.domain.corpus.enrichment import (
+    build_context_header,
+    compose_embedding_text,
+    detect_terms,
+    mapping_for_section,
+)
+from pharma_agent.domain.corpus.identity import chunk_version_id, sha256_hex
+from pharma_agent.domain.retrieval.models import ColloquialMapping, TermAnnotation
 
 CHUNKER_VERSION = "chunker-v1"
 MAX_CHUNK_CHARS = 3000
@@ -13,6 +33,26 @@ MAX_CHUNK_CHARS = 3000
 _PARAGRAPH_BREAK_RE = re.compile(r"\n\s*\n")
 _SENTENCE_END_RE = re.compile(r"[.!?;:…]\s+")
 _LAST_WORD_RE = re.compile(r"\s+\S*$")
+
+
+class ChunkDraft(BaseModel):
+    """One chunk of a section, ready to be stored as an immutable chunk version."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunk_version_id: uuid.UUID
+    section_key: str
+    ordinal: int
+    kind: BlockKind
+    chunk_text: str
+    context_header: str
+    embedding_text: str
+    embedding_text_sha256: str
+    start_page: int | None
+    end_page: int | None
+    table_key: str | None
+    term_annotations: list[TermAnnotation]
+    colloquial: ColloquialMapping | None
 
 
 def split_oversized_paragraph(paragraph: str, max_chars: int) -> list[str]:
@@ -121,3 +161,78 @@ def split_lines_without_breaking_entries(text: str, max_chars: int) -> list[str]
     if current:
         chunks.append("\n".join(current))
     return chunks
+
+
+def _split_block(kind: BlockKind, text: str, max_chars: int) -> list[str]:
+    if kind is BlockKind.TABLE:
+        return split_table_markdown(text, max_chars)
+    if kind is BlockKind.LIST or kind is BlockKind.INDEX_ENTRIES:
+        return split_lines_without_breaking_entries(text, max_chars)
+    return split_long_text(text, max_chars)
+
+
+def _context_header(title: str, section: SectionRecord) -> str:
+    header = build_context_header(title, section.context_path)
+    if header:
+        return header
+    title_text = title.strip()
+    heading = section.heading.strip()
+    if title_text and heading:
+        return f"{title_text} > {heading}"
+    return title_text or heading
+
+
+def chunk_section(
+    document: DocumentRecord,
+    section: SectionRecord,
+    glossary: Sequence[GlossaryEntry],
+    mappings: Sequence[ColloquialMappingRecord],
+    *,
+    max_chars: int = MAX_CHUNK_CHARS,
+) -> list[ChunkDraft]:
+    """Chunk one section; a section whose blocks are all blank yields no chunks."""
+    context_header = _context_header(document.title, section)
+    colloquial = mapping_for_section(section.key, mappings)
+    drafts: list[ChunkDraft] = []
+    for block in section.blocks:
+        raw_text = block.markdown.strip()
+        if not raw_text:
+            continue
+        for part in _split_block(block.kind, raw_text, max_chars):
+            chunk_text = part.strip()
+            searchable = (
+                f"{context_header}\n\n{chunk_text}" if context_header else chunk_text
+            )
+            terms = detect_terms(searchable, glossary)
+            embedding_text = compose_embedding_text(
+                context_header=context_header,
+                chunk_text=chunk_text,
+                colloquial=colloquial,
+                terms=terms,
+            )
+            drafts.append(
+                ChunkDraft(
+                    chunk_version_id=chunk_version_id(
+                        section.key, chunk_text, embedding_text, CHUNKER_VERSION
+                    ),
+                    section_key=section.key,
+                    ordinal=len(drafts) + 1,
+                    kind=block.kind,
+                    chunk_text=chunk_text,
+                    context_header=context_header,
+                    embedding_text=embedding_text,
+                    embedding_text_sha256=sha256_hex(embedding_text),
+                    start_page=block.start_page
+                    if block.start_page is not None
+                    else section.start_page,
+                    end_page=block.end_page
+                    if block.end_page is not None
+                    else section.end_page,
+                    table_key=block.table_key
+                    if block.kind is BlockKind.TABLE
+                    else None,
+                    term_annotations=terms,
+                    colloquial=colloquial,
+                )
+            )
+    return drafts
