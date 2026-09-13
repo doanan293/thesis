@@ -1,1 +1,18 @@
-{}
+{
+  "sheet": {
+    "title": "Source [{{index}}]",
+    "loading": "Loading the source…",
+    "loadFailed": "Could not load the source",
+    "matched": "Cited passage"
+  },
+  "strategy": {
+    "full_section": "Whole section",
+    "chunk_window": "Passage and nearby passages",
+    "search_only": "Single passage"
+  },
+  "pages": {
+    "single": "Page {{page}}",
+    "range": "Pages {{start}}–{{end}}"
+  },
+  "stale": "A newer version of this source exists"
+}

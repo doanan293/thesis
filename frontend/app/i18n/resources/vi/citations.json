@@ -1,1 +1,18 @@
-{}
+{
+  "sheet": {
+    "title": "Nguồn [{{index}}]",
+    "loading": "Đang tải nội dung nguồn…",
+    "loadFailed": "Không tải được nội dung nguồn",
+    "matched": "Đoạn được trích dẫn"
+  },
+  "strategy": {
+    "full_section": "Toàn bộ mục",
+    "chunk_window": "Đoạn và các đoạn lân cận",
+    "search_only": "Một đoạn"
+  },
+  "pages": {
+    "single": "Trang {{page}}",
+    "range": "Trang {{start}}–{{end}}"
+  },
+  "stale": "Nguồn đã có phiên bản mới hơn"
+}

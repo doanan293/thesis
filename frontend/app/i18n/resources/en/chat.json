@@ -1,1 +1,107 @@
-{}
+{
+  "thread": {
+    "label": "Conversation messages",
+    "loading": "Loading messages…",
+    "loadingOlder": "Loading older messages…",
+    "loadFailed": "Could not load messages",
+    "reload": "Reload",
+    "scrollToEnd": "Scroll to the end"
+  },
+  "newChat": {
+    "title": "Ask about a medicine",
+    "description": "Ask about dosage, interactions, contraindications or how to take a medicine.",
+    "createFailed": "Could not start a conversation"
+  },
+  "composer": {
+    "label": "Message",
+    "placeholder": "Type a question about a medicine…",
+    "send": "Send",
+    "stop": "Stop",
+    "tooLong": "Question is {{count}}/{{max}} characters"
+  },
+  "phase": {
+    "guarding": "Checking the question",
+    "understanding": "Understanding the question",
+    "selecting_skills": "Choosing skills",
+    "searching": "Searching",
+    "searchingRound": "Searching · round {{round}}",
+    "reading": "Reading documents",
+    "answering": "Answering"
+  },
+  "status": {
+    "working": "Working",
+    "done": "Done"
+  },
+  "skills": {
+    "label": "Selected skills"
+  },
+  "evidence": {
+    "searching": "Searching documents",
+    "read_one": "Read {{count}} passage",
+    "read_other": "Read {{count}} passages"
+  },
+  "sources": {
+    "trigger_one": "{{count}} source",
+    "trigger_other": "{{count}} sources",
+    "stale": "A newer version of this source exists"
+  },
+  "citation": {
+    "excerpt": "From {{title}} › {{section}}"
+  },
+  "guardrail": {
+    "blocked": "This question cannot be answered",
+    "redirected": "This question is outside medicine lookup"
+  },
+  "error": {
+    "title": "No answer yet",
+    "timeout": "The agent took too long to respond.",
+    "failed": "Something went wrong while answering.",
+    "network": "The connection dropped while answering.",
+    "retry": "Retry",
+    "retrying": "Retrying"
+  },
+  "stopped": "Stopped",
+  "notPersisted": "This turn could not be saved",
+  "agentUnavailable": {
+    "title": "The agent is temporarily unavailable",
+    "description": "Please try again in a few minutes."
+  },
+  "actions": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "up": "Helpful",
+    "down": "Not helpful",
+    "feedbackFailed": "Could not send feedback"
+  },
+  "feedback": {
+    "title": "What went wrong?",
+    "optional": "optional",
+    "notePlaceholder": "Note",
+    "submit": "Send feedback",
+    "sent": "Thanks for the feedback.",
+    "reasons": {
+      "incorrect": "Incorrect",
+      "incomplete": "Incomplete",
+      "wrongSource": "Citation does not match",
+      "unclear": "Hard to understand"
+    }
+  },
+  "conversations": {
+    "title": "Conversations",
+    "new": "New conversation",
+    "empty": "No conversations yet",
+    "loadFailed": "Could not load conversations",
+    "more": "Actions for {{title}}",
+    "rename": "Rename",
+    "delete": "Delete",
+    "renameTitle": "Rename conversation",
+    "titleLabel": "Name",
+    "save": "Save",
+    "cancel": "Cancel",
+    "deleteTitle": "Delete conversation?",
+    "deleteDescription": "“{{title}}” and all its messages will be deleted permanently.",
+    "deleteConfirm": "Delete",
+    "renameFailed": "Could not rename",
+    "deleteFailed": "Could not delete"
+  }
+}

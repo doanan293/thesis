@@ -1,1 +1,107 @@
-{}
+{
+  "thread": {
+    "label": "Tin nhắn trong cuộc trò chuyện",
+    "loading": "Đang tải tin nhắn…",
+    "loadingOlder": "Đang tải tin nhắn cũ…",
+    "loadFailed": "Không tải được tin nhắn",
+    "reload": "Tải lại",
+    "scrollToEnd": "Cuộn xuống cuối"
+  },
+  "newChat": {
+    "title": "Hỏi về thuốc",
+    "description": "Hỏi về liều dùng, tương tác, chống chỉ định hoặc cách dùng thuốc.",
+    "createFailed": "Không tạo được cuộc trò chuyện"
+  },
+  "composer": {
+    "label": "Tin nhắn",
+    "placeholder": "Nhập câu hỏi về thuốc…",
+    "send": "Gửi",
+    "stop": "Dừng",
+    "tooLong": "Câu hỏi dài {{count}}/{{max}} ký tự"
+  },
+  "phase": {
+    "guarding": "Đang kiểm tra câu hỏi",
+    "understanding": "Đang phân tích câu hỏi",
+    "selecting_skills": "Đang chọn kỹ năng",
+    "searching": "Đang tìm kiếm",
+    "searchingRound": "Đang tìm kiếm · vòng {{round}}",
+    "reading": "Đang đọc tài liệu",
+    "answering": "Đang trả lời"
+  },
+  "status": {
+    "working": "Đang xử lý",
+    "done": "Hoàn tất"
+  },
+  "skills": {
+    "label": "Kỹ năng đã chọn"
+  },
+  "evidence": {
+    "searching": "Đang tìm tài liệu",
+    "read_one": "Đã đọc {{count}} đoạn",
+    "read_other": "Đã đọc {{count}} đoạn"
+  },
+  "sources": {
+    "trigger_one": "{{count}} nguồn",
+    "trigger_other": "{{count}} nguồn",
+    "stale": "Nguồn đã có phiên bản mới hơn"
+  },
+  "citation": {
+    "excerpt": "Trích từ mục {{title}} › {{section}}"
+  },
+  "guardrail": {
+    "blocked": "Không thể trả lời câu hỏi này",
+    "redirected": "Câu hỏi nằm ngoài phạm vi tra cứu thuốc"
+  },
+  "error": {
+    "title": "Chưa trả lời được",
+    "timeout": "Agent phản hồi quá lâu.",
+    "failed": "Có lỗi khi tạo câu trả lời.",
+    "network": "Mất kết nối trong lúc trả lời.",
+    "retry": "Thử lại",
+    "retrying": "Đang thử lại"
+  },
+  "stopped": "Đã dừng",
+  "notPersisted": "Không lưu được lượt này",
+  "agentUnavailable": {
+    "title": "Agent tạm thời không sẵn sàng",
+    "description": "Vui lòng thử lại sau ít phút."
+  },
+  "actions": {
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
+    "up": "Hữu ích",
+    "down": "Chưa hữu ích",
+    "feedbackFailed": "Không gửi được đánh giá"
+  },
+  "feedback": {
+    "title": "Câu trả lời chưa tốt ở đâu?",
+    "optional": "không bắt buộc",
+    "notePlaceholder": "Ghi chú",
+    "submit": "Gửi phản hồi",
+    "sent": "Cảm ơn bạn đã góp ý.",
+    "reasons": {
+      "incorrect": "Sai thông tin",
+      "incomplete": "Thiếu thông tin",
+      "wrongSource": "Trích dẫn không khớp",
+      "unclear": "Khó hiểu"
+    }
+  },
+  "conversations": {
+    "title": "Cuộc trò chuyện",
+    "new": "Cuộc trò chuyện mới",
+    "empty": "Chưa có cuộc trò chuyện nào",
+    "loadFailed": "Không tải được danh sách",
+    "more": "Thao tác với {{title}}",
+    "rename": "Đổi tên",
+    "delete": "Xoá",
+    "renameTitle": "Đổi tên cuộc trò chuyện",
+    "titleLabel": "Tên",
+    "save": "Lưu",
+    "cancel": "Huỷ",
+    "deleteTitle": "Xoá cuộc trò chuyện?",
+    "deleteDescription": "“{{title}}” và toàn bộ tin nhắn sẽ bị xoá vĩnh viễn.",
+    "deleteConfirm": "Xoá",
+    "renameFailed": "Không đổi tên được",
+    "deleteFailed": "Không xoá được"
+  }
+}
