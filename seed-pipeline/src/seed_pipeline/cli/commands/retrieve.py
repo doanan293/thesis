@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated
 
 import typer
 
+from seed_pipeline.bundle.export import COLLECTION_KEY
 from seed_pipeline.cli.options import positive_int
 from seed_pipeline.cli.runtime import (
     CommandResult,
@@ -14,40 +15,25 @@ from seed_pipeline.cli.runtime import (
 )
 from seed_pipeline.config.defaults import (
     DEFAULT_CANDIDATE_K,
-    DEFAULT_EMBEDDING_MODEL,
-    DEFAULT_QDRANT_URL,
     DEFAULT_RETRIEVER,
     DEFAULT_RRF_K,
 )
 from seed_pipeline.config.paths import (
+    BACKEND_ENV_FILE,
     PROCESSED_EVALUATION_DIR,
-    query_embedding_cache_path,
     retrieval_run_roots,
 )
-from seed_pipeline.evaluation.retrieval_service import RetrieveRequest, run_retrieval
-
-
-def resolve_query_embeddings_dir(
-    evaluation: Path,
-    model: str,
-    retriever: str,
-    explicit: Path | None,
-) -> Path | None:
-    if explicit is not None or retriever == "bm25":
-        return explicit
-    del evaluation
-    return query_embedding_cache_path(model)
+from seed_pipeline.evaluation.backend_retrieval import RetrieveRequest, run_retrieval
 
 
 def retrieve(
     ctx: typer.Context,
+    run: Annotated[str, typer.Option("--run")],
     evaluation: Annotated[Path, typer.Option("--evaluation")] = PROCESSED_EVALUATION_DIR
     / "section_retrieval_eval.jsonl",
-    query_embeddings: Annotated[Path | None, typer.Option("--query-embeddings")] = None,
-    run: Annotated[str, typer.Option("--run")] = cast(str, ...),
-    embedding_model: Annotated[str, typer.Option("--model")] = DEFAULT_EMBEDDING_MODEL,
-    qdrant_url: Annotated[str, typer.Option("--qdrant-url")] = DEFAULT_QDRANT_URL,
-    retriever: Annotated[str, typer.Option("--retriever")] = DEFAULT_RETRIEVER,
+    retriever: Annotated[
+        str, typer.Option("--retriever", help="bm25, dense or hybrid")
+    ] = DEFAULT_RETRIEVER,
     candidate_k: Annotated[
         int,
         typer.Option("--candidate-k", callback=lambda _c, _p, v: positive_int(str(v))),
@@ -65,59 +51,40 @@ def retrieve(
         int, typer.Option("--rrf-k", callback=lambda _c, _p, v: positive_int(str(v)))
     ] = DEFAULT_RRF_K,
     limit: Annotated[int | None, typer.Option("--limit")] = None,
+    collection: Annotated[str, typer.Option("--collection")] = COLLECTION_KEY,
+    query_embeddings: Annotated[
+        Path | None,
+        typer.Option(
+            "--query-embeddings",
+            dir_okay=False,
+            help="Query embedding cache from `seed embed queries` (dense and hybrid)",
+        ),
+    ] = None,
+    backend_env_file: Annotated[
+        Path, typer.Option("--backend-env-file", dir_okay=False)
+    ] = BACKEND_ENV_FILE,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
-    result = run_handler(
-        state_from_context(ctx),
-        lambda: _run(
-            evaluation,
-            query_embeddings,
-            run,
-            embedding_model,
-            qdrant_url,
-            retriever,
-            candidate_k,
-            prefetch_k,
-            rrf_k,
-            limit,
-            force,
-        ),
-    )
-    _ = result
-
-
-def _run(
-    evaluation,
-    query_embeddings,
-    run,
-    model,
-    qdrant_url,
-    retriever,
-    candidate_k,
-    prefetch_k,
-    rrf_k,
-    limit,
-    force,
-) -> CommandResult:
     metadata_root, artifact_root = retrieval_run_roots(run)
-    result = run_retrieval(
-        RetrieveRequest(
-            evaluation_path=evaluation,
-            query_embeddings_dir=resolve_query_embeddings_dir(
-                evaluation, model, retriever, query_embeddings
-            ),
-            run_root=metadata_root,
-            embedding_model=model,
-            qdrant_url=qdrant_url,
-            retriever=retriever,
-            candidate_k=candidate_k,
-            prefetch_k=prefetch_k,
-            rrf_k=rrf_k,
-            limit=limit,
-            force=force,
-            artifact_root=artifact_root,
-        )
+    request = RetrieveRequest(
+        evaluation_path=evaluation,
+        run_root=metadata_root,
+        artifact_root=artifact_root,
+        retriever=retriever,
+        candidate_k=candidate_k,
+        prefetch_k=prefetch_k,
+        rrf_k=rrf_k,
+        limit=limit,
+        force=force,
+        collection=collection,
+        backend_env_file=backend_env_file,
+        query_embeddings=query_embeddings,
     )
+    run_handler(state_from_context(ctx), lambda: _run(request))
+
+
+def _run(request: RetrieveRequest) -> CommandResult:
+    result = run_retrieval(request)
     return CommandResult(
         "retrieve",
         CommandStatus.COMPLETE,
@@ -125,5 +92,6 @@ def _run(
         {
             "artifact": str(result.artifact.data_path),
             "queries": result.artifact.query_count,
+            "release_id": result.workspace.identity.release_id,
         },
     )

@@ -12,10 +12,10 @@ from seed_pipeline.evaluation.artifact_contracts import (
     require_finite_number,
     write_json,
 )
+from seed_pipeline.evaluation.candidate_text import candidate_document_text
 from seed_pipeline.evaluation.query_hash import query_hash
 from seed_pipeline.evaluation.rerank_contract import document_hash
 from seed_pipeline.evaluation.retrieval_types import RetrievalCandidate
-from seed_pipeline.evaluation.retrievers import candidate_document_text
 
 _RETRIEVAL_BATCH_SIZE = 64
 

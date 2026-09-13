@@ -3,9 +3,9 @@ from typing import Protocol
 
 import requests
 
+from seed_pipeline.evaluation.candidate_text import candidate_document_text
 from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.retrieval_types import RetrievalCandidate
-from seed_pipeline.evaluation.retrievers import candidate_document_text
 from seed_pipeline.runtime.catalog import ModelSpec
 from seed_pipeline.runtime.client import LlamaCppClient
 from seed_pipeline.runtime.model_profiles import (
@@ -111,7 +111,8 @@ class LlamaCppReranker:
         self, query: str, candidates: list[RetrievalCandidate]
     ) -> list[RetrievalCandidate]:
         documents = [
-            candidate_document_text(candidate.payload) for candidate in candidates
+            candidate.document_text or candidate_document_text(candidate.payload)
+            for candidate in candidates
         ]
         if self.spec.reranker_protocol == "native_rerank":
             scores = self._call(

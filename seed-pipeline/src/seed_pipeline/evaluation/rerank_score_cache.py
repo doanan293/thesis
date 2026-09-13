@@ -59,7 +59,7 @@ def _candidate_document_hash(candidate: RetrievalCandidate) -> str:
         return candidate.document_hash
     if candidate.document_text:
         return document_hash(candidate.document_text)
-    from seed_pipeline.evaluation.retrievers import candidate_document_text
+    from seed_pipeline.evaluation.candidate_text import candidate_document_text
 
     return document_hash(candidate_document_text(candidate.payload))
 

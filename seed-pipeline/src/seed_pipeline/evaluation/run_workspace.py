@@ -24,6 +24,8 @@ class RunIdentity:
     rrf_k: int
     limit: int | None
     prefetch_k: int | None = None
+    release_id: str | None = None
+    chunker_version: str | None = None
 
 
 @dataclass(frozen=True)
