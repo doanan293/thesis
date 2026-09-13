@@ -1,10 +1,5 @@
-import { useTranslation } from "react-i18next"
+import { SkillsPage } from "~/features/skills/components/SkillsPage"
 
-export default function SkillsPage() {
-  const { t } = useTranslation("common")
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold">{t("nav.skills")}</h1>
-    </div>
-  )
+export default function SkillsRoute() {
+  return <SkillsPage />
 }
