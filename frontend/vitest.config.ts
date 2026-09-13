@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite"
 import { playwright } from "@vitest/browser-playwright"
 import { defineConfig } from "vitest/config"
 
@@ -20,6 +21,7 @@ export default defineConfig({
       },
       {
         extends: true,
+        plugins: [tailwindcss()],
         // Vite reuses its optimizer cache without scanning imports, so a dependency a browser
         // test imports for the first time is optimized mid-run and reloads the page. Force a
         // fresh pre-bundle that scans every browser test and setup file before tests start.
@@ -33,6 +35,7 @@ export default defineConfig({
           setupFiles: [
             "./tests/setup/fail-on-console.ts",
             "./tests/setup/msw-browser.ts",
+            "./tests/setup/styles.ts",
           ],
           browser: {
             enabled: true,
