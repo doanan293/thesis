@@ -118,8 +118,8 @@ Tên chỉ ghép từ tên run, slug model, tham số đọc được và nội 
 | Cache text, query | `cache/text_embeddings/<model>.jsonl`, `cache/query_embeddings/<model>.jsonl` |
 | Cache điểm rerank | `cache/rerank_scores/<model>.jsonl` (bản ghi mang `model_sha256`, `request_contract_sha256`) |
 | Profile Kaggle | `cache/kaggle_profiles/<workload>/<model>.json` |
-| Checkpoint | `<output_dir>/.checkpoints/<model>.jsonl`; bản ghi đầu mang identity |
-| Lock | `work/locks/<đường dẫn đích so với data/, "/" thay bằng "__">.lock` |
+| Workspace build | `work/build/in-progress/`; build lỗi giữ ở `work/build/failed/latest/`; `build_id` nằm trong `build-state.json` |
+| Lock | `work/locks/<đường dẫn đích so với data/, "/" thay bằng "__">.<job hoặc cache>.lock`; đích ngoài `data/` có tiền tố `_external__` |
 | Nguồn tờ hướng dẫn | `sources/leaflets/html/<nhóm>/<slug>.html`, `sources/leaflets/manifest.json` |
 
 Định danh trong dữ liệu:
@@ -133,7 +133,7 @@ Tên chỉ ghép từ tên run, slug model, tham số đọc được và nội 
 
 Xung đột:
 
-- Run, biến thể rerank, report, checkpoint: đường dẫn đã có mà identity khác thì lệnh dừng với lỗi nêu rõ đường dẫn và trường khác nhau; `--force` thay thế nguyên tử.
+- Run, biến thể rerank, report: đường dẫn đã có mà identity khác thì lệnh dừng với lỗi nêu rõ đường dẫn và trường khác nhau; `--force` thay thế nguyên tử.
 - Profile Kaggle: identity khác được coi như chưa có; benchmark mới ghi đè, vì profile sinh lại được.
 - Cache text, query, rerank: nhiều bản ghi trong một file, khoá theo nội dung như hiện tại; không đổi.
 
@@ -150,14 +150,18 @@ Xoá: `HEAVY_DATA_DIR`, `HEAVY_RAW_DIR`, `RAW_DIR`, `RAW_ANKHANG_*`, `RESOURCES_
 - `run.json` schema 3 gồm `identity`, `origin` (`backend` hoặc `imported`), candidates, biến thể rerank theo slug model và report. Chỉ đọc schema 3; xoá đọc schema 1 và 2, `LegacyRerankReference`, `legacy_status`, `migrate_legacy_rerank`.
 - Một cây duy nhất cho mỗi run; bỏ file `candidates-manifest.json` và `metrics-manifest.json` trùng lặp.
 - `seed retrieve`, `rerank`, `metrics` ghi và đọc theo §5.
+- `identity.evaluation_path` lưu đường dẫn tương đối so với `data/` khi bộ gold nằm trong `data/` (ví dụ `evaluation/gold/section_retrieval_eval.jsonl`); bỏ nhánh tự dò lại bộ gold theo tên file.
+- Mỗi run có tối đa một biến thể cho mỗi reranker, nên bỏ `seed metrics --variant`; bỏ tuỳ chọn đã deprecated `seed metrics --output-dir`, `seed rerank --output-dir` và `seed rerank --candidates` (candidates luôn là của run). `seed metrics` có thêm `--force`.
+- `seed rerank --dry-run` báo đường dẫn đích và số cặp query–chunk chưa có trong cache điểm (`missing_pairs=N`).
 
 ### 6.3 Đặt tên không hash
 
-Sửa các chỗ đang ghép hash vào đường dẫn: `evaluation/metrics_artifacts.py` (`_report_parent`, `_report_dir`), biến thể rerank trong `evaluation/rerank_service.py` và `rerank_artifacts.py`, `runtime/runtime_profiles.py` (`RuntimeProfileStore.path`), `integrations/kaggle/job_lock.py`, checkpoint trong `evaluation/query_embedding_service.py` và `rerank_service.py`. Tên thư mục output trên Kaggle (`integrations/kaggle/stages.py`) và slug kernel/dataset từ xa giữ nguyên.
+Sửa các chỗ đang ghép hash vào đường dẫn: `evaluation/metrics_artifacts.py` (`_report_parent`, `_report_dir`), biến thể rerank trong `evaluation/rerank_service.py` và `rerank_artifacts.py`, `runtime/runtime_profiles.py` (`RuntimeProfileStore.path`), `integrations/kaggle/job_lock.py` (tên lock có loại `job`/`cache` vì lệnh embed giữ cả hai lock trên cùng một đích, và `flock` gắn với từng handle), `artifacts/paths.py` (workspace build `build-<build_id>`). Tên thư mục output trên Kaggle (`integrations/kaggle/stages.py`) và slug kernel/dataset từ xa giữ nguyên.
 
 ### 6.4 Nguồn tờ hướng dẫn giữ nguyên dạng
 
-- `seed source crawl` ghi HTML vào `sources/leaflets/html/` và cập nhật `sources/leaflets/manifest.json`; sitemap URL, domain và mọi giá trị riêng của website nguồn đọc từ manifest (tuỳ chọn `--sitemap-url` ghi đè), không còn trong code.
+- `seed source crawl` đọc sitemap index, tải từng sitemap con, giữ URL có đúng hai đoạn `<nhóm>/<slug>` thuộc danh mục thuốc (quy tắc lấy từ `corpus/crawling/collect_urls.py`), ghi `urls/all_urls.txt`, `urls/drug_urls.txt`, HTML vào `html/<nhóm>/<slug>.html` và `manifest.json`. Sitemap URL đọc từ manifest (lần crawl đầu cần `--sitemap-url`), không còn trong code. Xoá `corpus/crawling/collect_urls.py` và `download_html.py` (không module nào dùng).
+- `seed build` không còn chép manifest sang `data/manifests/corpus/` (`publish_corpus_metadata`, `BuildConfig.manifest_dir`).
 - Các thư mục trung gian của build (`TEXT_INTERIM_DIR`, `DOCLING_INTERIM_DIR`, `CANONICAL_INTERIM_DIR`…) chuyển vào `BUILD_WORK_DIR`.
 - `seed build` thay `--snapshot-archive` và `--snapshot-manifest` bằng `--leaflets-dir` (mặc định `sources/leaflets`); kiểm sha256 từng file HTML theo manifest rồi đọc trực tiếp, không giải nén.
 - Manifest `rag-final` thay `snapshot_id` và `snapshot_sha256` bằng `leaflet_source` (`manifest_sha256`, `file_count`).
@@ -168,6 +172,9 @@ Sửa các chỗ đang ghép hash vào đường dẫn: `evaluation/metrics_arti
 - seed-pipeline: đổi tên module, hàm, hằng số, schema và giá trị định danh theo `leaflet` (ví dụ `corpus/crawling/integrate_ankhang.py` → `integrate_leaflets.py`, `ANKHANG_*` → `LEAFLET_*`); `bundle/export.py` sinh key và `source` theo §5; bộ sinh evaluation (`build_section_retrieval_eval.py`, `patient_query_generation.py`, `section_eval_schema.py`, `metrics_service.py`) sinh `query_id`, nhóm, family, tag và ghi chú theo §5.
 - backend: câu trong `domain/agent/prompts.py` thành "…dựa trên Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng thuốc"; `skills/brand-to-generic/SKILL.md` và docstring `domain/corpus/bundle.py` dùng "tờ hướng dẫn sử dụng"; test backend dùng key mới.
 - Test fixture seed-pipeline (`tests/fixtures/rag_final_small/`) dùng key mới.
+- Tiêu đề collection trong bundle: "Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng thuốc".
+- Báo cáo validation của build: category `leaflet`, metric `leaflet_markdown_file_count`.
+- Fixture backend (`tests/fixtures/knowledge_bundle_small`, `tests/domain/corpus/golden/chunking_v1.json`, `tests/corpus_fixtures.py`, `tests/corpus_rows.py`, test enrichment và bundle IO) dùng key `leaflet:<nhóm>:<slug>`, source title "Tờ hướng dẫn sử dụng", `url: null`.
 
 ### 6.6 `pharma-agent corpus gc` dọn danh tính mồ côi
 
@@ -178,6 +185,7 @@ Sau khi xoá section revision mồ côi, `purge_retired` xoá tiếp các dòng 
 - `cache/jsonl_records.py`: tham số `allow_legacy` và nhánh bản ghi chưa niêm phong; `query_embedding_cache.py` và `rerank_score_cache.py` bỏ `rewrite_legacy` và việc viết lại bản ghi.
 - `evaluation/query_embedding_artifact.py`: nhánh gộp query JSONL cũ; `integrations/kaggle/workers/query_embed.py`: `_legacy_query_records`.
 - `integrations/kaggle/kernels.py`: tham chiếu kernel dự phòng `sha256[:8]`.
+- Code không còn ai dùng: `evaluation/dump_retrieval_candidates.py` (chuyển `load_query_rows` sang `backend_retrieval.py`), `rerank_checkpoint_path`, `query_checkpoint_path`, `query_embedding_identity`, `finalize_rerank_cache`, `build_query_snapshot`, `inspect_query_cache`, `finalize_query_cache`, `default_query_embedding_cache_path`, `default_rerank_score_cache_path`.
 - Lệnh `seed evaluation rejudge-current`, `evaluation/rejudge_service.py`, `evaluation/rejudging.py` và test của chúng (không module nào khác dùng).
 
 ### 6.8 Lệnh `seed data`
@@ -194,7 +202,7 @@ Một hàm cố định, áp cho mọi dữ liệu mang định danh cũ:
 
 - `brand:ankhang:X` và `leaflet:ankhang:X` → `leaflet:X` (key section, key tài liệu, `section_id`, `chunk_id` có hậu tố `:chunk-NNN`).
 - `query_id` `ankhang-N`, `ankhang-alias-N`, `ankhang-alias-any-N` → `leaflet-N`, `leaflet-alias-N`, `leaflet-alias-any-N`.
-- `eval_group` `ankhang` → `leaflet`; `source_family` `ankhang_brand` → `leaflet_brand`; `source_subcategory` và tag `ankhang_<x>` → `leaflet_<x>`, tag `ankhang` → `leaflet`; ghi chú: "An Khang" → "tờ hướng dẫn".
+- `eval_group` `ankhang` → `leaflet`; `source_family` `ankhang_brand` → `leaflet_brand`; `source_subcategory` và tag `ankhang_<x>` → `leaflet_<x>`, tag `ankhang` → `leaflet`; ghi chú: "An Khang" và "ankhang" → "leaflet" (trùng câu mà bộ sinh evaluation mới ghi, ví dụ "leaflet patient query for …").
 
 Kiểm tra: ánh xạ là đơn ánh trên từng tập (không hai định danh cũ nào về cùng một định danh mới), số bản ghi giữ nguyên, sau ánh xạ không còn chuỗi `ankhang` (không phân biệt hoa thường) trong dữ liệu đích.
 
@@ -307,6 +315,7 @@ Chia phần vì giới hạn công khai của Kaggle: 200 GB mỗi dataset và 2
   - `seed build` đọc thư mục HTML và từ chối file lệch sha256 trong manifest;
   - bundle export sinh key `leaflet:<nhóm>:<slug>` và `source.url` rỗng;
   - `corpus gc` xoá section và tài liệu mồ côi (integration);
+  - lock `job` và `cache` lồng nhau trên cùng một đích không tự khoá; test không ghi lock hay cache vào `seed-pipeline/data/` thật;
   - test chính sách repo: không file nào trong `backend/src`, `backend/skills`, `seed-pipeline/src`, `frontend/app` chứa `ankhang` hay `an khang` (không phân biệt hoa thường).
 - Test hiện có cập nhật theo layout, tên và key mới; test của code bị xoá bị xoá cùng.
 - `uv run pytest -q` và `-m integration` của backend, `uv run pytest -q` của seed-pipeline, `ruff`, `pyrefly --min-severity warn`, `pre-commit run --all-files` sạch; không thêm `noqa`, `type: ignore` hay tắt rule.
