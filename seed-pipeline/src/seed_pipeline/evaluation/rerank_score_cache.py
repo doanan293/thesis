@@ -12,17 +12,13 @@ from seed_pipeline.cache.jsonl_records import (
     append_record,
     load_records,
     rewrite_records,
-    seal_record,
 )
 from seed_pipeline.cache.jsonl_records import (
     subset_sha256 as record_subset_sha256,
 )
 from seed_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
-    ArtifactManifest,
-    Completion,
     require_finite_number,
-    write_json,
 )
 from seed_pipeline.evaluation.query_hash import query_hash
 from seed_pipeline.evaluation.rerank_contract import document_hash
@@ -63,7 +59,6 @@ class RerankScoreCache:
     path: Path
     model_sha256: str = ""
     request_contract_sha256: str = ""
-    rewrite_legacy: bool = True
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
@@ -100,11 +95,9 @@ class RerankScoreCache:
         if not self.path.exists():
             return
         try:
-            records, has_legacy = load_records(self.path, allow_legacy=True)
+            records = load_records(self.path)
         except CacheRecordError as exc:
             raise RerankScoreCacheError(str(exc)) from exc
-        normalized_records: list[dict[str, Any]] = []
-        migrated = False
         for line_number, record in enumerate(records, start=1):
             try:
                 raw_contract = record.get("request_contract_sha256")
@@ -150,14 +143,8 @@ class RerankScoreCache:
                 "document_hash": key.document_hash,
                 "score": score,
             }
-            if "record_sha256" not in record or "cache_schema" not in record:
-                normalized = seal_record(normalized, "rerank-score-v2")
-                migrated = True
             self.records[key] = score
             self.record_metadata[key] = normalized
-            normalized_records.append(normalized)
-        if (has_legacy or migrated) and self.rewrite_legacy:
-            rewrite_records(self.path, normalized_records)
 
     def set(
         self,
@@ -280,74 +267,3 @@ class RerankScoreCache:
                 )
                 expected.add(self.key_for(reranker, query_row, candidate))
         return expected
-
-
-def finalize_rerank_cache(
-    *,
-    candidate_data_path: Path,
-    candidate_manifest_path: Path,
-    partial_cache_path: Path,
-    output_dir: Path,
-    reranker: str,
-    gguf_sha256: str,
-    protocol: str,
-    request_contract_sha256: str,
-    require_complete: bool = True,
-    job_sha256: str | None = None,
-) -> tuple[Path, Path, Completion]:
-    reader = CandidateArtifactReader(candidate_data_path, candidate_manifest_path)
-    list(reader)
-    expected_cache = RerankScoreCache(partial_cache_path)
-    expected = expected_cache.expected_keys_from_candidates(
-        candidate_data_path, reranker
-    )
-    missing = expected - set(expected_cache.records)
-    unexpected = set(expected_cache.records) - expected
-    if unexpected:
-        raise RerankScoreCacheError(
-            f"Rerank score cache contains {len(unexpected)} unexpected keys"
-        )
-    completion = Completion(len(expected), len(expected) - len(missing), len(missing))
-    if missing and require_complete:
-        raise RerankScoreCacheError(
-            f"Rerank score cache is missing {len(missing)} records"
-        )
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    data_path = output_dir / "rerank_scores.jsonl"
-    with data_path.open("w", encoding="utf-8") as handle:
-        for key in sorted(expected & set(expected_cache.records)):
-            handle.write(
-                json.dumps(
-                    expected_cache.record_metadata[key],
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
-                + "\n"
-            )
-    identity = {
-        "candidate_data_sha256": reader.manifest.data_sha256,
-        "reranker": reranker,
-        "gguf_sha256": gguf_sha256,
-        "protocol": protocol,
-        "request_contract_sha256": request_contract_sha256,
-        "pair_count": len(expected),
-    }
-    if job_sha256 is not None:
-        identity["job_sha256"] = job_sha256
-    manifest = ArtifactManifest.create(
-        artifact_type="rerank_score_cache",
-        data_path=data_path,
-        record_count=completion.complete,
-        identity=identity,
-    )
-    manifest_payload = manifest.to_dict()
-    manifest_payload.update(
-        total=completion.total,
-        complete=completion.complete,
-        missing=completion.missing,
-    )
-    manifest_path = output_dir / "manifest.json"
-    write_json(manifest_path, manifest_payload)
-    return data_path, manifest_path, completion

@@ -208,7 +208,6 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
             score_bundle.data_path,
             model_sha256=spec.sha256,
             request_contract_sha256=spec.rerank_contract.sha256,
-            rewrite_legacy=False,
         )
         subset = score_cache.validate_subset(candidate_bundle.data_path, variant.model)
         if not subset.is_complete:

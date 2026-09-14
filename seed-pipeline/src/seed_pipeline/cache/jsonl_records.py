@@ -89,19 +89,16 @@ def _rewrite_bytes(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def load_records(
-    path: Path, *, allow_legacy: bool = False
-) -> tuple[list[dict[str, Any]], bool]:
+def load_records(path: Path) -> list[dict[str, Any]]:
     path = Path(path)
     if not path.exists():
-        return [], False
+        return []
     raw_lines = path.read_bytes().splitlines(keepends=True)
     last_nonempty = max(
         (index for index, raw in enumerate(raw_lines) if raw.strip()),
         default=-1,
     )
     records: list[dict[str, Any]] = []
-    migrated = False
     for index, raw in enumerate(raw_lines):
         if not raw.strip():
             continue
@@ -123,22 +120,12 @@ def load_records(
                         for item in records
                     ),
                 )
-                return records, migrated
+                return records
             raise CacheRecordError(
                 f"invalid JSON in {path}:{line_number}: {exc}"
             ) from exc
-        if not isinstance(record, dict):
-            raise CacheRecordError(
-                f"cache record must be an object at {path}:{line_number}"
-            )
-        if CHECKSUM_FIELD not in record or "cache_schema" not in record:
-            if not allow_legacy:
-                raise CacheRecordError(f"legacy cache record at {path}:{line_number}")
-            records.append(record)
-            migrated = True
-            continue
         records.append(verify_record(record, path=path, line_number=line_number))
-    return records, migrated
+    return records
 
 
 def _encode_records(records: Iterable[Mapping[str, Any]]) -> bytes:
@@ -178,7 +165,7 @@ def merge_records(
     key: Callable[[Mapping[str, Any]], Hashable],
     equivalent: Callable[[Mapping[str, Any], Mapping[str, Any]], bool],
 ) -> list[dict[str, Any]]:
-    existing, _ = load_records(Path(path))
+    existing = load_records(Path(path))
     by_key: dict[Hashable, dict[str, Any]] = {}
     for record in existing:
         record_key = key(record)

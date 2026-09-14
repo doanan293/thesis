@@ -85,10 +85,6 @@ def run_dir(run: str) -> Path:
     return RUNS_DIR / run
 
 
-def query_embedding_bundle_dir(model: str, evaluation_sha256: str) -> Path:
-    return QUERY_EMBEDDING_CACHE_DIR / require_model(model).slug / evaluation_sha256
-
-
 def query_embedding_cache_path(model: str) -> Path:
     return QUERY_EMBEDDING_CACHE_DIR / f"{require_model(model).slug}.jsonl"
 

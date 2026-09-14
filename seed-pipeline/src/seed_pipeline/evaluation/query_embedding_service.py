@@ -11,14 +11,8 @@ from seed_pipeline.config.paths import (
     COMPOSE_FILE,
     GGUF_ROOT,
     WORK_DIR,
-    query_embedding_bundle_dir,
 )
-from seed_pipeline.evaluation.artifact_contracts import canonical_sha256
 from seed_pipeline.evaluation.preload_query_embeddings import preload_embeddings
-from seed_pipeline.evaluation.query_embedding_artifact import (
-    migrate_query_bundle,
-    query_cache_identity,
-)
 from seed_pipeline.evaluation.query_embedding_cache import (
     QueryEmbeddingCache,
     query_hash,
@@ -61,23 +55,6 @@ class QueryEmbeddingBackend(Protocol):
         raise NotImplementedError
 
 
-def query_embedding_identity(request: QueryEmbeddingRequest) -> dict:
-    spec = require_model(request.model)
-    identity = query_cache_identity(
-        request.evaluation_path,
-        model=request.model,
-        gguf_sha256=spec.sha256,
-        vector_dimension=spec.vector_dimension or 0,
-    )
-    identity["logical_sha256"] = canonical_sha256(identity)
-    return identity
-
-
-def query_checkpoint_path(request: QueryEmbeddingRequest) -> Path:
-    identity = query_embedding_identity(request)
-    return request.output_dir / ".checkpoints" / f"{identity['logical_sha256']}.jsonl"
-
-
 class LocalQueryEmbeddingBackend:
     def __init__(
         self,
@@ -111,18 +88,6 @@ class LocalQueryEmbeddingBackend:
             model_sha256=spec.sha256,
         )
         rows = _read_query_rows(request.evaluation_path)
-        if not partial_cache.exists():
-            legacy_bundle = query_embedding_bundle_dir(
-                request.model, _evaluation_sha256(request.evaluation_path)
-            )
-            if legacy_bundle.is_dir():
-                migrate_query_bundle(
-                    legacy_bundle,
-                    cache,
-                    model=request.model,
-                    vector_dim=spec.vector_dimension or 0,
-                    model_sha256=spec.sha256,
-                )
         if request.force:
             cache.replace_keys(_query_keys(rows, request.model))
         preload_embeddings(
@@ -249,12 +214,6 @@ class KaggleQueryEmbeddingBackend:
             tuple(action.reason for action in result.actions),
             incomplete=not subset.is_complete,
         )
-
-
-def _evaluation_sha256(path: Path) -> str:
-    from seed_pipeline.evaluation.artifact_contracts import sha256_file
-
-    return sha256_file(path)
 
 
 def _read_query_rows(path: Path) -> list[dict]:

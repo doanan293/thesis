@@ -18,6 +18,7 @@ REMOVED_MODULES = (
     "seed_pipeline.evaluation.dump_retrieval_candidates",
     "seed_pipeline.evaluation.rejudge_service",
     "seed_pipeline.evaluation.rejudging",
+    "seed_pipeline.evaluation.query_embedding_artifact",
 )
 
 REMOVED_PATH_NAMES = (
@@ -35,6 +36,7 @@ REMOVED_PATH_NAMES = (
     "RAG_FINAL_MANIFEST_PATH",
     "RAG_FINAL_VALIDATION_PATH",
     "retrieval_run_roots",
+    "query_embedding_bundle_dir",
 )
 
 
@@ -59,3 +61,18 @@ def test_pre_layout_path_names_are_gone(name: str) -> None:
 def test_paths_no_longer_expose_the_unified_chunk_contract() -> None:
     assert not hasattr(paths, "RAG_FINAL_CHUNKS_PATH")
     assert not hasattr(paths, "VECTOR_EMBEDDING_CACHE_DIR")
+
+
+@pytest.mark.parametrize(
+    ("module", "name"),
+    [
+        ("seed_pipeline.evaluation.query_embedding_service", "query_checkpoint_path"),
+        ("seed_pipeline.evaluation.rerank_score_cache", "finalize_rerank_cache"),
+        (
+            "seed_pipeline.integrations.kaggle.workers.query_embed",
+            "_legacy_query_records",
+        ),
+    ],
+)
+def test_legacy_cache_helpers_are_gone(module: str, name: str) -> None:
+    assert not hasattr(importlib.import_module(module), name)

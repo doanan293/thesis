@@ -3,19 +3,13 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from seed_pipeline.config.paths import GOLD_DIR
-from seed_pipeline.evaluation.query_embedding_cache import (
-    QueryEmbeddingCache,
-    default_query_embedding_cache_path,
-)
-
-DEFAULT_EVAL_JSONL = GOLD_DIR / "section_retrieval_eval.jsonl"
+from seed_pipeline.evaluation.query_embedding_cache import QueryEmbeddingCache
 
 
 def preload_embeddings(
     eval_path: Path,
     model_name: str,
-    cache_path: Path | None = None,
+    cache_path: Path,
     embed_fn: Callable[[str], list[float]] | None = None,
     embed_batch_fn: Callable[[list[str]], list[list[float]]] | None = None,
     batch_size: int = 32,
@@ -24,8 +18,6 @@ def preload_embeddings(
     model_sha256: str = "",
 ) -> dict:
     eval_path = Path(eval_path)
-    if cache_path is None:
-        cache_path = default_query_embedding_cache_path(eval_path, model_name)
 
     cache = QueryEmbeddingCache(
         cache_path,

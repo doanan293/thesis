@@ -58,7 +58,6 @@ def finalize_run_rerank_bundle(
         cache_path,
         model_sha256=spec.sha256,
         request_contract_sha256=str(identity.payload["request_contract_sha256"]),
-        rewrite_legacy=False,
     )
     records = cache.subset_records(candidate_bundle.data_path, model)
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -14,12 +14,10 @@ from seed_pipeline.cache.jsonl_records import (
     append_record,
     load_records,
     rewrite_records,
-    seal_record,
 )
 from seed_pipeline.cache.jsonl_records import (
     subset_sha256 as record_subset_sha256,
 )
-from seed_pipeline.config.paths import QUERY_EMBEDDING_CACHE_DIR
 
 model_slug = _query_hash.model_slug
 normalize_query_for_hash = _query_hash.normalize_query_for_hash
@@ -28,11 +26,6 @@ query_hash = _query_hash.query_hash
 
 class QueryEmbeddingCacheError(RuntimeError):
     pass
-
-
-def default_query_embedding_cache_path(eval_path: Path, model_name: str) -> Path:
-    del eval_path
-    return QUERY_EMBEDDING_CACHE_DIR / f"{model_slug(model_name)}.jsonl"
 
 
 def validate_embedding(
@@ -72,20 +65,11 @@ class QueryEmbeddingCache:
         if not self.path.exists():
             return
         try:
-            records, has_legacy = load_records(self.path, allow_legacy=True)
+            records = load_records(self.path)
         except CacheRecordError as exc:
             raise QueryEmbeddingCacheError(str(exc)) from exc
-        migrated = False
-        normalized_records: list[dict] = []
         for line_number, record in enumerate(records, start=1):
-            normalized = self._normalize_record(record, line_number)
-            if "record_sha256" not in record or "cache_schema" not in record:
-                normalized = seal_record(normalized, "query-embedding-v2")
-                migrated = True
-            normalized_records.append(normalized)
-            self._load_record(normalized, line_number)
-        if has_legacy or migrated:
-            rewrite_records(self.path, normalized_records)
+            self._load_record(self._normalize_record(record, line_number), line_number)
 
     def _normalize_record(self, record: dict, line_number: int) -> dict:
         for field in ("model", "query_id", "embedding"):
@@ -197,10 +181,6 @@ class QueryEmbeddingCache:
         self.records[key] = vector
         self.record_metadata[key] = record
         return list(vector)
-
-    @staticmethod
-    def default_path(model_name: str) -> Path:
-        return QUERY_EMBEDDING_CACHE_DIR / f"{model_slug(model_name)}.jsonl"
 
     def replace_keys(self, keys: builtins.set[tuple[str, str, str]]) -> None:
         kept = [

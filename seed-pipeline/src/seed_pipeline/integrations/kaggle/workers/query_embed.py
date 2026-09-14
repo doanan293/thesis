@@ -49,28 +49,6 @@ def _query_input_record(row: dict, model: str) -> dict:
     }
 
 
-def _legacy_query_records(data_path: Path, rows: list[dict], model: str) -> list[dict]:
-    if not data_path.is_file():
-        return []
-    expected = {str(row["query_id"]): _query_input_record(row, model) for row in rows}
-    records = []
-    with data_path.open(encoding="utf-8") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            item = json.loads(line)
-            key = str(item.get("query_id", ""))
-            current = expected.get(key)
-            if (
-                current is not None
-                and item.get("model") == model
-                and item.get("query_hash") == current["query_hash"]
-                and isinstance(item.get("embedding"), list)
-            ):
-                records.append(item)
-    return records
-
-
 def run_query_embed_worker(
     config: dict,
     *,
@@ -101,10 +79,6 @@ def run_query_embed_worker(
         _query_fingerprint,
         seed_path=seed_path,
     )
-    if not journal.records:
-        legacy = _legacy_query_records(data_path, rows, model)
-        if legacy:
-            journal.append_batch(legacy)
     current = [_query_input_record(row, model) for row in rows]
     if len({_query_key(item) for item in current}) != len(current):
         raise ValueError("query input contains duplicate query_id values")

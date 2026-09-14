@@ -109,7 +109,7 @@ class TextEmbeddingCache:
         self.vector_dim = vector_dim
         self._records: dict[str, dict[str, Any]] = {}
         try:
-            records, _ = load_records(self.path)
+            records = load_records(self.path)
         except CacheRecordError as exc:
             raise TextEmbeddingError(str(exc)) from exc
         for record in records:
