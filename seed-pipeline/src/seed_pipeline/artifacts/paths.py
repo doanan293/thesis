@@ -10,10 +10,12 @@ class ArtifactPaths:
     root: Path
 
     @classmethod
-    def create(cls, work_root: Path, *, build_id: str) -> ArtifactPaths:
-        root = Path(work_root) / f"build-{build_id}"
+    def create(cls, work_root: Path) -> ArtifactPaths:
+        root = Path(work_root) / "in-progress"
         if root.exists():
-            raise FileExistsError(f"Build workspace already exists: {root}")
+            raise FileExistsError(
+                f"Build workspace already exists: {root}; inspect or delete it first"
+            )
         root.mkdir(parents=True)
         paths = cls(root=root)
         for directory in paths.directories():

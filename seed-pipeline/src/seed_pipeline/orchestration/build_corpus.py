@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,13 +21,13 @@ from seed_pipeline.artifacts.publisher import publish_contract
 from seed_pipeline.artifacts.snapshot import extract_snapshot, verify_snapshot
 from seed_pipeline.config.chunking import DEFAULT_CHUNK_MAX_CHARS
 from seed_pipeline.config.paths import (
+    BUILD_WORK_DIR,
     MANIFESTS_DIR,
     RAG_FINAL_DIR,
     RAW_ANKHANG_SNAPSHOTS_DIR,
     RAW_CURATION_DIR,
     RAW_DIR,
     RESOURCES_DIR,
-    WORK_DIR,
 )
 from seed_pipeline.corpus.canonical.build_canonical_rag import process_canonical_rag
 from seed_pipeline.corpus.crawling.integrate_ankhang import integrate_ankhang_corpus
@@ -57,10 +56,9 @@ class BuildConfig:
     table_overrides_path: Path
     mappings_path: Path
     glossary_path: Path
-    work_root: Path = WORK_DIR
+    work_root: Path = BUILD_WORK_DIR
     final_dir: Path = RAG_FINAL_DIR
     max_chars: int = DEFAULT_CHUNK_MAX_CHARS
-    manifest_dir: Path = MANIFESTS_DIR / "corpus"
 
 
 @dataclass(frozen=True)
@@ -72,18 +70,6 @@ class BuildResult:
 @dataclass(frozen=True)
 class BuildHooks:
     build_candidate: Callable[[BuildConfig, ArtifactPaths], None]
-
-
-def publish_corpus_metadata(final_dir: Path, manifest_dir: Path) -> None:
-    final_dir = Path(final_dir)
-    manifest_dir = Path(manifest_dir)
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("manifest.json", "validation_report.json"):
-        source = final_dir / name
-        destination = manifest_dir / name
-        temporary = manifest_dir / f".{name}.tmp"
-        shutil.copy2(source, temporary)
-        os.replace(temporary, destination)
 
 
 def _digest_payload(config: BuildConfig) -> dict[str, Any]:
@@ -263,15 +249,13 @@ def run_build(
         except Exception:
             manifest = None
         if manifest is not None and manifest.get("build_id") == build_id:
-            publish_corpus_metadata(config.final_dir, config.manifest_dir)
             return BuildResult(build_id, config.final_dir)
-    paths = ArtifactPaths.create(config.work_root, build_id=build_id)
+    paths = ArtifactPaths.create(config.work_root)
     _write_state(paths, build_id=build_id, stage="created")
     try:
         hooks.build_candidate(config, paths)
         _write_state(paths, stage="candidate-ready")
         publish_contract(paths.candidate_final_dir, config.final_dir)
-        publish_corpus_metadata(config.final_dir, config.manifest_dir)
         _write_state(paths, stage="published")
         paths.cleanup()
     except BaseException as exc:
