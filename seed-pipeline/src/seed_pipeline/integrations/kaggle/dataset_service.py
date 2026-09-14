@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 import time
+import zipfile
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -228,6 +229,17 @@ class DatasetService:
         destination = Path(destination)
         destination.mkdir(parents=True, exist_ok=True)
         self.runner.run(dataset_file_download_command(reference, filename, destination))
+        compressed = destination / f"{filename}.zip"
+        if compressed.is_file():
+            # The Kaggle API names a single-file download after its URL, which can be
+            # a zip of the file.
+            with zipfile.ZipFile(compressed) as archive:
+                if filename not in archive.namelist():
+                    raise KaggleRemoteStateError(
+                        f"{compressed.name} from {reference} does not contain {filename}"
+                    )
+                archive.extract(filename, destination)
+            compressed.unlink()
         matches = list(destination.rglob(filename))
         if len(matches) != 1:
             raise KaggleRemoteStateError(
@@ -243,6 +255,7 @@ class DatasetService:
         *,
         public: bool = False,
         active_owner: str | None = None,
+        message: str | None = None,
     ) -> PreparedDataset:
         reference = f"{self.owner}/{slug}"
         state = self.inspect_state(reference, active_owner=active_owner or self.owner)
@@ -265,7 +278,8 @@ class DatasetService:
             return PreparedDataset(reference, True, 1)
         print(f"Uploading Kaggle dataset {reference} (version)...", flush=True)
         self.runner.run(
-            dataset_version_command(Path(path), message=title), live_output=True
+            dataset_version_command(Path(path), message=message or title),
+            live_output=True,
         )
         print(f"Uploaded Kaggle dataset {reference}.", flush=True)
         expected_version = (
