@@ -7,7 +7,7 @@ from pathlib import Path
 from seed_pipeline.artifacts.bundle import ArtifactBundle, load_bundle
 from seed_pipeline.artifacts.jsonl import iter_jsonl_objects
 from seed_pipeline.config.defaults import DEFAULT_TOP_K
-from seed_pipeline.config.paths import PROCESSED_EVALUATION_DIR
+from seed_pipeline.config.paths import GOLD_DIR
 from seed_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
     load_manifest,
@@ -195,9 +195,7 @@ def _load_metrics_candidate_bundle(
 
 def _resolve_metrics_evaluation_path(recorded_path: str, expected_sha256: str) -> Path:
     recorded = Path(recorded_path)
-    evaluation = (
-        recorded if recorded.is_file() else PROCESSED_EVALUATION_DIR / recorded.name
-    )
+    evaluation = recorded if recorded.is_file() else GOLD_DIR / recorded.name
     if sha256_file(evaluation) != expected_sha256:
         raise ArtifactContractError(
             "Run evaluation input changed after retrieval; create a new --run"

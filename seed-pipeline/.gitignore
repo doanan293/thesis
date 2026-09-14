@@ -13,5 +13,21 @@ temp/
 .kaggle/
 seed-pipeline-kaggle-*/
 
-# Large generated data, archived outside git
+# Pre-migration data folder; the data migration removes this rule with the folder.
 data/heavy/
+
+# Large or generated data lives in the Kaggle archive (`seed data push` / `seed data pull`).
+data/sources/**/*.pdf
+data/sources/leaflets/html/
+data/corpus/**
+!data/corpus/**/
+!data/corpus/**/manifest.json
+!data/corpus/**/validation_report.json
+data/evaluation/gold/
+data/evaluation/runs/**
+!data/evaluation/runs/**/
+!data/evaluation/runs/**/run.json
+!data/evaluation/runs/**/manifest.json
+!data/evaluation/runs/**/report.md
+data/cache/
+data/work/

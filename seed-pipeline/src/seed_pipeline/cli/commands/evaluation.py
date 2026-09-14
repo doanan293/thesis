@@ -15,9 +15,9 @@ from seed_pipeline.cli.runtime import (
     state_from_context,
 )
 from seed_pipeline.config.paths import (
-    DEFAULT_BUNDLE_DIR,
+    BUNDLE_DIR,
     EVALUATION_CHUNKS_PATH,
-    PROCESSED_EVALUATION_DIR,
+    GOLD_DIR,
     RAG_FINAL_SECTIONS_PATH,
     retrieval_run_roots,
 )
@@ -36,9 +36,9 @@ evaluation_app = typer.Typer(no_args_is_help=True, add_completion=False)
 def evaluation_build_command(
     *,
     sections: Path = RAG_FINAL_SECTIONS_PATH,
-    bundle: Path = DEFAULT_BUNDLE_DIR,
+    bundle: Path = BUNDLE_DIR,
     chunks_output: Path = EVALUATION_CHUNKS_PATH,
-    output_dir: Path = PROCESSED_EVALUATION_DIR,
+    output_dir: Path = GOLD_DIR,
     patient_query_count: int = 500,
     evaluation_row_count: int = 10_000,
 ) -> CommandResult:
@@ -73,15 +73,11 @@ def evaluation_build_command(
 def evaluation_build(
     ctx: typer.Context,
     sections: Annotated[Path, typer.Option("--sections")] = RAG_FINAL_SECTIONS_PATH,
-    bundle: Annotated[
-        Path, typer.Option("--bundle", file_okay=False)
-    ] = DEFAULT_BUNDLE_DIR,
+    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False)] = BUNDLE_DIR,
     chunks_output: Annotated[
         Path, typer.Option("--chunks-output", dir_okay=False)
     ] = EVALUATION_CHUNKS_PATH,
-    output_dir: Annotated[
-        Path, typer.Option("--output-dir")
-    ] = PROCESSED_EVALUATION_DIR,
+    output_dir: Annotated[Path, typer.Option("--output-dir")] = GOLD_DIR,
     patient_query_count: Annotated[int, typer.Option("--patient-query-count")] = 500,
     evaluation_row_count: Annotated[
         int, typer.Option("--evaluation-row-count")
@@ -133,7 +129,7 @@ def _rejudge_current(
 ) -> CommandResult:
     result = run_rejudging(
         RejudgeRequest(
-            evaluation_path=PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl",
+            evaluation_path=GOLD_DIR / "section_retrieval_eval.jsonl",
             dense_run_root=dense_metadata,
             dense_artifact_root=dense_artifacts,
             hybrid_run_root=hybrid_metadata,
@@ -144,7 +140,7 @@ def _rejudge_current(
     return CommandResult(
         "evaluation rejudge-current",
         CommandStatus.COMPLETE,
-        PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl",
+        GOLD_DIR / "section_retrieval_eval.jsonl",
         {
             "applied": result.applied,
             "old_evaluation_sha256": result.old_evaluation_sha256,

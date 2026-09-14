@@ -6,7 +6,7 @@ from pathlib import Path
 
 from seed_pipeline.config.paths import (
     EVALUATION_CHUNKS_PATH,
-    PROCESSED_EVALUATION_DIR,
+    GOLD_DIR,
     RAG_FINAL_DIR,
 )
 from seed_pipeline.corpus.metadata.payload_layers import compact_colloquial_mapping
@@ -37,7 +37,7 @@ from seed_pipeline.evaluation.section_eval_schema import (
 
 DEFAULT_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"
 DEFAULT_CHUNKS_PATH = EVALUATION_CHUNKS_PATH
-DEFAULT_OUTPUT_PATH = PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl"
+DEFAULT_OUTPUT_PATH = GOLD_DIR / "section_retrieval_eval.jsonl"
 
 SECTION_CATEGORY_RULES = [
     ("contraindication", ("chống chỉ định",), "easy", "prose"),
@@ -2448,9 +2448,7 @@ def build_jsonl(
     sections = load_jsonl(sections_path)
     chunks = load_jsonl(chunks_path)
 
-    patient_json_path = patient_queries_path or (
-        PROCESSED_EVALUATION_DIR / "patient_queries.json"
-    )
+    patient_json_path = patient_queries_path or (GOLD_DIR / "patient_queries.json")
     patient_rows = []
     if patient_json_path.exists():
         sections_by_id = {

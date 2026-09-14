@@ -5,11 +5,7 @@ from typer.testing import CliRunner
 
 import seed_pipeline.cli.commands.retrieve as retrieve_command
 from seed_pipeline.cli.app import app
-from seed_pipeline.config.paths import (
-    BACKEND_ENV_FILE,
-    HEAVY_RETRIEVAL_EVAL_DIR,
-    RETRIEVAL_EVAL_DIR,
-)
+from seed_pipeline.config.paths import BACKEND_ENV_FILE, run_dir
 
 runner = CliRunner()
 
@@ -30,7 +26,7 @@ def _fake_run(captured: dict):
     return fake_run
 
 
-def test_retrieve_passes_split_roots_and_backend_defaults(monkeypatch):
+def test_retrieve_passes_the_run_tree_and_backend_defaults(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(retrieve_command, "run_retrieval", _fake_run(captured))
 
@@ -38,8 +34,8 @@ def test_retrieve_passes_split_roots_and_backend_defaults(monkeypatch):
 
     assert result.exit_code == 0, result.output
     request = captured["request"]
-    assert request.run_root == RETRIEVAL_EVAL_DIR / "experiment"
-    assert request.artifact_root == HEAVY_RETRIEVAL_EVAL_DIR / "experiment"
+    assert request.run_root == run_dir("experiment")
+    assert request.artifact_root == run_dir("experiment")
     assert request.retriever == "hybrid"
     assert request.rrf_k == 2
     assert request.collection == "formulary"

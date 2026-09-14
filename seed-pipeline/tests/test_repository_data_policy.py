@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from seed_pipeline.config.paths import PROJECT_ROOT
 
 
@@ -13,12 +15,39 @@ def _is_ignored(path: str) -> bool:
     return result.returncode == 0
 
 
-def test_data_and_local_tool_ignore_boundaries():
-    assert _is_ignored("data/heavy/probe.bin")
-    assert not _is_ignored("data/runtime_kaggle_profiles/probe.json")
-    assert not _is_ignored("data/retrieval_eval/probe/run.json")
-    # Specs and plans are committed, as in the other projects.
-    assert not _is_ignored("docs/superpowers/specs/probe.md")
+@pytest.mark.parametrize(
+    ("path", "ignored"),
+    [
+        ("data/heavy/probe.bin", True),
+        ("data/sources/duoc-thu-quoc-gia-viet-nam.pdf", True),
+        ("data/sources/leaflets/html/thuoc/panadol.html", True),
+        ("data/sources/leaflets/manifest.json", False),
+        ("data/sources/leaflets/urls/drug_urls.txt", False),
+        ("data/sources/term_glossary.json", False),
+        ("data/corpus/rag-final/sections.jsonl", True),
+        ("data/corpus/rag-final/manifest.json", False),
+        ("data/corpus/rag-final/validation_report.json", False),
+        ("data/corpus/formulary/embeddings/model.jsonl", True),
+        ("data/corpus/formulary/manifest.json", False),
+        ("data/evaluation/gold/section_retrieval_eval.jsonl", True),
+        ("data/evaluation/runs/probe/run.json", False),
+        ("data/evaluation/runs/probe/candidates/candidates.jsonl", True),
+        ("data/evaluation/runs/probe/reports/baseline/top30-window3/report.md", False),
+        (
+            "data/evaluation/runs/probe/reports/baseline/top30-window3/manifest.json",
+            False,
+        ),
+        (
+            "data/evaluation/runs/probe/reports/baseline/top30-window3/metrics.jsonl",
+            True,
+        ),
+        ("data/cache/rerank_scores/model.jsonl", True),
+        ("data/work/locks/probe.job.lock", True),
+        ("docs/superpowers/specs/probe.md", False),
+    ],
+)
+def test_data_ignore_rules_follow_the_layout(path: str, ignored: bool) -> None:
+    assert _is_ignored(path) is ignored
 
 
 def test_no_tracked_data_file_exceeds_five_mib():

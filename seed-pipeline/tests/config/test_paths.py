@@ -1,19 +1,23 @@
 from seed_pipeline.config import paths
 
 
-def test_data_layout_has_one_heavy_root_and_split_retrieval_roots():
-    assert paths.HEAVY_DATA_DIR == paths.DATA_DIR / "heavy"
-    assert paths.RESOURCES_DIR == paths.DATA_DIR / "resources"
-    assert paths.MANIFESTS_DIR == paths.DATA_DIR / "manifests"
-    assert paths.RAW_DIR == paths.HEAVY_DATA_DIR / "raw"
-    assert paths.PROCESSED_DIR == paths.HEAVY_DATA_DIR / "processed"
-    assert paths.DATA_CACHE_DIR == paths.HEAVY_DATA_DIR / "cache"
-    assert paths.WORK_DIR == paths.HEAVY_DATA_DIR / ".work"
-    assert paths.INTERIM_DIR == paths.WORK_DIR / "manual"
-    assert paths.RUNTIME_PROFILE_DIR == (
-        paths.HEAVY_DATA_DIR / "runtime_kaggle_profiles"
-    )
-    assert paths.retrieval_run_roots("trial") == (
-        paths.DATA_DIR / "retrieval_eval" / "trial",
-        paths.HEAVY_DATA_DIR / "retrieval_eval" / "trial",
+def test_evaluation_cache_corpus_and_work_folders_follow_the_layout() -> None:
+    assert paths.RAG_FINAL_DIR == paths.DATA_DIR / "corpus" / "rag-final"
+    assert paths.RAG_FINAL_SECTIONS_PATH == paths.RAG_FINAL_DIR / "sections.jsonl"
+    assert paths.BUNDLE_DIR == paths.DATA_DIR / "corpus" / "formulary"
+    assert paths.GOLD_DIR == paths.DATA_DIR / "evaluation" / "gold"
+    assert paths.RUNS_DIR == paths.DATA_DIR / "evaluation" / "runs"
+    assert paths.run_dir("trial") == paths.RUNS_DIR / "trial"
+    assert paths.TEXT_EMBEDDING_CACHE_DIR == paths.CACHE_DIR / "text_embeddings"
+    assert paths.QUERY_EMBEDDING_CACHE_DIR == paths.CACHE_DIR / "query_embeddings"
+    assert paths.RERANK_SCORE_CACHE_DIR == paths.CACHE_DIR / "rerank_scores"
+    assert paths.KAGGLE_PROFILE_DIR == paths.CACHE_DIR / "kaggle_profiles"
+    assert paths.CACHE_DIR == paths.DATA_DIR / "cache"
+    assert paths.WORK_DIR == paths.DATA_DIR / "work"
+    assert paths.BUILD_WORK_DIR == paths.WORK_DIR / "build"
+    assert paths.LOCK_DIR == paths.WORK_DIR / "locks"
+    assert paths.TEXT_INTERIM_DIR == paths.BUILD_WORK_DIR / "text"
+    assert paths.BUNDLE_EMBED_WORK_DIR == paths.WORK_DIR / "bundle-embed"
+    assert paths.EVALUATION_CHUNKS_PATH == (
+        paths.WORK_DIR / "evaluation-chunks" / "chunks.jsonl"
     )

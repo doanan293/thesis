@@ -85,9 +85,7 @@ def test_metrics_rebases_missing_legacy_evaluation_path_by_verified_hash(
         load_run_record(complete_run / "run.json").identity.evaluation_path
     )
     shutil.copy2(evaluation_path, current_evaluation_dir / evaluation_path.name)
-    monkeypatch.setattr(
-        metrics_service, "PROCESSED_EVALUATION_DIR", current_evaluation_dir
-    )
+    monkeypatch.setattr(metrics_service, "GOLD_DIR", current_evaluation_dir)
     _rewrite_run_json(
         complete_run,
         identity={
@@ -116,9 +114,7 @@ def test_metrics_rejects_legacy_evaluation_fallback_when_hash_differs(
     )
     fallback = current_evaluation_dir / evaluation_path.name
     fallback.write_text("different evaluation\n", encoding="utf-8")
-    monkeypatch.setattr(
-        metrics_service, "PROCESSED_EVALUATION_DIR", current_evaluation_dir
-    )
+    monkeypatch.setattr(metrics_service, "GOLD_DIR", current_evaluation_dir)
     _rewrite_run_json(
         complete_run,
         identity={

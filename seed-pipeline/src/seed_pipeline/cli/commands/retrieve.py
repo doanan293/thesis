@@ -20,7 +20,7 @@ from seed_pipeline.config.defaults import (
 )
 from seed_pipeline.config.paths import (
     BACKEND_ENV_FILE,
-    PROCESSED_EVALUATION_DIR,
+    GOLD_DIR,
     retrieval_run_roots,
 )
 from seed_pipeline.evaluation.backend_retrieval import RetrieveRequest, run_retrieval
@@ -29,7 +29,7 @@ from seed_pipeline.evaluation.backend_retrieval import RetrieveRequest, run_retr
 def retrieve(
     ctx: typer.Context,
     run: Annotated[str, typer.Option("--run")],
-    evaluation: Annotated[Path, typer.Option("--evaluation")] = PROCESSED_EVALUATION_DIR
+    evaluation: Annotated[Path, typer.Option("--evaluation")] = GOLD_DIR
     / "section_retrieval_eval.jsonl",
     retriever: Annotated[
         str, typer.Option("--retriever", help="bm25, dense or hybrid")

@@ -14,7 +14,7 @@ from seed_pipeline.cli.runtime import (
 )
 from seed_pipeline.config.defaults import DEFAULT_EMBEDDING_MODEL
 from seed_pipeline.config.paths import (
-    PROCESSED_EVALUATION_DIR,
+    GOLD_DIR,
     query_embedding_cache_path,
 )
 from seed_pipeline.evaluation.query_embedding_service import (
@@ -33,7 +33,7 @@ embed_app = typer.Typer(no_args_is_help=True, add_completion=False)
 def embed_queries(
     ctx: typer.Context,
     backend: Annotated[Backend, typer.Option("--backend")] = Backend.LOCAL,
-    evaluation: Annotated[Path, typer.Option("--evaluation")] = PROCESSED_EVALUATION_DIR
+    evaluation: Annotated[Path, typer.Option("--evaluation")] = GOLD_DIR
     / "section_retrieval_eval.jsonl",
     model: Annotated[str, typer.Option("--model")] = DEFAULT_EMBEDDING_MODEL,
     output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,

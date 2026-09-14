@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from seed_pipeline.config.paths import RUNTIME_PROFILE_DIR, WORK_DIR
+from seed_pipeline.config.paths import KAGGLE_PROFILE_DIR, WORK_DIR
 from seed_pipeline.runtime.catalog import require_model
 from seed_pipeline.runtime.runtime_profiles import (
     RuntimeCandidate,
@@ -129,7 +129,7 @@ def ensure_runtime_profile(
     dry_run: bool,
     force: bool,
     kaggle_account: str | None = None,
-    profile_root: Path = RUNTIME_PROFILE_DIR,
+    profile_root: Path = KAGGLE_PROFILE_DIR,
     runtime_sha256: str | None = None,
     benchmark_runner: Callable[..., Any] | None = None,
 ) -> ProfileResolution:

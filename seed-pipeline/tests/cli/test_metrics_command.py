@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 import seed_pipeline.cli.commands.metrics as metrics_command
 from seed_pipeline.cli.app import app
-from seed_pipeline.config.paths import HEAVY_RETRIEVAL_EVAL_DIR
+from seed_pipeline.config.paths import run_dir
 from seed_pipeline.evaluation.metrics_artifacts import MetricsArtifactResult
 from seed_pipeline.evaluation.metrics_service import MetricsResult
 
@@ -48,7 +48,7 @@ def test_metrics_passes_model_filter_and_lists_all_reports(monkeypatch):
 
     assert result.exit_code == 0
     assert captured["request"].model == "model-a"
-    assert captured["request"].artifact_root == HEAVY_RETRIEVAL_EVAL_DIR / "experiment"
+    assert captured["request"].artifact_root == run_dir("experiment")
     assert len(json.loads(result.stdout)["details"]["reranked"]) == 2
 
 

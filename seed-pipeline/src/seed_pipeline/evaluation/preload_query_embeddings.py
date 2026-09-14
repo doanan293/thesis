@@ -3,13 +3,13 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from seed_pipeline.config.paths import PROCESSED_EVALUATION_DIR
+from seed_pipeline.config.paths import GOLD_DIR
 from seed_pipeline.evaluation.query_embedding_cache import (
     QueryEmbeddingCache,
     default_query_embedding_cache_path,
 )
 
-DEFAULT_EVAL_JSONL = PROCESSED_EVALUATION_DIR / "section_retrieval_eval.jsonl"
+DEFAULT_EVAL_JSONL = GOLD_DIR / "section_retrieval_eval.jsonl"
 
 
 def preload_embeddings(

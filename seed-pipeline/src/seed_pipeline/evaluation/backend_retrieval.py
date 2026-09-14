@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -22,7 +23,6 @@ from seed_pipeline.evaluation.cached_query_embedder import (
     CachedQueryEmbedder,
     cached_query_embedder,
 )
-from seed_pipeline.evaluation.dump_retrieval_candidates import load_query_rows
 from seed_pipeline.evaluation.query_embedding_cache import QueryEmbeddingCache
 from seed_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifact,
@@ -163,6 +163,38 @@ async def current_release_id(service: SearchService, probe_query: str) -> str:
             f"{sorted(releases)}; run `pharma-agent corpus import ... --publish` first"
         )
     return releases.pop()
+
+
+def load_query_rows(path: Path, limit: int | None = None) -> list[dict]:
+    rows: list[dict] = []
+    try:
+        with Path(path).open(encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"Invalid evaluation JSON at {path}:{line_number}"
+                    ) from exc
+                if (
+                    not isinstance(row, dict)
+                    or not row.get("query_id")
+                    or not str(row.get("query") or "").strip()
+                ):
+                    raise ValueError(
+                        "Evaluation row requires query_id and query at "
+                        f"{path}:{line_number}"
+                    )
+                rows.append(row)
+                if limit is not None and len(rows) >= limit:
+                    break
+    except OSError as exc:
+        raise ValueError(f"Evaluation JSONL is missing: {path}") from exc
+    if not rows:
+        raise ValueError(f"Evaluation JSONL is empty: {path}")
+    return rows
 
 
 class BackendCandidateRetriever:
