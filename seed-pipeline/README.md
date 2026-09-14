@@ -38,18 +38,6 @@ seed metrics           Hit@K, MRR từ artifact đã đóng băng
 - Run identity ghi `release_id`, `chunker_version` và `embedding_model`; release khác thì dùng tên run mới.
 - `--model` của `seed rerank` là reranker model; `seed metrics` không chạy model.
 
-### Re-judge metrics trên artifacts hiện có
-
-Khi chỉ sửa judgment mà không đổi query text, có thể chạy lại evaluation mà không retrieve hoặc rerank lại. Lệnh mặc định là dry-run:
-
-```bash
-uv run seed evaluation rejudge-current \
-  --dense-run dense-qwen4b-k30 \
-  --hybrid-run hybrid-qwen4b-p50-k30-rrf2
-```
-
-Thêm `--apply` để thay evaluation dataset, cập nhật hash, xoá metrics reports cũ của hai run và tạo lại baseline cùng rerank reports từ candidates/rerank scores đang có.
-
 ## Prerequisites chung
 
 - `uv`, Docker và Docker Compose.

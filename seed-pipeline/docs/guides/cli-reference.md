@@ -16,7 +16,6 @@ seed bundle export --output DIR
 seed bundle parity --bundle DIR --old-chunks FILE
 seed bundle embed --bundle DIR --backend local|kaggle --model MODEL
 seed evaluation build [--bundle DIR]
-seed evaluation rejudge-current --dense-run NAME --hybrid-run NAME
 seed embed queries --backend local|kaggle
 seed retrieve --run NAME
 seed rerank --run NAME --backend local|kaggle --model MODEL

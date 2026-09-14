@@ -16,6 +16,8 @@ REMOVED_MODULES = (
     "seed_pipeline.evaluation.retrievers",
     "seed_pipeline.evaluation.retrieval_service",
     "seed_pipeline.evaluation.dump_retrieval_candidates",
+    "seed_pipeline.evaluation.rejudge_service",
+    "seed_pipeline.evaluation.rejudging",
 )
 
 REMOVED_PATH_NAMES = (
@@ -40,9 +42,12 @@ def test_old_chunk_contract_modules_are_gone(module: str) -> None:
     assert importlib.util.find_spec(module) is None
 
 
-@pytest.mark.parametrize("args", [["vectors", "upload"], ["embed", "chunks"]])
+@pytest.mark.parametrize(
+    "args",
+    [["vectors", "upload"], ["embed", "chunks"], ["evaluation", "rejudge-current"]],
+)
 def test_old_commands_are_gone(args: list[str]) -> None:
-    assert CliRunner().invoke(app, args).exit_code == 2
+    assert CliRunner().invoke(app, [*args, "--help"]).exit_code == 2
 
 
 @pytest.mark.parametrize("name", REMOVED_PATH_NAMES)
