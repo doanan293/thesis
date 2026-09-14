@@ -1,13 +1,13 @@
 # Local-only workflow
 
-Mọi model chạy local qua llama.cpp trong `../docker-compose.yml`; không dùng Kaggle.
+Mọi model chạy local qua llama.cpp trong `../compose.yaml`; không dùng Kaggle.
 
 ## 1. Kiểm tra môi trường
 
 ```bash
-uv sync
+uv sync --directory ..    # ở repo root: một .venv chung cho uv workspace
 uv run seed doctor --backend local
-docker compose -f ../docker-compose.yml up -d postgres qdrant llama-embedding llama-reranker
+docker compose up -d postgres qdrant llama-embedding llama-reranker   # tìm compose.yaml ở thư mục cha
 ```
 
 ## 2. Build, validate, export và embed

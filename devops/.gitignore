@@ -1,0 +1,2 @@
+# Local service configuration with secrets; each has a tracked *.example file.
+cli-proxy-api/config.yaml

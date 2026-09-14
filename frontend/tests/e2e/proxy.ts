@@ -1,4 +1,4 @@
-// Test-only stand-in for docker/nginx/nginx.conf: one origin, /api/ to FastAPI,
+// Test-only stand-in for devops/nginx/conf.d/default.conf: one origin, /api/ to FastAPI,
 // everything else to react-router-serve. Run with `node tests/e2e/proxy.ts`.
 import { createServer } from "node:http"
 

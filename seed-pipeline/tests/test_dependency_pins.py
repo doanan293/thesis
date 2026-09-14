@@ -19,10 +19,10 @@ def _name(requirement: str) -> str:
 def test_direct_dependencies_are_pinned_local_or_shared_with_backend() -> None:
     config = _load("pyproject.toml")
     backend = _load("../backend/pyproject.toml")
-    path_sources = {
+    local_sources = {
         name
         for name, source in config["tool"]["uv"]["sources"].items()
-        if "path" in source
+        if "path" in source or "workspace" in source
     }
     backend_specifiers = {
         _name(item): item for item in backend["project"]["dependencies"]
@@ -34,18 +34,18 @@ def test_direct_dependencies_are_pinned_local_or_shared_with_backend() -> None:
     assert requirements
     for item in requirements:
         name = _name(item)
-        if name in path_sources:
+        if name in local_sources:
             assert item == name, item
         elif EXACT_REQUIREMENT.fullmatch(item) is None:
             assert backend_specifiers.get(name) == item, item
 
 
-def test_backend_is_an_editable_path_dependency() -> None:
+def test_backend_is_the_only_runtime_dependency() -> None:
     config = _load("pyproject.toml")
+    workspace = _load("../pyproject.toml")["tool"]["uv"]["workspace"]
 
-    assert "pharma-agent" in config["project"]["dependencies"]
-    assert "qdrant-client>=1.19,<2" in config["project"]["dependencies"]
-    assert config["tool"]["uv"]["sources"]["pharma-agent"] == {
-        "path": "../backend",
-        "editable": True,
-    }
+    # seed-pipeline never ships, so its own libraries live in the dev group.
+    assert config["project"]["dependencies"] == ["pharma-agent"]
+    assert "qdrant-client>=1.19,<2" in config["dependency-groups"]["dev"]
+    assert config["tool"]["uv"]["sources"]["pharma-agent"] == {"workspace": True}
+    assert {"backend", "seed-pipeline"} <= set(workspace["members"])

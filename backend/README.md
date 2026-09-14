@@ -6,13 +6,13 @@ Backend AI agent tra cứu thuốc trên corpus Dược thư Quốc gia. Thiết
 ## Chạy lần đầu
 
 ```bash
+uv sync                         # ở repo root: một .venv chung cho cả uv workspace
 cd backend
-uv sync
 cp .env.example .env            # điền PHARMA_LLM__DEFAULT__API_KEY
 ```
 
-Cần Postgres, Qdrant, llama.cpp embedding (cổng 11434) và reranker (cổng 11435) từ
-`docker-compose.yml` ở repo root. Corpus nằm trong schema `corpus` của Postgres; Qdrant chỉ là
+Cần Postgres, Qdrant, llama.cpp embedding (cổng 11434), reranker (cổng 11435) và proxy LLM
+CLIProxyAPI (cổng 8317) từ `compose.yaml` ở repo root. Corpus nằm trong schema `corpus` của Postgres; Qdrant chỉ là
 index (alias `chunks_current`). Nạp một knowledge bundle và publish trước khi hỏi:
 
 ```bash
@@ -31,32 +31,13 @@ uv run pharma-agent ask "..." --json           # kèm trace đầy đủ
 
 ## Chạy toàn bộ bằng Docker
 
-Chạy từ repo root. Cần `backend/.env` có LLM key, `PHARMA_AUTH__JWT_SECRET` và `PHARMA_AUTH__CSRF_SECRET`. Cookie phiên có cờ `Secure`, trình duyệt chỉ nhận qua `http://localhost`; mở stack qua HTTP bằng tên máy khác (ví dụ IP LAN) thì đặt `COOKIE_SECURE=false` trong `.env` ở root. Port, file model
-và số luồng CPU đặt trong `.env` ở root, xem `.env.example`.
-
-```bash
-docker compose up -d --build
-docker compose ps                              # chờ mọi service healthy
-docker compose exec backend pharma-agent check
-docker compose exec backend pharma-agent ask "Paracetamol người lớn uống tối đa bao nhiêu một ngày?"
-```
-
-- Hai model 4B chạy trên CPU nên lần đầu nạp model mất vài phút; backend chỉ khởi động khi
-  embedding và reranker đã healthy.
-- `backend-migrate` chạy `pharma-agent migrate` một lần trước khi backend khởi động.
-- Backend dùng mạng host để gọi được proxy LLM đang lắng nghe `127.0.0.1` trên Windows
-  (WSL cần `networkingMode=mirrored`). Compose tự đặt URL Postgres, Qdrant, embedding và
-  reranker theo port ở `.env` root, nên `backend/.env` chỉ cần LLM, auth và Langfuse.
-- Đổi sang GGUF nhẹ hơn: đặt `LLAMA_EMBEDDING_MODEL` hoặc `LLAMA_RERANKER_MODEL` là tên file trong
-  `ai-models/gguf`, rồi `docker compose up -d`. Embedding phải là model đã dùng khi
-  import corpus; `/health` báo `CORPUS_NOT_READY` nếu metadata collection không khớp.
-- Lần đầu cần nạp corpus vào container: `docker compose cp <bundle_dir> backend:/tmp/bundle` rồi
-  `docker compose exec backend pharma-agent corpus import /tmp/bundle --collection formulary --publish`.
+Stack đầy đủ (backend, frontend, nginx và các service phụ trợ) chạy bằng `compose.yaml` ở repo
+root; xem mục *Chạy toàn bộ bằng Docker* trong README ở root.
 
 ## Chạy HTTP API
 
 ```bash
-docker compose up -d postgres qdrant llama-embedding llama-reranker   # chạy từ repo root
+docker compose up -d postgres qdrant llama-embedding llama-reranker cli-proxy-api   # chạy từ repo root
 cd backend
 uv run pharma-agent migrate
 uv run pharma-agent serve            # http://127.0.0.1:8000/docs

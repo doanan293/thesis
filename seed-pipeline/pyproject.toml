@@ -4,40 +4,36 @@ version = "0.1.0"
 description = "Utilities for preparing the 2018 Vietnamese National Drug Formulary RAG corpus."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
+dependencies = ["pharma-agent"]
+
+[project.scripts]
+seed = "seed_pipeline.cli.app:main"
+
+# seed-pipeline is internal offline tooling and never ships, so its libraries are dev-only:
+# the backend's dependencies are the only runtime dependencies in the workspace.
+[dependency-groups]
+dev = [
     "beautifulsoup4==4.15.0",
     "docling-ibm-models==3.13.3",
     "docling-parse==6.2.0",
     "docling-slim==2.102.1",
+    "kaggle==2.2.3",
     "lxml==6.1.1",
     "mail-parser==4.4.0",
     "marko==2.2.3",
     "openpyxl==3.1.5",
-    "pharma-agent",
     "PyMuPDF==1.27.2.3",
     "pylatexenc==2.10",
     "pypdfium2==5.10.1",
     "python-docx==1.2.0",
     "python-pptx==1.0.2",
     "qdrant-client>=1.19,<2",
-    "kaggle==2.2.3",
     "requests==2.34.2",
-    "typer==0.21.2",
     "torch==2.12.1",
     "torchvision==0.27.1",
+    # Same specifier as the backend: a pin would hold the backend CLI back in the shared lock.
+    "typer>=0.21",
     "zstandard==0.25.0",
-]
-
-[project.scripts]
-seed = "seed_pipeline.cli.app:main"
-
-[dependency-groups]
-dev = [
-    "pre-commit==4.6.2",
-    "pyrefly==1.3.0",
-    "pytest==9.1.1",
-    "pytest-asyncio==1.4.0",
-    "ruff==0.16.7",
 ]
 
 [tool.uv]
@@ -49,7 +45,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-pharma-agent = { path = "../backend", editable = true }
+pharma-agent = { workspace = true }
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 

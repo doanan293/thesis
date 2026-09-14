@@ -9,6 +9,7 @@ from typing import Protocol
 from seed_pipeline.config.enums import Backend
 from seed_pipeline.config.environment import PROJECT_ENV_FILE, parse_env_file
 from seed_pipeline.config.paths import (
+    COMPOSE_FILE,
     HEAVY_RAW_DIR,
     MANIFESTS_DIR,
     PROJECT_ROOT,
@@ -88,7 +89,7 @@ def _check_raw_inputs(project_root: Path) -> list[PreflightIssue]:
 
 
 def _check_compose(project_root: Path) -> list[PreflightIssue]:
-    compose = project_root.parent / "docker-compose.yml"
+    compose = project_root.parent / COMPOSE_FILE.name
     if compose.is_file():
         return []
     return [PreflightIssue("compose", "Docker Compose file is missing", str(compose))]

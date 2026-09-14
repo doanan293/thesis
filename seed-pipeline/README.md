@@ -5,8 +5,9 @@ Công cụ offline tạo dữ liệu gốc cho backend `pharma-agent` từ ngu�
 ## Bắt đầu
 
 ```bash
-cd /home/andv/personal/thesis/seed-pipeline
-uv sync    # cài luôn backend `pharma-agent` (path dependency, editable)
+cd /home/andv/personal/thesis
+uv sync    # uv workspace: backend `pharma-agent` và mọi thư viện dev của seed-pipeline
+cd seed-pipeline
 ```
 
 | Trường hợp | Workflow |

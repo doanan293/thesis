@@ -9,8 +9,9 @@ Cần sẵn: bản archive `data/heavy/` (raw PDF, snapshot An Khang, bộ gold 
 Backend đã có schema `corpus`, domain corpus, `pharma-agent corpus import`, layout Qdrant mới, `PostgresHydrator`, audit và health check (plan P1–P3 đã merge).
 
 ```bash
-cd /home/andv/personal/thesis/backend
+cd /home/andv/personal/thesis
 uv sync
+cd backend
 uv run pytest -q
 uv run pytest -q -m integration
 ```
@@ -18,8 +19,9 @@ uv run pytest -q -m integration
 ## 2. seed-pipeline: đổi tên và export
 
 ```bash
-cd /home/andv/personal/thesis/seed-pipeline
+cd /home/andv/personal/thesis
 uv sync
+cd seed-pipeline
 uv run seed doctor --backend kaggle --kaggle-account acc1
 ```
 
@@ -54,8 +56,8 @@ Quay lại nhánh làm việc, build lại theo contract `rag-final-v3` và ki�
 ```bash
 cd /home/andv/personal/thesis
 git switch -
-cd seed-pipeline
 uv sync
+cd seed-pipeline
 ```
 
 ```bash
@@ -140,7 +142,7 @@ cd /home/andv/personal/thesis/seed-pipeline
 rm -rf data/heavy/cache/vector_embeddings data/heavy/.work/kaggle-chunk-embeddings
 rm -rf data/heavy/migration
 cd /home/andv/personal/thesis
-grep -n "COLLECTION_ALIAS" docker-compose.yml backend/.env.example
+grep -n "COLLECTION_ALIAS" compose.yaml backend/.env.example
 ```
 
-`grep` không được in gì (`docker-compose.yml` không đặt alias; backend dùng `retrieval.qdrant_collection = "chunks_current"`). Corpus lúc chạy từ nay nạp bằng `pharma-agent corpus import` như bước 5; ghi Hit@10 và MRR đạt được vào mô tả PR của đợt chuyển đổi.
+`grep` không được in gì (`compose.yaml` không đặt alias; backend dùng `retrieval.qdrant_collection = "chunks_current"`). Corpus lúc chạy từ nay nạp bằng `pharma-agent corpus import` như bước 5; ghi Hit@10 và MRR đạt được vào mô tả PR của đợt chuyển đổi.

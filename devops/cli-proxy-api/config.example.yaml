@@ -1,0 +1,25 @@
+# CLIProxyAPI configuration for the `cli-proxy-api` service in compose.yaml.
+# Copy to config.yaml in this directory (git-ignored) and replace the api-keys.
+# Every other option is documented in config.example.yaml of
+# https://github.com/router-for-me/CLIProxyAPI at the image tag pinned in compose.yaml.
+
+# Listen on all interfaces inside the container; compose publishes the port on the host.
+host: ""
+port: 8317
+
+# OAuth credential files, stored in the cli_proxy_auth volume.
+auth-dir: "/root/.cli-proxy-api"
+
+# Keys that clients send as "Authorization: Bearer <key>".
+# The backend sends PHARMA_LLM__DEFAULT__API_KEY, so it must be one of them.
+api-keys:
+  - "change-me"
+
+# The file is mounted read-only, so the management API, which rewrites it, stays disabled.
+remote-management:
+  allow-remote: false
+  secret-key: ""
+  disable-control-panel: true
+
+logging-to-file: false
+usage-statistics-enabled: false

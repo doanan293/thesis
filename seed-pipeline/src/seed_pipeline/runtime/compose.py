@@ -88,7 +88,9 @@ class LlamaCppComposeManager:
         environment[f"{prefix}_MODEL"] = spec.canonical_filename
         environment[f"{prefix}_PARALLEL"] = str(spec.local_parallel)
         if role == "reranker":
-            environment["LLAMA_RERANKER_PROTOCOL"] = str(spec.reranker_protocol)
+            # llama-server serves /v1/rerank only with LLAMA_ARG_RERANKING (--reranking).
+            native = spec.reranker_protocol == "native_rerank"
+            environment["LLAMA_RERANKER_RERANKING"] = "true" if native else "false"
         command = [
             "docker",
             "compose",

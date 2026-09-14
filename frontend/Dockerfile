@@ -23,9 +23,10 @@ FROM node:24.21.0-alpine3.24
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000
-COPY --chown=node:node package.json package-lock.json ./
-COPY --from=production-deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/build ./build
-USER node
+# 1000:1000 is the image's `node` user; numeric IDs let a runtime verify the non-root user.
+COPY --chown=1000:1000 package.json package-lock.json ./
+COPY --from=production-deps --chown=1000:1000 /app/node_modules ./node_modules
+COPY --from=build --chown=1000:1000 /app/build ./build
+USER 1000:1000
 EXPOSE 3000
 CMD ["node_modules/.bin/react-router-serve", "./build/server/index.js"]

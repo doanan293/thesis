@@ -1,5 +1,5 @@
 # Shared hooks for every project in this repo (seed-pipeline, backend, frontend).
-# Install once from the repo root: `uv run --project backend pre-commit install`.
+# Install once from the repo root: `uv run pre-commit install`.
 # Frontend hooks need `npm ci` in frontend/ first.
 # Specs and plans under backend/docs/superpowers are immutable records; hooks never rewrite them.
 exclude: '.*(data/|\.venv/|ai-models/|\.agents/|node_modules/|backend/docs/superpowers/)'
@@ -49,7 +49,7 @@ repos:
         name: validate agent skills (agentskills)
         entry: >-
           bash -c 'for dir in backend/skills/*/; do
-          uv run --project backend agentskills validate "$dir" || exit 1; done'
+          uv run agentskills validate "$dir" || exit 1; done'
         language: system
         files: ^backend/skills/
         pass_filenames: false
@@ -85,6 +85,17 @@ repos:
         pass_filenames: false
         require_serial: true
 
+  - repo: local
+    hooks:
+      # Pinned image; the upstream hadolint-docker hook always pulls the latest tag.
+      - id: hadolint
+        name: hadolint (Dockerfiles)
+        entry: ghcr.io/hadolint/hadolint:v2.15.1 hadolint
+        language: docker_image
+        types: [dockerfile]
+        # identify also tags Dockerfile.dockerignore as a Dockerfile.
+        files: (^|/)Dockerfile$
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
@@ -93,11 +104,6 @@ repos:
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.12.13
     hooks:
+      # One lock for the whole workspace, so a change to any member's pyproject.toml relocks it.
       - id: uv-lock
-        name: uv-lock (seed-pipeline)
-        args: [--project, seed-pipeline]
-        files: ^seed-pipeline/(uv\.lock|pyproject\.toml|uv\.toml)$
-      - id: uv-lock
-        name: uv-lock (backend)
-        args: [--project, backend]
-        files: ^backend/(uv\.lock|pyproject\.toml|uv\.toml)$
+        files: ^(uv\.lock|pyproject\.toml|(backend|seed-pipeline)/pyproject\.toml)$

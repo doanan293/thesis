@@ -1,0 +1,18 @@
+# uv workspace for every Python project in this repository: one uv.lock and one .venv at the
+# root. Run `uv sync` only here; inside a project use `uv run`, which never removes packages.
+[tool.uv.workspace]
+members = ["backend", "seed-pipeline"]
+
+[tool.uv]
+# One uv version for local runs, the backend image and the uv-lock pre-commit hook.
+required-version = "==0.12.13"
+
+# Development tools shared by every project, pinned once.
+[dependency-groups]
+dev = [
+    "pre-commit==4.6.2",
+    "pyrefly==1.3.0",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.16.7",
+]

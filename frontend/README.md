@@ -18,7 +18,7 @@ The Playwright suite in `tests/e2e/` runs the production build of this app again
 ### Prerequisites
 
 1. From the repository root: `docker compose up -d postgres qdrant`.
-2. Backend dependencies: `uv sync --directory ../backend`. The E2E server's settings are described in the "Server E2E" section of `backend/README.md`. On every start it recreates the `pharma_e2e` database (override with `E2E_POSTGRES_DSN`) and the Qdrant alias `e2e_chunks_current` (Qdrant URL from `E2E_QDRANT_URL`); your dev data is not touched.
+2. Backend dependencies: `uv sync --directory ..` (the uv workspace at the repository root). The E2E server's settings are described in the "Server E2E" section of `backend/README.md`. On every start it recreates the `pharma_e2e` database (override with `E2E_POSTGRES_DSN`) and the Qdrant alias `e2e_chunks_current` (Qdrant URL from `E2E_QDRANT_URL`); your dev data is not touched.
 3. Chromium for Playwright: `npx playwright install chromium` (already done if you followed the setup above).
 
 ### Run

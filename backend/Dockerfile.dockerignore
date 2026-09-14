@@ -1,0 +1,10 @@
+# The build context is the repository root; send only what the backend image needs.
+*
+!pyproject.toml
+!uv.lock
+!seed-pipeline/pyproject.toml
+!backend/pyproject.toml
+!backend/README.md
+!backend/src
+!backend/skills
+**/__pycache__
