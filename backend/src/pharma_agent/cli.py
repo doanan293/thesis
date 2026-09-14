@@ -421,7 +421,9 @@ def corpus_gc(
             f"{report.points_updated} deleted {report.points_deleted} | chunk versions "
             f"deleted {report.purge.chunk_versions_deleted} kept "
             f"{report.purge.chunk_versions_kept} | section revisions deleted "
-            f"{report.purge.section_revisions_deleted}"
+            f"{report.purge.section_revisions_deleted} | sections deleted "
+            f"{report.purge.sections_deleted} | documents deleted "
+            f"{report.purge.documents_deleted}"
         )
 
     _run_corpus(action, settings)

@@ -69,7 +69,11 @@ class CorpusRepository(Protocol):
     async def retire(self, release_ids: Sequence[uuid.UUID], at: datetime) -> None: ...
 
     async def purge_retired(self, collection_id: uuid.UUID) -> PurgeResult:
-        """Spec C §8.5 steps 3-4 for every retired release of the collection."""
+        """Spec C §8.5 steps 3-4 for every retired release of the collection.
+
+        Then deletes the collection's sections that no section revision or release chunk
+        references, and the documents left without sections.
+        """
         ...
 
 

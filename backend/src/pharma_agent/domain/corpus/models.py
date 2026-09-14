@@ -229,6 +229,8 @@ class PurgeResult(_Frozen):
     chunk_versions_deleted: int = 0
     chunk_versions_kept: int = 0
     section_revisions_deleted: int = 0
+    sections_deleted: int = 0
+    documents_deleted: int = 0
 
 
 def collection_id_for(key: str) -> uuid.UUID:

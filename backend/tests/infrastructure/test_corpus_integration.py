@@ -26,6 +26,7 @@ from tests.corpus_fixtures import (
     DOSAGE_SECTION,
     LEAFLET_SECTION,
     small_bundle,
+    with_renamed_documents,
     with_section_text,
 )
 from tests.fakes import FakeEmbedder, fake_vector
@@ -247,3 +248,21 @@ async def test_reindex_rebuilds_a_deleted_qdrant_collection(stack: Stack) -> Non
     assert await alias_target(stack.client) == PHYSICAL
     info = await stack.client.get_collection(PHYSICAL)
     assert info.config.metadata == {"embedding_model": "fake-embedding-4d", "dims": 4}
+
+
+async def test_gc_deletes_documents_and_sections_of_retired_keys(stack: Stack) -> None:
+    await stack.importer(small_bundle(), publish=True)
+    renamed = with_renamed_documents(small_bundle(), "-v2")
+    await stack.importer(renamed, publish=True)
+
+    report = await stack.releases.gc("formulary", keep=1)
+
+    async with stack.database.engine.connect() as connection:
+        documents = await connection.execute(text("SELECT key FROM corpus.documents"))
+        document_keys = set(documents.scalars())
+        sections = await connection.execute(text("SELECT key FROM corpus.sections"))
+        section_keys = set(sections.scalars())
+    assert document_keys == {document.key for document in renamed.documents}
+    assert section_keys == {section.key for section in renamed.sections}
+    assert report.purge.documents_deleted == len(small_bundle().documents)
+    assert report.purge.sections_deleted == len(small_bundle().sections)

@@ -219,11 +219,37 @@ class InMemoryCorpusRepository:
         ]
         for revision_id in orphan_revisions:
             del self.revisions[revision_id]
+        live_sections = {
+            revision.section_id for revision in self.revisions.values()
+        } | {
+            placement.section_id
+            for placements in self.placements.values()
+            for placement in placements
+        }
+        orphan_sections = [
+            section_id
+            for section_id, section in self.sections.items()
+            if self.documents[section.document_id].collection_id == collection_id
+            and section_id not in live_sections
+        ]
+        for section_id in orphan_sections:
+            del self.sections[section_id]
+        live_documents = {section.document_id for section in self.sections.values()}
+        orphan_documents = [
+            document_id
+            for document_id, document in self.documents.items()
+            if document.collection_id == collection_id
+            and document_id not in live_documents
+        ]
+        for document_id in orphan_documents:
+            del self.documents[document_id]
         return PurgeResult(
             release_chunks_deleted=placements_deleted,
             chunk_versions_deleted=len(orphans) - len(kept),
             chunk_versions_kept=len(kept),
             section_revisions_deleted=len(orphan_revisions),
+            sections_deleted=len(orphan_sections),
+            documents_deleted=len(orphan_documents),
         )
 
     def _collection_of_revision(self, revision_id: uuid.UUID) -> uuid.UUID:

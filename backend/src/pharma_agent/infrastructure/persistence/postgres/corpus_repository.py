@@ -562,9 +562,45 @@ class PostgresCorpusRepository:
             revisions_deleted, _ = await _delete_unreferenced(
                 session, SectionRevisionTable, orphan_revisions
             )
+            collection_documents = select(DocumentTable.id).where(
+                DocumentTable.collection_id == collection_id
+            )
+            sections_deleted = len(
+                (
+                    await session.execute(
+                        delete(SectionTable)
+                        .where(
+                            SectionTable.document_id.in_(collection_documents),
+                            ~exists().where(
+                                SectionRevisionTable.section_id == SectionTable.id
+                            ),
+                            ~exists().where(
+                                ReleaseChunkTable.section_id == SectionTable.id
+                            ),
+                        )
+                        .returning(SectionTable.id)
+                    )
+                ).all()
+            )
+            documents_deleted = len(
+                (
+                    await session.execute(
+                        delete(DocumentTable)
+                        .where(
+                            DocumentTable.collection_id == collection_id,
+                            ~exists().where(
+                                SectionTable.document_id == DocumentTable.id
+                            ),
+                        )
+                        .returning(DocumentTable.id)
+                    )
+                ).all()
+            )
         return PurgeResult(
             release_chunks_deleted=len(placements),
             chunk_versions_deleted=chunks_deleted,
             chunk_versions_kept=chunks_kept,
             section_revisions_deleted=revisions_deleted,
+            sections_deleted=sections_deleted,
+            documents_deleted=documents_deleted,
         )

@@ -20,6 +20,7 @@ from tests.corpus_fixtures import (
     DOSAGE_SECTION,
     LEAFLET_SECTION,
     small_bundle,
+    with_renamed_documents,
     with_section_text,
 )
 from tests.corpus_memory import (
@@ -180,3 +181,23 @@ async def test_reindex_rebuilds_points_from_repository_and_cache() -> None:
     shared = next(iter(ids1 & ids2))
     assert s.adapters.index.release_ids_of(shared) == sorted([r1.id, r2.id])
     assert s.embedder.batches == [[snapshot2.embedding_texts()[dropped]]]
+
+
+async def test_gc_deletes_documents_and_sections_no_release_uses() -> None:
+    s = services()
+    old = await s.publish_bundle(small_bundle())
+    renamed = with_renamed_documents(small_bundle(), "-v2")
+    await s.publish_bundle(renamed)
+
+    report = await s.releases.gc("formulary", keep=1)
+
+    repository = s.adapters.repository
+    assert report.retired == [old.id]
+    assert {document.key for document in repository.documents.values()} == {
+        document.key for document in renamed.documents
+    }
+    assert {section.key for section in repository.sections.values()} == {
+        section.key for section in renamed.sections
+    }
+    assert report.purge.documents_deleted == len(small_bundle().documents)
+    assert report.purge.sections_deleted == len(small_bundle().sections)

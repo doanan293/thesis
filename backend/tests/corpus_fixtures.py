@@ -316,3 +316,40 @@ def regenerate(directory: Path = FIXTURE_DIR) -> None:
 
 if __name__ == "__main__":
     regenerate()
+
+
+def with_renamed_documents(bundle: KnowledgeBundle, suffix: str) -> KnowledgeBundle:
+    """Copy of `bundle` whose document keys end with `suffix`; section keys follow them."""
+    documents = {
+        document.key: f"{document.key}{suffix}" for document in bundle.documents
+    }
+    sections = {
+        section.key: documents[section.document_key]
+        + section.key.removeprefix(section.document_key)
+        for section in bundle.sections
+    }
+    return bundle.model_copy(
+        update={
+            "documents": [
+                document.model_copy(update={"key": documents[document.key]})
+                for document in bundle.documents
+            ],
+            "sections": [
+                section.model_copy(
+                    update={
+                        "key": sections[section.key],
+                        "document_key": documents[section.document_key],
+                    }
+                )
+                for section in bundle.sections
+            ],
+            "colloquial_mappings": [
+                mapping.model_copy(
+                    update={
+                        "section_keys": [sections[key] for key in mapping.section_keys]
+                    }
+                )
+                for mapping in bundle.colloquial_mappings
+            ],
+        }
+    )
