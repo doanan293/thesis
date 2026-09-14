@@ -841,21 +841,6 @@
         "suspect": 0
       },
       "warnings": []
-    },
-    "unified_contract": {
-      "errors": [],
-      "findings": [],
-      "metrics": {
-        "chunk_count": 24955
-      },
-      "ok": true,
-      "severity_counts": {
-        "accepted": 0,
-        "auto_fixable": 0,
-        "blocking": 0,
-        "suspect": 0
-      },
-      "warnings": []
     }
   },
   "warnings": []
