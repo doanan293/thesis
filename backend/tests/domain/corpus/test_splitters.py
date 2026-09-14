@@ -113,16 +113,34 @@ def test_split_table_markdown_repeats_header_and_separator_in_every_part() -> No
     ]
 
 
-def test_split_table_markdown_without_separator_falls_back_to_prose() -> None:
-    table = (
-        "| Thuốc | Hậu quả |\n| Warfarin | Tăng INR khi dùng kéo dài |\n\n"
-        "| Rượu | Tăng độc tính trên gan |"
-    )
+def test_split_table_markdown_repeats_a_two_row_header_without_separator() -> None:
+    # Leaflet tables often spread the header over several rows before any separator.
+    header = "| Hệ cơ quan |  |\n| Tần suất | Bilastine |"
+    table = f"{header}\n| Rối loạn tâm lý |  |\n| Lo lắng | 6 (0,35%) |"
+
+    assert split_table_markdown(table, 70) == [
+        f"{header}\n| Rối loạn tâm lý |  |",
+        f"{header}\n| Lo lắng | 6 (0,35%) |",
+    ]
+
+
+def test_split_table_markdown_closes_a_part_before_it_reaches_max_chars() -> None:
+    table = f"{TABLE_HEADER}\n| A | 1 |\n| B | 2 |\n| C | 3 |"
+    part_with_two_rows = f"{TABLE_HEADER}\n| A | 1 |\n| B | 2 |"
+
+    assert split_table_markdown(table, len(part_with_two_rows)) == [
+        f"{TABLE_HEADER}\n| A | 1 |",
+        f"{TABLE_HEADER}\n| B | 2 |",
+        f"{TABLE_HEADER}\n| C | 3 |",
+    ]
+
+
+def test_split_table_markdown_without_two_leading_rows_falls_back_to_prose() -> None:
+    table = "Tương tác thuốc:\n| Thuốc | Hậu quả |\n\n| Warfarin | Tăng INR khi dùng kéo dài |"
 
     assert split_table_markdown(table, 40) == [
-        "| Thuốc | Hậu quả |",
+        "Tương tác thuốc:\n| Thuốc | Hậu quả |",
         "| Warfarin | Tăng INR khi dùng kéo dài |",
-        "| Rượu | Tăng độc tính trên gan |",
     ]
 
 

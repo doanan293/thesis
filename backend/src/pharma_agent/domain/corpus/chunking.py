@@ -1,8 +1,9 @@
 """The single corpus chunker (spec C §7.1).
 
 Public API. Splitting is ported from seed-pipeline ``build_final_chunk_records``,
-``split_table_markdown``, ``split_lines_without_breaking_entries`` and
-``split_long_text``; the splitter is chosen only by ``BlockRecord.kind``.
+``split_lines_without_breaking_entries`` and ``split_long_text``; tables follow the leaflet
+``split_table`` header rule, which also reproduces every formulary table. The splitter is
+chosen only by ``BlockRecord.kind``.
 """
 
 import re
@@ -112,34 +113,33 @@ def split_long_text(text: str, max_chars: int) -> list[str]:
     return chunks
 
 
-def _is_separator_row(line: str) -> bool:
-    stripped = line.strip()
-    if not stripped.startswith("|") or "-" not in stripped:
-        return False
-    return stripped.replace("|", "").replace("-", "").replace(":", "").strip() == ""
-
-
 def split_table_markdown(markdown: str, max_chars: int) -> list[str]:
-    """Split rows into parts that each repeat the header and separator rows."""
+    """Split rows into parts that each repeat the table's first two rows.
+
+    The first two rows are the header whether or not the second one is a separator, because
+    leaflet tables often spread their header over several rows. A part is closed before it
+    reaches ``max_chars``. Text without two leading table rows is split as prose.
+    """
     text = markdown.strip()
     if len(text) <= max_chars:
         return [text]
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if len(lines) < 3 or not _is_separator_row(lines[1]):
+    if len(lines) < 3 or not all(line.startswith("|") for line in lines[:2]):
         return split_long_text(text, max_chars)
-    prefix = [lines[0], lines[1]]
+    header = "\n".join(lines[:2])
     chunks: list[str] = []
-    current_rows: list[str] = []
+    rows: list[str] = []
+    length = len(header)
     for row in lines[2:]:
-        candidate_rows = [*current_rows, row]
-        if current_rows and len("\n".join(prefix + candidate_rows)) > max_chars:
-            chunks.append("\n".join(prefix + current_rows))
-            current_rows = [row]
-            continue
-        current_rows = candidate_rows
-    if current_rows:
-        chunks.append("\n".join(prefix + current_rows))
-    return chunks or [text]
+        if rows and length + 1 + len(row) >= max_chars:
+            chunks.append("\n".join([header, *rows]))
+            rows = []
+            length = len(header)
+        rows.append(row)
+        length += 1 + len(row)
+    if rows:
+        chunks.append("\n".join([header, *rows]))
+    return chunks
 
 
 def split_lines_without_breaking_entries(text: str, max_chars: int) -> list[str]:
