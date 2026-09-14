@@ -4,24 +4,19 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from seed_pipeline.artifacts.bundle import ArtifactBundle, load_bundle
+from seed_pipeline.artifacts.bundle import load_bundle
 from seed_pipeline.artifacts.jsonl import iter_jsonl_objects
 from seed_pipeline.config.defaults import DEFAULT_TOP_K
-from seed_pipeline.config.paths import GOLD_DIR
+from seed_pipeline.config.paths import DATA_DIR
 from seed_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
-    load_manifest,
     sha256_file,
 )
 from seed_pipeline.evaluation.metrics_artifacts import (
     MetricsArtifactResult,
     publish_metrics_artifact,
-    select_rerank_variants,
 )
-from seed_pipeline.evaluation.rerank_artifacts import (
-    load_registered_rerank_bundle,
-    migrate_legacy_rerank,
-)
+from seed_pipeline.evaluation.rerank_artifacts import load_registered_rerank_bundle
 from seed_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
     RerankScoreCacheError,
@@ -36,8 +31,10 @@ from seed_pipeline.evaluation.retrieval_metrics import (
 )
 from seed_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from seed_pipeline.evaluation.run_workspace import (
+    RerankVariantRecord,
     RunWorkspace,
     load_run_record,
+    resolve_evaluation_reference,
 )
 from seed_pipeline.evaluation.variant_identity import MetricsArtifactIdentity
 from seed_pipeline.runtime.catalog import require_model
@@ -140,8 +137,7 @@ class MetricsRequest:
     top_k: int = DEFAULT_TOP_K
     window_size: int = 3
     model: str | None = None
-    variant: str | None = None
-    artifact_root: Path | None = None
+    force: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,89 +163,61 @@ class MetricInputs:
     run_root: Path
 
 
-def _load_metrics_candidate_bundle(
-    workspace: RunWorkspace, recorded_dir: str | None
-) -> ArtifactBundle:
-    recorded = (
-        workspace.resolve_relative_path(recorded_dir)
-        if recorded_dir
-        else workspace.candidates_dir
-    )
-    if recorded.exists():
-        return load_bundle(
-            recorded,
-            expected_type="retrieval_candidates",
-            require_complete=True,
-        )
-
-    candidate_bundle = load_bundle(
-        workspace.candidates_dir,
-        expected_type="retrieval_candidates",
-        require_complete=True,
-    )
-    snapshot = load_manifest(workspace.root / "candidates-manifest.json")
-    if snapshot.data_sha256 != candidate_bundle.manifest.data_sha256:
-        raise ArtifactContractError("candidate snapshot mismatch")
-    return candidate_bundle
-
-
-def _resolve_metrics_evaluation_path(recorded_path: str, expected_sha256: str) -> Path:
-    recorded = Path(recorded_path)
-    evaluation = recorded if recorded.is_file() else GOLD_DIR / recorded.name
-    if sha256_file(evaluation) != expected_sha256:
-        raise ArtifactContractError(
-            "Run evaluation input changed after retrieval; create a new --run"
-        )
-    return evaluation
+def select_rerank_variants(
+    variants: dict[str, RerankVariantRecord], *, model: str | None
+) -> dict[str, RerankVariantRecord]:
+    if model is None:
+        return dict(sorted(variants.items()))
+    slug = require_model(model).slug
+    if slug not in variants:
+        available = ", ".join(sorted(item.model for item in variants.values()))
+        raise ValueError(f"Unknown reranker model {model}; available: {available}")
+    return {slug: variants[slug]}
 
 
 def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
-    run_path = request.run_root / "run.json"
-    record = load_run_record(run_path)
+    record = load_run_record(request.run_root / "run.json")
     validate_metrics_cutoff(request.top_k, record.identity.candidate_k)
-    workspace = RunWorkspace(request.run_root, record.identity, request.artifact_root)
-    candidate_bundle = _load_metrics_candidate_bundle(workspace, record.candidates_dir)
-    evaluation = _resolve_metrics_evaluation_path(
-        record.identity.evaluation_path,
-        record.identity.evaluation_sha256,
-    )
-    rows = {}
-    for row in iter_jsonl_objects(evaluation):
-        rows[str(row["query_id"])] = row
-    if record.schema_version == 1 and record.legacy_rerank is not None:
-        migrate_legacy_rerank(workspace, candidate_bundle)
-        record = load_run_record(run_path)
-    selected = select_rerank_variants(
-        record.rerank_variants,
-        model=request.model,
-        variant=request.variant,
-    )
-    rerank_inputs: list[RerankMetricInput] = []
-    for variant_sha256, variant_record in selected.items():
-        score_bundle = load_registered_rerank_bundle(
-            workspace, variant_sha256, variant_record
+    workspace = RunWorkspace(request.run_root, record.identity, record.origin)
+    if record.candidates_dir is None:
+        raise ArtifactContractError(
+            f"Run {request.run_root} has no candidates; run seed retrieve first"
         )
-        reranker = str(score_bundle.manifest.identity.get("reranker") or "")
-        if reranker != variant_record.model:
-            raise RerankScoreCacheError(
-                f"Rerank variant model mismatch for {variant_sha256}"
-            )
-        spec = require_model(reranker)
+    candidate_bundle = load_bundle(
+        workspace.resolve(record.candidates_dir),
+        expected_type="retrieval_candidates",
+        require_complete=True,
+    )
+    evaluation = resolve_evaluation_reference(record.identity.evaluation_path, DATA_DIR)
+    if sha256_file(evaluation) != record.identity.evaluation_sha256:
+        raise ArtifactContractError(
+            "Run evaluation input changed after retrieval; create a new --run"
+        )
+    rows = {str(row["query_id"]): row for row in iter_jsonl_objects(evaluation)}
+    rerank_inputs: list[RerankMetricInput] = []
+    for variant in select_rerank_variants(
+        record.rerank_variants, model=request.model
+    ).values():
+        score_bundle = load_registered_rerank_bundle(workspace, variant)
+        spec = require_model(variant.model)
         if spec.rerank_contract is None:
-            raise RerankScoreCacheError(f"Reranker {reranker} has no scoring contract")
-        contract = spec.rerank_contract.sha256
+            raise RerankScoreCacheError(
+                f"Reranker {variant.model} has no scoring contract"
+            )
         score_cache = RerankScoreCache(
             score_bundle.data_path,
             model_sha256=spec.sha256,
-            request_contract_sha256=contract,
+            request_contract_sha256=spec.rerank_contract.sha256,
             rewrite_legacy=False,
         )
-        subset = score_cache.validate_subset(candidate_bundle.data_path, reranker)
+        subset = score_cache.validate_subset(candidate_bundle.data_path, variant.model)
         if not subset.is_complete:
             raise RerankScoreCacheError(
                 f"Rerank score cache is missing {subset.missing} records"
             )
-        rerank_inputs.append(RerankMetricInput(variant_sha256, reranker, score_cache))
+        rerank_inputs.append(
+            RerankMetricInput(variant.variant_sha256, variant.model, score_cache)
+        )
     return MetricInputs(
         rows,
         CandidateArtifactReader.from_data_path(candidate_bundle.data_path),
@@ -327,12 +295,14 @@ def run_metrics(request: MetricsRequest) -> MetricsResult:
         window_size=request.window_size,
     )
     baseline_artifact = publish_metrics_artifact(
-        request.artifact_root or inputs.run_root,
-        request.run_root,
+        inputs.run_root,
         baseline_identity,
         baseline,
         baseline_breakdowns,
         baseline_rows,
+        top_k=request.top_k,
+        window_size=request.window_size,
+        force=request.force,
     )
     reranked_artifacts: list[MetricsArtifactResult] = []
     for rerank_input in inputs.rerank_variants:
@@ -348,14 +318,16 @@ def run_metrics(request: MetricsRequest) -> MetricsResult:
         )
         reranked_artifacts.append(
             publish_metrics_artifact(
-                request.artifact_root or inputs.run_root,
-                request.run_root,
+                inputs.run_root,
                 identity,
                 reranked,
                 breakdowns,
                 rows,
+                top_k=request.top_k,
+                window_size=request.window_size,
                 model=rerank_input.model,
                 variant_sha256=rerank_input.variant_sha256,
+                force=request.force,
             )
         )
     return MetricsResult(baseline_artifact, tuple(reranked_artifacts))

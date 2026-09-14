@@ -35,7 +35,7 @@ def test_retrieve_passes_the_run_tree_and_backend_defaults(monkeypatch):
     assert result.exit_code == 0, result.output
     request = captured["request"]
     assert request.run_root == run_dir("experiment")
-    assert request.artifact_root == run_dir("experiment")
+    assert not hasattr(request, "artifact_root")
     assert request.retriever == "hybrid"
     assert request.rrf_k == 2
     assert request.collection == "formulary"

@@ -1,94 +1,82 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 import seed_pipeline.cli.commands.metrics as metrics_command
 from seed_pipeline.cli.app import app
 from seed_pipeline.config.paths import run_dir
 from seed_pipeline.evaluation.metrics_artifacts import MetricsArtifactResult
-from seed_pipeline.evaluation.metrics_service import MetricsResult
+from seed_pipeline.evaluation.metrics_service import MetricsRequest, MetricsResult
 
 runner = CliRunner()
 
 
-def fake_metrics_result(*, two_rerank_reports: bool) -> MetricsResult:
-    baseline = MetricsArtifactResult(
-        artifact_dir=Path("reports/baseline/base"),
-        report_path=Path("reports/baseline/base/report.md"),
-        results_path=Path("reports/baseline/base/metrics.jsonl"),
-        metrics_sha256="base",
+def fake_metrics_result() -> MetricsResult:
+    baseline = Path("reports/baseline/top10-window3")
+    rerank = Path("reports/rerank/model_a/top10-window3")
+    return MetricsResult(
+        baseline=MetricsArtifactResult(
+            baseline, baseline / "report.md", baseline / "metrics.jsonl", "base"
+        ),
+        reranked=(
+            MetricsArtifactResult(
+                rerank,
+                rerank / "report.md",
+                rerank / "metrics.jsonl",
+                "reranked",
+                model="model-a",
+                variant_sha256="variant",
+            ),
+        ),
     )
-    reranked = tuple(
-        MetricsArtifactResult(
-            artifact_dir=Path(f"reports/rerank/model-a/variant-{index}"),
-            report_path=Path(f"reports/rerank/model-a/variant-{index}/report.md"),
-            results_path=Path(f"reports/rerank/model-a/variant-{index}/metrics.jsonl"),
-            metrics_sha256=f"metrics-{index}",
-            model="model-a",
-            variant_sha256=f"variant-{index}",
-        )
-        for index in range(2 if two_rerank_reports else 1)
-    )
-    return MetricsResult(baseline=baseline, reranked=reranked)
 
 
-def test_metrics_passes_model_filter_and_lists_all_reports(monkeypatch):
-    captured = {}
-
-    def fake_run(request):
+def capture_request(
+    monkeypatch: pytest.MonkeyPatch, captured: dict[str, MetricsRequest]
+) -> None:
+    def fake_run(request: MetricsRequest) -> MetricsResult:
         captured["request"] = request
-        return fake_metrics_result(two_rerank_reports=True)
+        return fake_metrics_result()
 
     monkeypatch.setattr(metrics_command, "run_metrics", fake_run)
+
+
+def test_metrics_reads_the_run_tree_and_lists_reports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, MetricsRequest] = {}
+    capture_request(monkeypatch, captured)
+
     result = runner.invoke(
-        app,
-        ["--json", "metrics", "--run", "experiment", "--model", "model-a"],
+        app, ["--json", "metrics", "--run", "experiment", "--model", "model-a"]
     )
 
-    assert result.exit_code == 0
-    assert captured["request"].model == "model-a"
-    assert captured["request"].artifact_root == run_dir("experiment")
-    assert len(json.loads(result.stdout)["details"]["reranked"]) == 2
-
-
-def test_metrics_rejects_model_and_variant_together():
-    result = runner.invoke(
-        app,
-        [
-            "metrics",
-            "--run",
-            "experiment",
-            "--model",
-            "model-a",
-            "--variant",
-            "abcd",
-        ],
+    assert result.exit_code == 0, result.output
+    request = captured["request"]
+    assert (request.run_root, request.model, request.force) == (
+        run_dir("experiment"),
+        "model-a",
+        False,
     )
-
-    assert result.exit_code != 0
-    assert "mutually exclusive" in result.output
+    assert len(json.loads(result.stdout)["details"]["reranked"]) == 1
 
 
-def test_metrics_warns_and_ignores_output_dir(monkeypatch):
-    captured = {}
+def test_metrics_force_is_forwarded(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, MetricsRequest] = {}
+    capture_request(monkeypatch, captured)
 
-    def fake_run(request):
-        captured["request"] = request
-        return fake_metrics_result(two_rerank_reports=False)
+    result = runner.invoke(app, ["metrics", "--run", "experiment", "--force"])
 
-    monkeypatch.setattr(metrics_command, "run_metrics", fake_run)
-    result = runner.invoke(
-        app,
-        [
-            "metrics",
-            "--run",
-            "experiment",
-            "--output-dir",
-            "/tmp/legacy-reports",
-        ],
-    )
+    assert result.exit_code == 0, result.output
+    assert captured["request"].force is True
 
-    assert result.exit_code == 0
-    assert "deprecated" in result.stderr
-    assert not hasattr(captured["request"], "output_dir")
+
+@pytest.mark.parametrize(
+    "option", [["--variant", "abcd"], ["--output-dir", "/tmp/reports"]]
+)
+def test_metrics_rejects_removed_options(option: list[str]) -> None:
+    result = runner.invoke(app, ["metrics", "--run", "experiment", *option])
+
+    assert result.exit_code == 2

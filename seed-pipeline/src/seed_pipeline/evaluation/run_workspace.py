@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal
 
+RUN_SCHEMA_VERSION = 3
+RunOrigin = Literal["backend", "imported"]
+
 
 class RunConflictError(RuntimeError):
-    """Raised when a named run is reused with different semantics."""
+    """Raised when a named run or one of its artifacts is reused with different inputs."""
 
 
 @dataclass(frozen=True)
@@ -31,64 +34,36 @@ class RunIdentity:
 @dataclass(frozen=True)
 class RerankVariantRecord:
     model: str
+    variant_sha256: str
     artifact_dir: str
-    status: Literal["complete"] = "complete"
-
-
-@dataclass(frozen=True)
-class LegacyRerankReference:
-    model: str
-    cache_path: str
 
 
 @dataclass(frozen=True)
 class RunRecord:
-    schema_version: int
     identity: RunIdentity
-    status: str | None = None
+    origin: RunOrigin
     candidates_dir: str | None = None
-    rerank_scores_dir: str | None = None
-    reports_dir: str | None = None
-    reranker: str | None = None
     rerank_variants: dict[str, RerankVariantRecord] = field(default_factory=dict)
-    legacy_rerank: LegacyRerankReference | None = None
-    legacy_status: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "schema_version": self.schema_version,
+        return {
+            "schema_version": RUN_SCHEMA_VERSION,
+            "origin": self.origin,
             "identity": asdict(self.identity),
+            "candidates_dir": self.candidates_dir,
+            "rerank_variants": {
+                slug: asdict(variant)
+                for slug, variant in sorted(self.rerank_variants.items())
+            },
         }
-        if self.schema_version == 1:
-            payload.update(
-                status=self.legacy_status or self.status or "created",
-                candidates_dir=self.candidates_dir,
-                rerank_scores_dir=(
-                    self.legacy_rerank.cache_path
-                    if self.legacy_rerank is not None
-                    else self.rerank_scores_dir
-                ),
-                reports_dir=self.reports_dir,
-                reranker=(
-                    self.legacy_rerank.model
-                    if self.legacy_rerank is not None
-                    else self.reranker
-                ),
-            )
-        elif self.schema_version == 2:
-            payload.update(
-                candidates_dir=self.candidates_dir,
-                reports_dir=self.reports_dir,
-                rerank_variants={
-                    digest: asdict(variant)
-                    for digest, variant in sorted(self.rerank_variants.items())
-                },
-            )
-        else:
-            raise RunConflictError(
-                f"Unsupported run registry schema: {self.schema_version}"
-            )
-        return payload
+
+
+def identity_differences(current: RunIdentity, expected: RunIdentity) -> list[str]:
+    return [
+        item.name
+        for item in fields(RunIdentity)
+        if getattr(current, item.name) != getattr(expected, item.name)
+    ]
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -102,59 +77,64 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _remove_tree(path: Path) -> None:
+    """Rename a tree aside first so a crash never leaves a half-deleted target."""
+    stale = path.with_name(f".{path.name}.replaced")
+    if stale.exists():
+        shutil.rmtree(stale)
+    os.replace(path, stale)
+    shutil.rmtree(stale)
+
+
+def replace_directory(source: Path, target: Path) -> None:
+    source, target = Path(source), Path(target)
+    if target.exists():
+        _remove_tree(target)
+    os.replace(source, target)
+
+
+def evaluation_reference(path: Path, data_dir: Path) -> str:
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(Path(data_dir).resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def resolve_evaluation_reference(reference: str, data_dir: Path) -> Path:
+    path = Path(reference)
+    return path if path.is_absolute() else Path(data_dir) / path
+
+
+def _origin(value: object, path: Path) -> RunOrigin:
+    if value == "backend":
+        return "backend"
+    if value == "imported":
+        return "imported"
+    raise RunConflictError(f"Unknown run origin {value!r} in {path}")
+
+
 def load_run_record(path: Path) -> RunRecord:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    schema_version = int(payload["schema_version"])
-    if schema_version not in {1, 2}:
-        raise RunConflictError(f"Unsupported run registry schema: {schema_version}")
-    raw_identity = dict(payload["identity"])
-    if "prefetch_k" not in raw_identity:
-        raw_identity["prefetch_k"] = (
-            int(raw_identity["candidate_k"])
-            if raw_identity.get("retriever") == "hybrid"
-            else None
-        )
-    identity = RunIdentity(**raw_identity)
-    if schema_version == 1:
-        reranker = payload.get("reranker")
-        cache_path = payload.get("rerank_scores_dir")
-        legacy = (
-            LegacyRerankReference(str(reranker), str(cache_path))
-            if reranker and cache_path
-            else None
-        )
-        return RunRecord(
-            schema_version=1,
-            identity=identity,
-            status=str(payload.get("status") or "created"),
-            candidates_dir=payload.get("candidates_dir"),
-            rerank_scores_dir=cache_path,
-            reports_dir=payload.get("reports_dir"),
-            reranker=reranker,
-            legacy_rerank=legacy,
-            legacy_status=str(payload.get("status") or "created"),
+    path = Path(path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = payload.get("schema_version")
+    if schema_version != RUN_SCHEMA_VERSION:
+        raise RunConflictError(
+            f"Unsupported run schema {schema_version} in {path}; rebuild the run"
         )
     raw_variants = payload.get("rerank_variants") or {}
     if not isinstance(raw_variants, dict):
-        raise RunConflictError("Run rerank_variants must be an object")
-    variants: dict[str, RerankVariantRecord] = {}
-    for digest, raw_variant in raw_variants.items():
-        if not isinstance(raw_variant, dict):
-            raise RunConflictError(f"Invalid rerank variant record: {digest}")
-        if raw_variant.get("status", "complete") != "complete":
-            raise RunConflictError(
-                f"Unsupported incomplete rerank variant status: {digest}"
-            )
-        variants[str(digest)] = RerankVariantRecord(
-            str(raw_variant["model"]),
-            str(raw_variant["artifact_dir"]),
-            "complete",
+        raise RunConflictError(f"Run rerank_variants must be an object in {path}")
+    variants = {
+        str(slug): RerankVariantRecord(
+            str(item["model"]), str(item["variant_sha256"]), str(item["artifact_dir"])
         )
+        for slug, item in raw_variants.items()
+    }
     return RunRecord(
-        schema_version=2,
-        identity=identity,
+        identity=RunIdentity(**payload["identity"]),
+        origin=_origin(payload.get("origin"), path),
         candidates_dir=payload.get("candidates_dir"),
-        reports_dir=payload.get("reports_dir"),
         rerank_variants=variants,
     )
 
@@ -163,23 +143,22 @@ def load_run_record(path: Path) -> RunRecord:
 class RunWorkspace:
     root: Path
     identity: RunIdentity
-    artifact_root: Path | None = None
+    origin: RunOrigin = "backend"
 
     @property
-    def artifact_base(self) -> Path:
-        return self.artifact_root or self.root
+    def record_path(self) -> Path:
+        return self.root / "run.json"
 
     @property
     def candidates_dir(self) -> Path:
-        return self.artifact_base / "candidates"
-
-    @property
-    def rerank_scores_dir(self) -> Path:
-        return self.artifact_base / "rerank-scores"
+        return self.root / "candidates"
 
     @property
     def reports_dir(self) -> Path:
-        return self.artifact_base / "reports"
+        return self.root / "reports"
+
+    def rerank_dir(self, model_slug: str) -> Path:
+        return self.root / "rerank" / model_slug
 
     @classmethod
     def open_or_create(
@@ -187,118 +166,64 @@ class RunWorkspace:
         root: Path,
         identity: RunIdentity,
         *,
-        artifact_root: Path | None = None,
+        origin: RunOrigin = "backend",
         force: bool = False,
     ) -> RunWorkspace:
-        root = Path(root)
-        record_path = root / "run.json"
-        if record_path.exists():
-            current = load_run_record(record_path)
-            if current.identity == identity:
-                return cls(root, identity, artifact_root)
-            if current.identity != identity and not force:
+        workspace = cls(Path(root), identity, origin)
+        if workspace.record_path.exists():
+            current = workspace.read_record()
+            differences = identity_differences(current.identity, identity)
+            if current.origin != origin:
+                differences.append("origin")
+            if not differences:
+                return workspace
+            if not force:
                 raise RunConflictError(
-                    "Run identity changed; use another --run name or --force"
+                    f"run {workspace.root} already exists with different "
+                    f"{', '.join(differences)}; use another --run name or --force"
                 )
-            if current.identity != identity and force:
-                previous = root / "run.previous.json"
-                os.replace(record_path, previous)
-        workspace = cls(root, identity, artifact_root)
-        root.mkdir(parents=True, exist_ok=True)
-        workspace.write_record(RunRecord(schema_version=2, identity=identity))
+            _remove_tree(workspace.root)
+        workspace.root.mkdir(parents=True, exist_ok=True)
+        workspace.write_record(RunRecord(identity, origin))
         return workspace
 
+    def read_record(self) -> RunRecord:
+        return load_run_record(self.record_path)
+
     def write_record(self, record: RunRecord) -> None:
-        atomic_write_json(self.root / "run.json", record.to_payload())
+        atomic_write_json(self.record_path, record.to_payload())
 
     def record_candidates(self, artifact: Any) -> None:
-        current = load_run_record(self.root / "run.json")
         candidate_dir = Path(artifact.data_path).parent
         try:
-            candidate_value = candidate_dir.relative_to(self.artifact_base).as_posix()
-        except ValueError:
-            candidate_value = str(candidate_dir)
-        snapshot = self.root / "candidates-manifest.json"
-        temporary = snapshot.with_name(f".{snapshot.name}.tmp")
-        shutil.copy2(Path(artifact.manifest_path), temporary)
-        os.replace(temporary, snapshot)
+            relative = candidate_dir.relative_to(self.root).as_posix()
+        except ValueError as exc:
+            raise RunConflictError(
+                f"Candidates {candidate_dir} are outside run {self.root}"
+            ) from exc
+        current = self.read_record()
         self.write_record(
             RunRecord(
-                schema_version=current.schema_version,
-                identity=self.identity,
-                status="retrieved",
-                candidates_dir=candidate_value,
-                rerank_scores_dir=current.rerank_scores_dir,
-                reports_dir=current.reports_dir,
-                reranker=current.reranker,
-                rerank_variants=current.rerank_variants,
-                legacy_rerank=current.legacy_rerank,
-                legacy_status=current.legacy_status,
+                current.identity, current.origin, relative, current.rerank_variants
             )
         )
 
-    def resolve_relative_path(self, value: str) -> Path:
-        candidate = Path(value)
-        return candidate if candidate.is_absolute() else self.artifact_base / candidate
+    def resolve(self, relative: str) -> Path:
+        path = Path(relative)
+        if path.is_absolute():
+            raise RunConflictError(f"Run artifact paths must be relative: {relative}")
+        return self.root / path
 
     def register_rerank_variant(
-        self, variant_sha256: str, variant: RerankVariantRecord
+        self, model_slug: str, variant: RerankVariantRecord
     ) -> None:
-        if Path(variant.artifact_dir).is_absolute():
-            raise RunConflictError("Run artifact paths must be relative")
-        current = load_run_record(self.root / "run.json")
-        existing = current.rerank_variants.get(variant_sha256)
-        if existing is not None and existing != variant:
-            raise RunConflictError(
-                f"Rerank variant {variant_sha256} is already registered differently"
-            )
-        variants = {**current.rerank_variants, variant_sha256: variant}
+        current = self.read_record()
+        variants = {**current.rerank_variants, model_slug: variant}
         self.write_record(
             RunRecord(
-                schema_version=2,
-                identity=current.identity,
-                candidates_dir=current.candidates_dir,
-                reports_dir=current.reports_dir,
-                rerank_variants=variants,
+                current.identity, current.origin, current.candidates_dir, variants
             )
         )
 
-    def variant_records(
-        self, model: str | None = None
-    ) -> dict[str, RerankVariantRecord]:
-        variants = load_run_record(self.root / "run.json").rerank_variants
-        return {
-            digest: item
-            for digest, item in variants.items()
-            if model is None or item.model == model
-        }
-
-    def record_rerank_scores(
-        self, cache_path: Path, reranker: str | None = None
-    ) -> None:
-        current = load_run_record(self.root / "run.json")
-        self.write_record(
-            RunRecord(
-                current.schema_version,
-                current.identity,
-                "reranked",
-                current.candidates_dir,
-                str(Path(cache_path)),
-                current.reports_dir,
-                reranker or current.reranker,
-            )
-        )
-
-    def record_reports(self, output_dir: Path) -> None:
-        current = load_run_record(self.root / "run.json")
-        self.write_record(
-            RunRecord(
-                current.schema_version,
-                current.identity,
-                "metrics",
-                current.candidates_dir,
-                current.rerank_scores_dir,
-                str(Path(output_dir)),
-                current.reranker,
-            )
-        )
+    def variant_records(self) -> dict[str, RerankVariantRecord]:
+        return dict(self.read_record().rerank_variants)

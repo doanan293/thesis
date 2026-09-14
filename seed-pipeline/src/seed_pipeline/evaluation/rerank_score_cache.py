@@ -17,7 +17,6 @@ from seed_pipeline.cache.jsonl_records import (
 from seed_pipeline.cache.jsonl_records import (
     subset_sha256 as record_subset_sha256,
 )
-from seed_pipeline.config.paths import RERANK_SCORE_CACHE_DIR
 from seed_pipeline.evaluation.artifact_contracts import (
     ArtifactContractError,
     ArtifactManifest,
@@ -25,7 +24,7 @@ from seed_pipeline.evaluation.artifact_contracts import (
     require_finite_number,
     write_json,
 )
-from seed_pipeline.evaluation.query_hash import model_slug, query_hash
+from seed_pipeline.evaluation.query_hash import query_hash
 from seed_pipeline.evaluation.rerank_contract import document_hash
 from seed_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
@@ -36,11 +35,6 @@ from seed_pipeline.runtime.catalog import require_model
 
 class RerankScoreCacheError(ArtifactContractError):
     """Raised when a rerank score cache cannot satisfy its candidate contract."""
-
-
-def default_rerank_score_cache_path(eval_path: Path, reranker_name: str) -> Path:
-    del eval_path
-    return RERANK_SCORE_CACHE_DIR / f"{model_slug(reranker_name)}.jsonl"
 
 
 @dataclass(frozen=True, order=True)

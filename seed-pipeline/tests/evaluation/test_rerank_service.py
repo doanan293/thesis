@@ -1,4 +1,3 @@
-import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -23,6 +22,13 @@ from seed_pipeline.integrations.kaggle.models import ActionVerb, ReconcileAction
 from seed_pipeline.runtime.catalog import require_model
 
 
+@pytest.fixture(autouse=True)
+def isolated_rerank_cache(tmp_path, monkeypatch):
+    from seed_pipeline.config import paths
+
+    monkeypatch.setattr(paths, "RERANK_SCORE_CACHE_DIR", tmp_path / "rerank-cache")
+
+
 class FakeReranker:
     def rerank(self, query, candidates):
         del query
@@ -35,7 +41,6 @@ class FakeReranker:
 def request(run_root, model, *, force=False, dry_run=False):
     return RerankRequest(
         run_root=run_root,
-        candidates_dir=None,
         model=model,
         force=force,
         dry_run=dry_run,
@@ -281,37 +286,6 @@ def test_kaggle_rerank_serializes_same_model_across_runs(tmp_path, monkeypatch):
         assert first.result(timeout=2) == "first"
 
 
-def test_kaggle_migrates_matching_legacy_variant_before_submit(
-    complete_run, complete_rerank_cache, monkeypatch
-):
-    run_path = complete_run / "run.json"
-    current = load_run_record(run_path)
-    run_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "identity": current.identity.__dict__,
-                "status": "reranked",
-                "candidates_dir": "candidates",
-                "rerank_scores_dir": str(complete_rerank_cache.path),
-                "reranker": "qwen3-reranker:0.6b-fp16",
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    def fail_submit(**_kwargs):
-        raise AssertionError("matching legacy variant should be reused")
-
-    monkeypatch.setattr(kaggle_service, "run_kaggle_stage", fail_submit)
-    result = KaggleRerankBackend().run(
-        request(complete_run, "qwen3-reranker:0.6b-fp16")
-    )
-
-    assert result.artifact_dir is not None
-    assert load_run_record(run_path).schema_version == 2
-
-
 def test_completed_stage_cleanup_removes_only_job_directory(tmp_path):
     root = tmp_path / "kaggle-rerank-scores" / "model"
     job = root / "rerank" / "model" / "job-a"
@@ -339,3 +313,49 @@ def test_completed_stage_cleanup_rejects_artifact_outside_staging_root(tmp_path)
         _cleanup_completed_stage_artifact(artifact, root)
 
     assert artifact.is_file()
+
+
+def test_local_dry_run_reports_target_and_missing_pairs(complete_run):
+    result = fake_local_backend().run(
+        request(complete_run, "qwen3-reranker:0.6b-fp16", dry_run=True)
+    )
+
+    assert "missing_pairs=1" in result.actions
+    assert (
+        f"target={complete_run / 'rerank' / 'qwen3_reranker_0_6b_fp16'}"
+        in result.actions
+    )
+    assert load_run_record(complete_run / "run.json").rerank_variants == {}
+
+
+def test_forced_rerank_rescores_into_the_same_variant(complete_run):
+    backend = fake_local_backend()
+    first = backend.run(request(complete_run, "qwen3-reranker:0.6b-fp16"))
+
+    second = backend.run(request(complete_run, "qwen3-reranker:0.6b-fp16", force=True))
+
+    assert second.artifact_dir == first.artifact_dir
+    assert "scored=1" in second.actions
+    assert list(load_run_record(complete_run / "run.json").rerank_variants) == [
+        "qwen3_reranker_0_6b_fp16"
+    ]
+
+
+def test_local_rerank_from_a_complete_cache_starts_no_reranker(
+    complete_run, complete_rerank_cache, monkeypatch
+):
+    monkeypatch.setattr(
+        rerank_service,
+        "rerank_score_cache_path",
+        lambda _model: complete_rerank_cache.path,
+    )
+
+    def no_server(_spec, _timeout):
+        raise AssertionError("a complete cache must not start a reranker")
+
+    result = LocalRerankBackend(reranker_factory=no_server).run(
+        request(complete_run, "qwen3-reranker:0.6b-fp16")
+    )
+
+    assert result.artifact_dir == complete_run / "rerank" / "qwen3_reranker_0_6b_fp16"
+    assert "scored=0" in result.actions

@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from seed_pipeline.evaluation.artifact_contracts import canonical_sha256
 from seed_pipeline.runtime.catalog import require_model
 
 WORKSPACE_ROOT_ENV = "SEED_PIPELINE_ROOT"
@@ -86,11 +85,6 @@ def run_dir(run: str) -> Path:
     return RUNS_DIR / run
 
 
-def retrieval_run_roots(run: str) -> tuple[Path, Path]:
-    """Both roots are the single run tree; Task 4 removes this helper."""
-    return run_dir(run), run_dir(run)
-
-
 def query_embedding_bundle_dir(model: str, evaluation_sha256: str) -> Path:
     return QUERY_EMBEDDING_CACHE_DIR / require_model(model).slug / evaluation_sha256
 
@@ -103,16 +97,5 @@ def text_embedding_cache_path(model: str) -> Path:
     return TEXT_EMBEDDING_CACHE_DIR / f"{require_model(model).slug}.jsonl"
 
 
-def rerank_score_cache_path(
-    model: str,
-    model_sha256: str,
-    request_contract_sha256: str,
-) -> Path:
-    identity = canonical_sha256(
-        {
-            "model": model,
-            "model_sha256": model_sha256,
-            "request_contract_sha256": request_contract_sha256,
-        }
-    )
-    return RERANK_SCORE_CACHE_DIR / require_model(model).slug / f"{identity}.jsonl"
+def rerank_score_cache_path(model: str) -> Path:
+    return RERANK_SCORE_CACHE_DIR / f"{require_model(model).slug}.jsonl"

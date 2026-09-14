@@ -140,7 +140,6 @@ def _request(
     return RetrieveRequest(
         evaluation_path=_evaluation(tmp_path),
         run_root=tmp_path / "run",
-        artifact_root=tmp_path / "heavy-run",
         retriever=retriever,
         candidate_k=2,
         prefetch_k=prefetch_k,
@@ -192,6 +191,11 @@ def test_hybrid_retrieval_uses_cached_query_vectors(tmp_path: Path) -> None:
     assert identity.embedding_model == MODEL
     assert identity.collection_name == settings.retrieval.qdrant_collection
     assert identity.query_embeddings_sha256 is not None
+    record = load_run_record(tmp_path / "run" / "run.json")
+    assert record.origin == "backend"
+    assert record.identity.evaluation_path == str(
+        (tmp_path / "evaluation.jsonl").resolve()
+    )
 
 
 def test_existing_complete_candidates_are_reused(tmp_path: Path) -> None:

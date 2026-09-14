@@ -18,11 +18,7 @@ from seed_pipeline.config.defaults import (
     DEFAULT_RETRIEVER,
     DEFAULT_RRF_K,
 )
-from seed_pipeline.config.paths import (
-    BACKEND_ENV_FILE,
-    GOLD_DIR,
-    retrieval_run_roots,
-)
+from seed_pipeline.config.paths import BACKEND_ENV_FILE, GOLD_DIR, run_dir
 from seed_pipeline.evaluation.backend_retrieval import RetrieveRequest, run_retrieval
 
 
@@ -65,11 +61,9 @@ def retrieve(
     ] = BACKEND_ENV_FILE,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
-    metadata_root, artifact_root = retrieval_run_roots(run)
     request = RetrieveRequest(
         evaluation_path=evaluation,
-        run_root=metadata_root,
-        artifact_root=artifact_root,
+        run_root=run_dir(run),
         retriever=retriever,
         candidate_k=candidate_k,
         prefetch_k=prefetch_k,

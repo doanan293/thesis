@@ -17,7 +17,7 @@ from pharma_agent.infrastructure.settings import Settings
 
 from seed_pipeline.bundle.chunks import gold_chunk_label
 from seed_pipeline.bundle.export import COLLECTION_KEY
-from seed_pipeline.config.paths import query_embedding_cache_path
+from seed_pipeline.config.paths import DATA_DIR, query_embedding_cache_path
 from seed_pipeline.evaluation.artifact_contracts import sha256_file
 from seed_pipeline.evaluation.cached_query_embedder import (
     CachedQueryEmbedder,
@@ -30,7 +30,11 @@ from seed_pipeline.evaluation.retrieval_candidate_artifact import (
     build_candidate_artifact,
 )
 from seed_pipeline.evaluation.retrieval_types import RetrievalCandidate
-from seed_pipeline.evaluation.run_workspace import RunIdentity, RunWorkspace
+from seed_pipeline.evaluation.run_workspace import (
+    RunIdentity,
+    RunWorkspace,
+    evaluation_reference,
+)
 from seed_pipeline.runtime.catalog import require_model
 
 RETRIEVERS = ("bm25", "dense", "hybrid")
@@ -66,7 +70,6 @@ class RetrieveRequest:
     force: bool
     collection: str = COLLECTION_KEY
     prefetch_k: int | None = None
-    artifact_root: Path | None = None
     backend_env_file: Path | None = None
     query_embeddings: Path | None = None
 
@@ -280,7 +283,7 @@ def run_retrieval(
                 current_release_id(stack.service, str(rows[0]["query"]))
             )
             identity = RunIdentity(
-                evaluation_path=str(request.evaluation_path.resolve()),
+                evaluation_path=evaluation_reference(request.evaluation_path, DATA_DIR),
                 evaluation_sha256=sha256_file(request.evaluation_path),
                 collection_name=settings.retrieval.qdrant_collection,
                 embedding_model=embedding.model,
@@ -294,10 +297,7 @@ def run_retrieval(
                 chunker_version=CHUNKER_VERSION,
             )
             workspace = RunWorkspace.open_or_create(
-                request.run_root,
-                identity,
-                artifact_root=request.artifact_root,
-                force=request.force,
+                request.run_root, identity, force=request.force
             )
             reusable = _reusable_artifact(workspace, request)
             if reusable is not None:

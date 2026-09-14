@@ -1,23 +1,24 @@
-import json
-import shutil
+import re
 from pathlib import Path
 
 import pytest
 
-from seed_pipeline.evaluation import metrics_service
-from seed_pipeline.evaluation.artifact_contracts import ArtifactContractError
+from seed_pipeline.artifacts.bundle import ArtifactBundle
 from seed_pipeline.evaluation.metrics_artifacts import (
+    MetricsArtifactResult,
     publish_metrics_artifact,
-    select_rerank_variants,
+    report_dir,
 )
 from seed_pipeline.evaluation.metrics_service import (
     MetricsRequest,
-    load_and_validate_metric_inputs,
     run_metrics,
+    select_rerank_variants,
 )
 from seed_pipeline.evaluation.rerank_artifacts import finalize_run_rerank_bundle
+from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.run_workspace import (
     RerankVariantRecord,
+    RunConflictError,
     RunWorkspace,
     load_run_record,
 )
@@ -26,185 +27,109 @@ from seed_pipeline.evaluation.variant_identity import (
     RerankVariantIdentity,
 )
 
-
-def _split_artifact_root(complete_run: Path, tmp_path: Path) -> Path:
-    heavy_root = tmp_path / "heavy-run"
-    shutil.copytree(complete_run / "candidates", heavy_root / "candidates")
-    return heavy_root
+MODEL = "qwen3-reranker:0.6b-fp16"
+SLUG = "qwen3_reranker_0_6b_fp16"
 
 
-def _rewrite_run_json(run_root: Path, **updates) -> None:
-    path = run_root / "run.json"
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload.update(updates)
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-
-def test_metrics_rebases_missing_legacy_candidate_path_to_verified_heavy_bundle(
-    complete_run: Path, tmp_path: Path
-):
-    heavy_root = _split_artifact_root(complete_run, tmp_path)
-    _rewrite_run_json(
-        complete_run,
-        candidates_dir=str(tmp_path / "legacy" / "candidates"),
-    )
-
-    inputs = load_and_validate_metric_inputs(
-        MetricsRequest(complete_run, top_k=1, artifact_root=heavy_root)
-    )
-
-    assert next(iter(inputs.candidates))["query_id"] == "query-1"
-
-
-def test_metrics_rejects_legacy_candidate_fallback_when_snapshot_differs(
-    complete_run: Path, tmp_path: Path
-):
-    heavy_root = _split_artifact_root(complete_run, tmp_path)
-    snapshot = complete_run / "candidates-manifest.json"
-    payload = json.loads(snapshot.read_text(encoding="utf-8"))
-    payload["data_sha256"] = "0" * 64
-    snapshot.write_text(json.dumps(payload), encoding="utf-8")
-    _rewrite_run_json(
-        complete_run,
-        candidates_dir=str(tmp_path / "legacy" / "candidates"),
-    )
-
-    with pytest.raises(ArtifactContractError, match="candidate snapshot mismatch"):
-        load_and_validate_metric_inputs(
-            MetricsRequest(complete_run, top_k=1, artifact_root=heavy_root)
-        )
-
-
-def test_metrics_rebases_missing_legacy_evaluation_path_by_verified_hash(
-    complete_run: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    heavy_root = _split_artifact_root(complete_run, tmp_path)
-    current_evaluation_dir = tmp_path / "processed" / "evaluation"
-    current_evaluation_dir.mkdir(parents=True)
-    evaluation_path = Path(
-        load_run_record(complete_run / "run.json").identity.evaluation_path
-    )
-    shutil.copy2(evaluation_path, current_evaluation_dir / evaluation_path.name)
-    monkeypatch.setattr(metrics_service, "GOLD_DIR", current_evaluation_dir)
-    _rewrite_run_json(
-        complete_run,
-        identity={
-            **json.loads((complete_run / "run.json").read_text(encoding="utf-8"))[
-                "identity"
-            ],
-            "evaluation_path": str(tmp_path / "legacy" / evaluation_path.name),
-        },
-    )
-
-    inputs = load_and_validate_metric_inputs(
-        MetricsRequest(complete_run, top_k=1, artifact_root=heavy_root)
-    )
-
-    assert "query-1" in inputs.evaluation_rows
-
-
-def test_metrics_rejects_legacy_evaluation_fallback_when_hash_differs(
-    complete_run: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    heavy_root = _split_artifact_root(complete_run, tmp_path)
-    current_evaluation_dir = tmp_path / "processed" / "evaluation"
-    current_evaluation_dir.mkdir(parents=True)
-    evaluation_path = Path(
-        load_run_record(complete_run / "run.json").identity.evaluation_path
-    )
-    fallback = current_evaluation_dir / evaluation_path.name
-    fallback.write_text("different evaluation\n", encoding="utf-8")
-    monkeypatch.setattr(metrics_service, "GOLD_DIR", current_evaluation_dir)
-    _rewrite_run_json(
-        complete_run,
-        identity={
-            **json.loads((complete_run / "run.json").read_text(encoding="utf-8"))[
-                "identity"
-            ],
-            "evaluation_path": str(tmp_path / "legacy" / evaluation_path.name),
-        },
-    )
-
-    with pytest.raises(ArtifactContractError, match="changed after retrieval"):
-        load_and_validate_metric_inputs(
-            MetricsRequest(complete_run, top_k=1, artifact_root=heavy_root)
-        )
-
-
-def test_select_variants_defaults_to_all_and_model_keeps_all_revisions():
-    variants = {
-        "a" * 64: RerankVariantRecord("model-a", "rerank/a/one"),
-        "b" * 64: RerankVariantRecord("model-a", "rerank/a/two"),
-        "c" * 64: RerankVariantRecord("model-b", "rerank/b/one"),
-    }
-
-    assert list(select_rerank_variants(variants)) == sorted(variants)
-    assert list(select_rerank_variants(variants, model="model-a")) == [
-        "a" * 64,
-        "b" * 64,
-    ]
-
-
-def test_select_exact_variant_rejects_ambiguous_prefix():
-    variants = {
-        "abcd" + "0" * 60: RerankVariantRecord("model-a", "rerank/a/one"),
-        "abcd" + "1" * 60: RerankVariantRecord("model-a", "rerank/a/two"),
-    }
-
-    with pytest.raises(ValueError, match="ambiguous"):
-        select_rerank_variants(variants, variant="abcd")
-
-
-def test_metrics_publishes_baseline_and_variant_without_overwriting(
-    complete_run, candidate_bundle, complete_rerank_cache
-):
-    workspace = RunWorkspace(
-        complete_run,
-        load_run_record(complete_run / "run.json").identity,
-    )
-    variant = RerankVariantIdentity.create(
-        candidate_bundle.manifest.data_sha256,
-        "qwen3-reranker:0.6b-fp16",
-    )
+def register_variant(
+    run: Path, candidate_bundle: ArtifactBundle, cache: RerankScoreCache
+) -> None:
+    record = load_run_record(run / "run.json")
     finalize_run_rerank_bundle(
-        workspace=workspace,
+        workspace=RunWorkspace(run, record.identity, record.origin),
         candidate_bundle=candidate_bundle,
-        cache_path=complete_rerank_cache.path,
-        identity=variant,
+        cache_path=cache.path,
+        identity=RerankVariantIdentity.create(
+            candidate_bundle.manifest.data_sha256, MODEL
+        ),
     )
 
-    first = run_metrics(MetricsRequest(complete_run, top_k=1, window_size=3))
-    second = run_metrics(MetricsRequest(complete_run, top_k=1, window_size=4))
 
-    assert len(first.reranked) == 1
-    assert first.baseline.artifact_dir != second.baseline.artifact_dir
-    assert first.reranked[0].artifact_dir != second.reranked[0].artifact_dir
-    assert first.baseline.report_path.is_file()
-    assert first.reranked[0].report_path.is_file()
-    assert first.baseline.report_path != first.reranked[0].report_path
-    assert "rerank" in first.reranked[0].report_path.parts
-
-
-def test_metrics_payload_and_markdown_use_separate_roots(tmp_path):
-    heavy_root = tmp_path / "heavy" / "retrieval_eval" / "run-a"
-    summary_root = tmp_path / "retrieval_eval" / "run-a"
-    identity = MetricsArtifactIdentity.create(
-        evaluation_sha256="evaluation",
+def metrics_identity(evaluation_sha256: str) -> MetricsArtifactIdentity:
+    return MetricsArtifactIdentity.create(
+        evaluation_sha256=evaluation_sha256,
         candidate_data_sha256="candidates",
         top_k=1,
         window_size=3,
     )
 
-    result = publish_metrics_artifact(
-        heavy_root,
-        summary_root,
+
+def publish_empty(
+    root: Path, identity: MetricsArtifactIdentity, *, force: bool = False
+) -> MetricsArtifactResult:
+    return publish_metrics_artifact(
+        root,
         identity,
         {"count": 0, "mrr": 0.0},
         {"eval_group": {}, "difficulty": {}},
         [],
+        top_k=1,
+        window_size=3,
+        force=force,
     )
 
-    assert result.results_path.is_relative_to(heavy_root)
-    assert result.report_path.is_relative_to(summary_root)
-    assert result.report_path.is_file()
-    assert (result.artifact_dir / "manifest.json").is_file()
+
+def test_report_directories_are_named_after_cutoff_and_model(tmp_path: Path) -> None:
+    assert report_dir(tmp_path, top_k=30, window_size=3) == (
+        tmp_path / "reports" / "baseline" / "top30-window3"
+    )
+    assert report_dir(tmp_path, top_k=10, window_size=3, model=MODEL) == (
+        tmp_path / "reports" / "rerank" / SLUG / "top10-window3"
+    )
+
+
+def test_metrics_publish_baseline_and_rerank_reports_in_the_run(
+    complete_run: Path,
+    candidate_bundle: ArtifactBundle,
+    complete_rerank_cache: RerankScoreCache,
+) -> None:
+    register_variant(complete_run, candidate_bundle, complete_rerank_cache)
+
+    result = run_metrics(MetricsRequest(complete_run, top_k=1))
+
+    assert result.baseline.artifact_dir == report_dir(
+        complete_run, top_k=1, window_size=3
+    )
+    assert [item.artifact_dir for item in result.reranked] == [
+        report_dir(complete_run, top_k=1, window_size=3, model=MODEL)
+    ]
+    for artifact in (result.baseline, *result.reranked):
+        assert {path.name for path in artifact.artifact_dir.iterdir()} == {
+            "manifest.json",
+            "metrics.jsonl",
+            "report.md",
+        }
+    assert (
+        run_metrics(MetricsRequest(complete_run, top_k=1)).baseline == result.baseline
+    )
+    produced = [
+        path.relative_to(complete_run).as_posix() for path in complete_run.rglob("*")
+    ]
+    assert [path for path in produced if re.search(r"[0-9a-f]{12,}", path)] == []
+
+
+def test_a_report_for_different_inputs_conflicts_unless_forced(tmp_path: Path) -> None:
+    first = publish_empty(tmp_path, metrics_identity("a"))
+
+    with pytest.raises(RunConflictError, match="top1-window3"):
+        publish_empty(tmp_path, metrics_identity("b"))
+    replaced = publish_empty(tmp_path, metrics_identity("b"), force=True)
+
+    assert replaced.artifact_dir == first.artifact_dir
+    assert replaced.metrics_sha256 == metrics_identity("b").sha256
+
+
+def test_select_variants_returns_all_or_the_named_model() -> None:
+    qwen = RerankVariantRecord(MODEL, "a" * 64, f"rerank/{SLUG}")
+    bge = RerankVariantRecord(
+        "bge-reranker-v2-m3:f16", "b" * 64, "rerank/bge_reranker_v2_m3_f16"
+    )
+    variants = {SLUG: qwen, "bge_reranker_v2_m3_f16": bge}
+
+    assert list(select_rerank_variants(variants, model=None)) == [
+        "bge_reranker_v2_m3_f16",
+        SLUG,
+    ]
+    assert select_rerank_variants(variants, model=MODEL) == {SLUG: qwen}
+    with pytest.raises(ValueError, match="available: qwen3-reranker"):
+        select_rerank_variants({SLUG: qwen}, model="bge-reranker-v2-m3:f16")

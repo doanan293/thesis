@@ -34,6 +34,7 @@ REMOVED_PATH_NAMES = (
     "RETRIEVAL_EVAL_RUNS_DIR",
     "RAG_FINAL_MANIFEST_PATH",
     "RAG_FINAL_VALIDATION_PATH",
+    "retrieval_run_roots",
 )
 
 

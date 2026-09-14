@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, cast
 
 import typer
@@ -12,7 +11,7 @@ from seed_pipeline.cli.runtime import (
     state_from_context,
 )
 from seed_pipeline.config.defaults import DEFAULT_TOP_K
-from seed_pipeline.config.paths import retrieval_run_roots
+from seed_pipeline.config.paths import run_dir
 from seed_pipeline.evaluation.metrics_service import MetricsRequest, run_metrics
 
 
@@ -22,35 +21,14 @@ def metrics(
     top_k: Annotated[int, typer.Option("--top-k")] = DEFAULT_TOP_K,
     window_size: Annotated[int, typer.Option("--window-size")] = 3,
     model: Annotated[str | None, typer.Option("--model")] = None,
-    variant: Annotated[str | None, typer.Option("--variant")] = None,
-    output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
+    force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
-    if model is not None and variant is not None:
-        raise typer.BadParameter("--model and --variant are mutually exclusive")
-    if output_dir is not None:
-        typer.echo(
-            "Warning: --output-dir is deprecated; metrics artifacts are stored under the run",
-            err=True,
-        )
-    result = run_handler(
-        state_from_context(ctx),
-        lambda: _run(run, top_k, window_size, model, variant),
-    )
-    _ = result
+    request = MetricsRequest(run_dir(run), top_k, window_size, model, force)
+    run_handler(state_from_context(ctx), lambda: _run(request))
 
 
-def _run(run, top_k, window_size, model, variant):
-    metadata_root, artifact_root = retrieval_run_roots(run)
-    result = run_metrics(
-        MetricsRequest(
-            metadata_root,
-            top_k,
-            window_size,
-            model,
-            variant,
-            artifact_root,
-        )
-    )
+def _run(request: MetricsRequest) -> CommandResult:
+    result = run_metrics(request)
     return CommandResult(
         "metrics",
         CommandStatus.COMPLETE,
@@ -67,10 +45,7 @@ def _run(run, top_k, window_size, model, variant):
                     "metrics_sha256": item.metrics_sha256,
                     "artifact": str(item.artifact_dir),
                 }
-                for item in sorted(
-                    result.reranked,
-                    key=lambda item: (item.model or "", item.variant_sha256 or ""),
-                )
+                for item in sorted(result.reranked, key=lambda item: item.model or "")
             ],
         },
     )

@@ -1,107 +1,114 @@
 import json
-from types import SimpleNamespace
+from pathlib import Path
+
+import pytest
 
 from seed_pipeline.evaluation.run_workspace import (
+    RUN_SCHEMA_VERSION,
     RerankVariantRecord,
+    RunConflictError,
     RunIdentity,
     RunWorkspace,
+    evaluation_reference,
     load_run_record,
+    resolve_evaluation_reference,
 )
 
 
-def identity() -> RunIdentity:
+def identity(*, candidate_k: int = 30, rrf_k: int = 2) -> RunIdentity:
     return RunIdentity(
-        evaluation_path="evaluation.jsonl",
-        evaluation_sha256="evaluation",
-        collection_name="collection",
-        embedding_model="embedding",
-        query_embeddings_sha256="queries",
+        evaluation_path="evaluation/gold/section_retrieval_eval.jsonl",
+        evaluation_sha256="e" * 64,
+        collection_name="chunks_current",
+        embedding_model="qwen3-embedding:4b-fp16",
+        query_embeddings_sha256="q" * 64,
         retriever="hybrid",
-        candidate_k=30,
-        rrf_k=2,
+        candidate_k=candidate_k,
+        rrf_k=rrf_k,
         limit=None,
         prefetch_k=50,
     )
 
 
-def test_load_v1_preserves_legacy_reference_without_writing(tmp_path):
+def test_new_run_writes_schema_three_with_origin(tmp_path: Path) -> None:
+    workspace = RunWorkspace.open_or_create(
+        tmp_path / "run", identity(), origin="imported"
+    )
+
+    payload = json.loads(workspace.record_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == RUN_SCHEMA_VERSION == 3
+    assert payload["origin"] == "imported"
+    assert load_run_record(workspace.record_path).identity == identity()
+
+
+def test_reopening_a_run_with_the_same_identity_keeps_its_files(tmp_path: Path) -> None:
+    workspace = RunWorkspace.open_or_create(tmp_path / "run", identity())
+    marker = workspace.candidates_dir / "keep.txt"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("keep", encoding="utf-8")
+
+    RunWorkspace.open_or_create(tmp_path / "run", identity())
+
+    assert marker.read_text(encoding="utf-8") == "keep"
+
+
+def test_a_different_identity_names_the_run_and_the_fields(tmp_path: Path) -> None:
+    RunWorkspace.open_or_create(tmp_path / "run", identity())
+
+    with pytest.raises(RunConflictError, match=r"run .*candidate_k, rrf_k"):
+        RunWorkspace.open_or_create(
+            tmp_path / "run", identity(candidate_k=10, rrf_k=60)
+        )
+
+
+def test_force_replaces_the_whole_run_tree(tmp_path: Path) -> None:
+    workspace = RunWorkspace.open_or_create(tmp_path / "run", identity())
+    stale = workspace.reports_dir / "old.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("old", encoding="utf-8")
+
+    RunWorkspace.open_or_create(tmp_path / "run", identity(rrf_k=60), force=True)
+
+    assert not stale.exists()
+    assert load_run_record(tmp_path / "run" / "run.json").identity.rrf_k == 60
+
+
+def test_record_candidates_stores_a_relative_directory_only(complete_run: Path) -> None:
+    record = load_run_record(complete_run / "run.json")
+
+    assert record.candidates_dir == "candidates"
+    assert not (complete_run / "candidates-manifest.json").exists()
+
+
+def test_registering_a_variant_keys_it_by_model_slug(tmp_path: Path) -> None:
+    workspace = RunWorkspace.open_or_create(tmp_path / "run", identity())
+    variant = RerankVariantRecord(
+        "qwen3-reranker:0.6b-fp16", "v" * 64, "rerank/qwen3_reranker_0_6b_fp16"
+    )
+
+    workspace.register_rerank_variant("qwen3_reranker_0_6b_fp16", variant)
+
+    assert workspace.variant_records() == {"qwen3_reranker_0_6b_fp16": variant}
+
+
+def test_older_run_schemas_are_rejected(tmp_path: Path) -> None:
     path = tmp_path / "run.json"
-    payload = {
-        "schema_version": 1,
-        "identity": identity().__dict__,
-        "status": "reranked",
-        "candidates_dir": "candidates",
-        "rerank_scores_dir": "/cache/old.jsonl",
-        "reranker": "old-model",
-    }
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    before = path.read_bytes()
+    path.write_text(json.dumps({"schema_version": 2, "identity": {}}), encoding="utf-8")
 
-    record = load_run_record(path)
-
-    assert record.legacy_rerank is not None
-    assert record.legacy_rerank.model == "old-model"
-    assert record.rerank_variants == {}
-    assert path.read_bytes() == before
+    with pytest.raises(RunConflictError, match="Unsupported run schema 2"):
+        load_run_record(path)
 
 
-def test_register_variant_preserves_existing_variants_and_uses_relative_path(tmp_path):
-    workspace = RunWorkspace.open_or_create(tmp_path, identity())
-    first = RerankVariantRecord("model-a", "rerank/model-a/aaaa", "complete")
-    second = RerankVariantRecord("model-b", "rerank/model-b/bbbb", "complete")
+def test_evaluation_paths_inside_data_are_stored_relative(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    gold = data / "evaluation" / "gold" / "section_retrieval_eval.jsonl"
 
-    workspace.register_rerank_variant("a" * 64, first)
-    workspace.register_rerank_variant("b" * 64, second)
+    reference = evaluation_reference(gold, data)
 
-    record = load_run_record(tmp_path / "run.json")
-    assert record.schema_version == 2
-    assert set(record.rerank_variants) == {"a" * 64, "b" * 64}
-    assert record.rerank_variants["a" * 64].artifact_dir == "rerank/model-a/aaaa"
-
-
-def test_record_candidates_stores_relative_path_when_inside_run(tmp_path):
-    workspace = RunWorkspace.open_or_create(tmp_path, identity())
-    candidate_path = tmp_path / "candidates" / "candidates.jsonl"
-    candidate_path.parent.mkdir()
-    candidate_path.write_text("{}\n", encoding="utf-8")
-    manifest_path = candidate_path.with_name("manifest.json")
-    manifest_path.write_text("{}\n", encoding="utf-8")
-
-    workspace.record_candidates(
-        SimpleNamespace(data_path=candidate_path, manifest_path=manifest_path)
-    )
-
-    assert load_run_record(tmp_path / "run.json").candidates_dir == "candidates"
-
-
-def test_split_workspace_keeps_registry_and_manifest_outside_heavy_root(tmp_path):
-    metadata = tmp_path / "retrieval_eval" / "run-a"
-    heavy = tmp_path / "heavy" / "retrieval_eval" / "run-a"
-    workspace = RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
-    artifact = SimpleNamespace(
-        data_path=heavy / "candidates" / "candidates.jsonl",
-        manifest_path=heavy / "candidates" / "manifest.json",
-    )
-    artifact.data_path.parent.mkdir(parents=True)
-    artifact.data_path.write_text("{}\n", encoding="utf-8")
-    artifact.manifest_path.write_text('{"complete":1}\n', encoding="utf-8")
-
-    workspace.record_candidates(artifact)
-
-    assert (metadata / "run.json").is_file()
+    assert reference == "evaluation/gold/section_retrieval_eval.jsonl"
+    assert resolve_evaluation_reference(reference, data) == gold
+    outside = tmp_path / "elsewhere.jsonl"
     assert (
-        metadata / "candidates-manifest.json"
-    ).read_bytes() == artifact.manifest_path.read_bytes()
-    assert workspace.candidates_dir == heavy / "candidates"
-    assert load_run_record(metadata / "run.json").candidates_dir == "candidates"
-
-
-def test_reopen_split_workspace_preserves_heavy_artifact_root(tmp_path):
-    metadata = tmp_path / "retrieval_eval" / "run-a"
-    heavy = tmp_path / "heavy" / "retrieval_eval" / "run-a"
-    RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
-
-    reopened = RunWorkspace.open_or_create(metadata, identity(), artifact_root=heavy)
-
-    assert reopened.artifact_base == heavy
-    assert reopened.candidates_dir == heavy / "candidates"
+        resolve_evaluation_reference(evaluation_reference(outside, data), data)
+        == outside.resolve()
+    )
