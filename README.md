@@ -2,7 +2,7 @@
 
 | Thư mục | Nội dung |
 | --- | --- |
-| `seed-pipeline/` | Công cụ offline: nguồn nội bộ (Dược thư Quốc gia, An Khang) → knowledge bundle, embedding trên Kaggle, đánh giá retrieval |
+| `seed-pipeline/` | Công cụ offline: nguồn nội bộ (Dược thư Quốc gia, tờ hướng dẫn sử dụng thuốc) → knowledge bundle, embedding trên Kaggle, đánh giá retrieval |
 | `backend/` | Backend AI agent (LangGraph, OpenAI SDK, Qdrant, llama.cpp) |
 | `frontend/` | Web app (React Router, SSR) |
 | `devops/` | Cấu hình cho image bên thứ ba mà compose dùng: nginx, CLIProxyAPI |
@@ -52,7 +52,7 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   `native_rerank` cần thêm `LLAMA_RERANKER_PROTOCOL=native_rerank` và `LLAMA_RERANKER_RERANKING=true`.
 - Dùng OpenAI cloud hoặc server OpenAI-compatible khác thay cho proxy: đặt `LLM_BASE_URL` trong
   `.env` ở root.
-- Lần đầu cần nạp corpus vào container: `docker compose cp <bundle_dir> backend:/tmp/bundle` rồi
+- Lần đầu cần nạp corpus vào container: `docker compose cp seed-pipeline/data/corpus/formulary backend:/tmp/bundle` rồi
   `docker compose exec backend pharma-agent corpus import /tmp/bundle --collection formulary --publish`.
 
 ## Môi trường Python

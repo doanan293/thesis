@@ -28,26 +28,26 @@ Production stage ở profile mode tự tìm checkpoint tương thích trong mọ
 ```bash
 uv run seed build
 uv run seed validate
-uv run seed bundle export --output data/heavy/bundles/formulary --force
+uv run seed bundle export --output data/corpus/formulary --force
 ```
 
 ## 3. Embed bundle trên Kaggle
 
 ```bash
-uv run seed bundle embed --bundle data/heavy/bundles/formulary --backend kaggle \
+uv run seed bundle embed --bundle data/corpus/formulary --backend kaggle \
   --model qwen3-embedding:4b-fp16 --kaggle-account acc1 --dry-run
-uv run seed bundle embed --bundle data/heavy/bundles/formulary --backend kaggle \
+uv run seed bundle embed --bundle data/corpus/formulary --backend kaggle \
   --model qwen3-embedding:4b-fp16 --kaggle-account acc1
 ```
 
-Lệnh stream log kernel, tải artifact về và merge vào `data/heavy/cache/text_embeddings/qwen3_embedding_4b_fp16.jsonl`. Exit code 3 nghĩa là kernel chưa xong hoặc hết budget: chạy lại đúng lệnh để resume từ checkpoint. Khi cache đủ, lệnh ghi `embeddings/qwen3_embedding_4b_fp16.jsonl` vào bundle. `Ctrl-C` chỉ dừng theo dõi; kernel vẫn chạy và lần chạy sau tự attach.
+Lệnh stream log kernel, tải artifact về và merge vào `data/cache/text_embeddings/qwen3_embedding_4b_fp16.jsonl`. Exit code 3 nghĩa là kernel chưa xong hoặc hết budget: chạy lại đúng lệnh để resume từ checkpoint. Khi cache đủ, lệnh ghi `embeddings/qwen3_embedding_4b_fp16.jsonl` vào bundle. `Ctrl-C` chỉ dừng theo dõi; kernel vẫn chạy và lần chạy sau tự attach.
 
 ## 4. Import vào backend
 
 ```bash
 cd ../backend
 uv run pharma-agent migrate
-uv run pharma-agent corpus import ../seed-pipeline/data/heavy/bundles/formulary --collection formulary --publish
+uv run pharma-agent corpus import ../seed-pipeline/data/corpus/formulary --collection formulary --publish
 uv run pharma-agent corpus releases --collection formulary
 cd ../seed-pipeline
 ```
@@ -55,7 +55,7 @@ cd ../seed-pipeline
 ## 5. Evaluation dataset và retrieval
 
 ```bash
-uv run seed evaluation build --bundle data/heavy/bundles/formulary
+uv run seed evaluation build --bundle data/corpus/formulary
 uv run seed embed queries --backend kaggle --model qwen3-embedding:4b-fp16 --kaggle-account acc1
 uv run seed retrieve --run backend-bm25-k30 --retriever bm25 --candidate-k 30
 uv run seed retrieve --run backend-hybrid-qwen4b-p50-k30-rrf2 --retriever hybrid \

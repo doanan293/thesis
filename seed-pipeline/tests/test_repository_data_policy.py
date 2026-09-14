@@ -64,3 +64,43 @@ def test_no_tracked_data_file_exceeds_five_mib():
         if (PROJECT_ROOT / path).stat().st_size > 5 * 1024 * 1024
     ]
     assert oversized == []
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PRODUCTION_TREES = (
+    "backend/src",
+    "backend/skills",
+    "seed-pipeline/src",
+    "frontend/app",
+)
+
+
+def test_production_code_does_not_name_the_leaflet_source_site() -> None:
+    found = subprocess.run(
+        [
+            "git",
+            "grep",
+            "-I",
+            "-i",
+            "-l",
+            "-e",
+            "ankhang",
+            "-e",
+            "an khang",
+            "--",
+            *PRODUCTION_TREES,
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    names = subprocess.run(
+        ["git", "ls-files", "--", *PRODUCTION_TREES],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert found.stdout.splitlines() == []
+    assert [name for name in names if "ankhang" in name.lower()] == []

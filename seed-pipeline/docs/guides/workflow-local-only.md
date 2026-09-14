@@ -15,8 +15,8 @@ docker compose up -d postgres qdrant llama-embedding llama-reranker   # tìm com
 ```bash
 uv run seed build
 uv run seed validate
-uv run seed bundle export --output data/heavy/bundles/formulary --force
-uv run seed bundle embed --bundle data/heavy/bundles/formulary --backend local --model qwen3-embedding:4b-fp16
+uv run seed bundle export --output data/corpus/formulary --force
+uv run seed bundle embed --bundle data/corpus/formulary --backend local --model qwen3-embedding:4b-fp16
 ```
 
 Embed local chạy trên CPU nên chậm; lệnh ghi cache sau mỗi lô, chạy lại để tiếp tục. Có thể bỏ bước embed: `pharma-agent corpus import` tự embed phần thiếu qua endpoint của backend.
@@ -26,14 +26,14 @@ Embed local chạy trên CPU nên chậm; lệnh ghi cache sau mỗi lô, chạy
 ```bash
 cd ../backend
 uv run pharma-agent migrate
-uv run pharma-agent corpus import ../seed-pipeline/data/heavy/bundles/formulary --collection formulary --publish
+uv run pharma-agent corpus import ../seed-pipeline/data/corpus/formulary --collection formulary --publish
 cd ../seed-pipeline
 ```
 
 ## 4. Evaluation
 
 ```bash
-uv run seed evaluation build --bundle data/heavy/bundles/formulary
+uv run seed evaluation build --bundle data/corpus/formulary
 uv run seed embed queries --backend local --model qwen3-embedding:4b-fp16
 uv run seed retrieve --run backend-bm25-k30 --retriever bm25 --candidate-k 30
 uv run seed metrics --run backend-bm25-k30 --top-k 30
