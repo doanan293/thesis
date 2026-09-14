@@ -36,16 +36,20 @@ def resolve_workspace_root(explicit: Path | None = None) -> Path:
 PROJECT_ROOT = resolve_workspace_root()
 DATA_DIR = PROJECT_ROOT / "data"
 
+SOURCES_DIR = DATA_DIR / "sources"
+LEAFLETS_DIR = SOURCES_DIR / "leaflets"
+LEAFLETS_HTML_DIR = LEAFLETS_DIR / "html"
+LEAFLETS_URLS_DIR = LEAFLETS_DIR / "urls"
+LEAFLETS_MANIFEST_PATH = LEAFLETS_DIR / "manifest.json"
+
 # Build inputs stay in the pre-migration folders until the leaflet source tasks move them.
 HEAVY_DATA_DIR = DATA_DIR / "heavy"
 RESOURCES_DIR = DATA_DIR / "resources"
-RESOURCES_ANKHANG_DIR = RESOURCES_DIR / "ankhang"
 RESOURCES_CURATION_DIR = RESOURCES_DIR / "curation"
 MANIFESTS_DIR = DATA_DIR / "manifests"
 HEAVY_RAW_DIR = HEAVY_DATA_DIR / "raw"
 RAW_DIR = HEAVY_RAW_DIR
 RAW_ANKHANG_DIR = RAW_DIR / "ankhang"
-RAW_ANKHANG_HTML_DIR = RAW_ANKHANG_DIR / "html"
 RAW_CURATION_DIR = RESOURCES_CURATION_DIR
 RAW_ANKHANG_SNAPSHOTS_DIR = RAW_ANKHANG_DIR / "snapshots"
 MIGRATION_DIR = HEAVY_DATA_DIR / "migration"

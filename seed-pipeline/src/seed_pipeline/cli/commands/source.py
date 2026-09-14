@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import http.client
+from datetime import date
 from pathlib import Path
 from typing import Annotated
+from urllib.request import Request, urlopen
 
 import typer
 
@@ -13,11 +16,16 @@ from seed_pipeline.cli.runtime import (
 )
 from seed_pipeline.config.paths import (
     DOCLING_INTERIM_DIR,
+    LEAFLETS_DIR,
     RAG_FINAL_SECTIONS_PATH,
     RAW_DIR,
     TEXT_INTERIM_DIR,
 )
-from seed_pipeline.corpus.sources.crawl import CrawlRequest, crawl_source
+from seed_pipeline.corpus.sources.crawl import (
+    CrawlFetchError,
+    CrawlRequest,
+    crawl_leaflets,
+)
 from seed_pipeline.corpus.sources.tables import (
     TableCurationRequest,
     TableExtractionRequest,
@@ -35,12 +43,8 @@ source_app = typer.Typer(no_args_is_help=True, add_completion=False)
 @source_app.command("crawl")
 def crawl(
     ctx: typer.Context,
-    sitemap_url: Annotated[
-        str, typer.Option("--sitemap-url")
-    ] = "https://www.nhathuocankhang.com/sitemap-sanpham.xml",
-    output_dir: Annotated[Path, typer.Option("--output-dir")] = RAW_DIR
-    / "ankhang"
-    / "html",
+    leaflets_dir: Annotated[Path, typer.Option("--leaflets-dir")] = LEAFLETS_DIR,
+    sitemap_url: Annotated[str | None, typer.Option("--sitemap-url")] = None,
     workers: Annotated[int, typer.Option("--workers")] = 8,
     request_timeout_seconds: Annotated[
         float, typer.Option("--request-timeout-seconds")
@@ -49,29 +53,23 @@ def crawl(
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
     def run() -> CommandResult:
-        from urllib.request import Request, urlopen
-
-        def fetch(url: str, timeout: float) -> bytes:
-            with urlopen(
-                Request(url, headers={"User-Agent": "seed-pipeline"}), timeout=timeout
-            ) as response:
-                return response.read()
-
-        result = crawl_source(
+        result = crawl_leaflets(
             CrawlRequest(
+                leaflets_dir,
                 sitemap_url,
-                output_dir,
                 workers,
                 request_timeout_seconds,
                 force,
                 dry_run,
             ),
-            fetch,
+            _fetch,
+            today=date.today(),
         )
         return CommandResult(
             "source crawl",
             CommandStatus.COMPLETE,
-            details={
+            result.manifest_path,
+            {
                 "total": result.total,
                 "downloaded": result.downloaded,
                 "skipped": result.skipped,
@@ -80,6 +78,15 @@ def crawl(
         )
 
     run_handler(state_from_context(ctx), run)
+
+
+def _fetch(url: str, timeout: float) -> bytes:
+    request = Request(url, headers={"User-Agent": "seed-pipeline"})
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return response.read()
+    except (OSError, http.client.HTTPException, ValueError) as exc:
+        raise CrawlFetchError(f"{url}: {exc}") from exc
 
 
 @source_app.command("extract-tables")

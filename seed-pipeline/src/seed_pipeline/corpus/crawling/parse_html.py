@@ -4,14 +4,6 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, Comment, NavigableString
 
-from seed_pipeline.config.paths import (
-    ANKHANG_MARKDOWN_INTERIM_DIR,
-    RAW_ANKHANG_HTML_DIR,
-)
-
-DEFAULT_HTML_DIR = RAW_ANKHANG_HTML_DIR
-DEFAULT_OUTPUT_DIR = ANKHANG_MARKDOWN_INTERIM_DIR
-
 
 def clean_text(text):
     # Normalize whitespaces
