@@ -1,2 +1,2 @@
 {"key":"drug:paracetamol","kind":"drug_monograph","title":"Paracetamol","source":{"title":"Dược thư Quốc gia Việt Nam 2022","url":null},"attributes":{"atc":"N02BE01"}}
-{"key":"leaflet:ankhang:thuoc-giam-dau:panadol-extra","kind":"leaflet","title":"Panadol Extra","source":{"title":"Nhà thuốc An Khang","url":"https://www.nhathuocankhang.com/thuoc-giam-dau/panadol-extra"},"attributes":{"category":"thuoc-giam-dau"}}
+{"key":"leaflet:thuoc-giam-dau:panadol-extra","kind":"leaflet","title":"Panadol Extra","source":{"title":"Tờ hướng dẫn sử dụng","url":null},"attributes":{"category":"thuoc-giam-dau"}}

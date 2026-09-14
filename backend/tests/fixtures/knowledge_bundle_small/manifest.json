@@ -11,26 +11,26 @@
   },
   "source_digests": {
     "source_pdf_sha256": "c250b033cb4eef91ea25765805e36867e0f2a759337959ef9b53e0968edb324e",
-    "snapshot_sha256": "842ef7e7cb6a252400737dfbfb4d2fb87cf849154623fece5f2ca49c5f5257cd"
+    "leaflet_source_manifest_sha256": "61383b355a44a5393fcf4a44a18bf127f0d5f2e079e3f056d7b5c51a2b582a3d"
   },
   "document_count": 2,
   "section_count": 5,
   "files": {
     "documents.jsonl": {
-      "sha256": "acd0519fb4a7c4a23158adea5abb0e8b000bdfe3ec001b37fe8bfd5535bb114f",
-      "bytes": 427
+      "sha256": "dfae1ad8565cd2e2e228409b678e8c9410743316347b8f2f3c5c663c5ef1664e",
+      "bytes": 371
     },
     "sections.jsonl": {
-      "sha256": "1e88e2399a9dd3e45118405f83320cdc6ad63a1d6b75b026611f05749c69403f",
-      "bytes": 25841
+      "sha256": "27a5b2dfa4ef38ee3f10f6e5123cf732f860e61a880ad8164b3c0b97173972aa",
+      "bytes": 25825
     },
     "glossary.json": {
       "sha256": "518b98adb69ae082668bc29c23444e998bbb221e9aab6e5ecf7f85ba7f212b95",
       "bytes": 631
     },
     "colloquial_mappings.json": {
-      "sha256": "24180327936b96e668c184d19778fabe18dd1427013acdf317c27f723a0c5dcf",
-      "bytes": 328
+      "sha256": "ad957bf11ad7a35565215d6b67ab71a4128f362a6d78d99815bbdb501ada9039",
+      "bytes": 320
     },
     "embeddings/fake_embedding_4d.jsonl": {
       "sha256": "0e78f00278aeb14d97cc22ea134922fcadb7c6c463c92fe7ee38e6905ac7329b",

@@ -29,7 +29,7 @@ from pharma_agent.domain.corpus.bundle import (
 EMBEDDINGS_FILE = "embeddings/fake_embedding_4d.jsonl"
 SHA_DOSE = hashlib.sha256("PARACETAMOL\n> Liều lượng".encode()).hexdigest()
 SHA_TABLE = hashlib.sha256("PARACETAMOL\n> Tương tác thuốc".encode()).hexdigest()
-LEAFLET_SECTION = "brand:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
+LEAFLET_SECTION = "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
 
 
 def make_bundle() -> KnowledgeBundle:
@@ -40,13 +40,10 @@ def make_bundle() -> KnowledgeBundle:
         source=SourceInfo(title="Dược thư Quốc gia Việt Nam 2022"),
     )
     leaflet = DocumentRecord(
-        key="leaflet:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
+        key="leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
         kind=DocumentKind.LEAFLET,
         title="Panadol Extra GSK giảm đau, hạ sốt (15 vỉ x 12 viên)",
-        source=SourceInfo(
-            title="Tờ hướng dẫn sử dụng",
-            url="https://www.nhathuocankhang.com/thuoc-giam-dau-ha-sot/panadol-extra-gsk-150-vien-11440",
-        ),
+        source=SourceInfo(title="Tờ hướng dẫn sử dụng", url=None),
         attributes={"category": "thuoc-giam-dau-ha-sot"},
     )
     return KnowledgeBundle(
@@ -329,7 +326,7 @@ def test_record_fields_are_reported_with_line_and_path(tmp_path: Path) -> None:
         "documents.jsonl:2: kind: Input should be 'drug_monograph', "
         "'general_monograph' or 'leaflet'",
         "sections.jsonl:3: document_key: unknown document "
-        "'leaflet:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440'",
+        "'leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440'",
     ]
 
 

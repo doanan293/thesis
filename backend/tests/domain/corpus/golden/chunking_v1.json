@@ -81,7 +81,7 @@
         "Panadol Extra GSK"
       ],
       "section_keys": [
-        "brand:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
+        "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
       ]
     }
   ],
@@ -441,18 +441,18 @@
       "name": "leaflet",
       "max_chars": 160,
       "document": {
-        "key": "leaflet:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
+        "key": "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
         "kind": "leaflet",
         "title": "Panadol Extra GSK giảm đau, hạ sốt (15 vỉ x 12 viên)",
         "source": {
           "title": "Tờ hướng dẫn sử dụng",
-          "url": "https://www.nhathuocankhang.com/thuoc-giam-dau-ha-sot/panadol-extra-gsk-150-vien-11440"
+          "url": null
         },
         "attributes": {}
       },
       "section": {
-        "key": "brand:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
-        "document_key": "leaflet:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
+        "key": "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
+        "document_key": "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440",
         "heading": "Thông tin chi tiết",
         "context_path": [
           "Thông tin chi tiết"

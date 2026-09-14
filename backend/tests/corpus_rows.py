@@ -44,7 +44,7 @@ from pharma_agent.infrastructure.persistence.postgres.database import Database
 NOW = datetime(2026, 9, 13, 8, 0, tzinfo=UTC)
 DOSAGE_KEY = "drug:paracetamol:lieu-luong-va-cach-dung"
 TABLE_SECTION_KEY = "drug:paracetamol:bang-lieu-theo-can-nang"
-LEAFLET_KEY = "leaflet:ankhang:thuoc-giam-dau:panadol:thong-tin-chi-tiet"
+LEAFLET_KEY = "leaflet:thuoc-giam-dau:panadol:thong-tin-chi-tiet"
 GLOSSARY = [GlossaryEntry(term="paracetamol", vietnamese_expansions=["acetaminophen"])]
 MAPPINGS = [
     ColloquialMappingRecord(
@@ -138,20 +138,17 @@ def table_section() -> SectionRecord:
 
 def leaflet_document() -> DocumentRecord:
     return DocumentRecord(
-        key="leaflet:ankhang:thuoc-giam-dau:panadol",
+        key="leaflet:thuoc-giam-dau:panadol",
         kind=DocumentKind.LEAFLET,
         title="Panadol",
-        source=SourceInfo(
-            title="Nhà thuốc An Khang",
-            url="https://www.nhathuocankhang.com/thuoc-giam-dau/panadol",
-        ),
+        source=SourceInfo(title="Tờ hướng dẫn sử dụng", url=None),
     )
 
 
 def leaflet_section() -> SectionRecord:
     return SectionRecord(
         key=LEAFLET_KEY,
-        document_key="leaflet:ankhang:thuoc-giam-dau:panadol",
+        document_key="leaflet:thuoc-giam-dau:panadol",
         heading="Thông tin chi tiết",
         context_path=["Thông tin chi tiết"],
         ordinal=1,

@@ -1,4 +1,5 @@
 from pharma_agent.domain.agent.prompts import (
+    ASSISTANT_ROLE,
     DISCLAIMER_PHRASES,
     answer_messages,
     fallback_text,
@@ -128,3 +129,8 @@ def test_answer_prompt_switches_on_mode_and_audience() -> None:
     )
     assert "không tìm thấy" in abstain.lower() and "[1]" not in abstain
     assert "thuốc" in fallback_text(RunStatus.TIMEOUT).lower()
+
+
+def test_prompts_describe_the_leaflet_corpus_by_content() -> None:
+    assert "tờ hướng dẫn sử dụng thuốc" in ASSISTANT_ROLE
+    assert "an khang" not in all_prompt_text().casefold()

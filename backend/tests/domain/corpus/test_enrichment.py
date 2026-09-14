@@ -56,7 +56,7 @@ G6PD_ANNOTATION = TermAnnotation(
     vi=["glucose-6-phosphate dehydrogenase"],
     en=["glucose-6-phosphate dehydrogenase"],
 )
-LEAFLET_SECTION = "brand:ankhang:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
+LEAFLET_SECTION = "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
 LEAFLET_HEADER = (
     "Panadol Extra GSK giảm đau, hạ sốt (15 vỉ x 12 viên)\n> Thông tin chi tiết"
 )
@@ -174,8 +174,8 @@ def test_mapping_for_section_compacts_the_record() -> None:
 
 
 def test_mapping_for_section_keeps_product_names_without_a_curated_key() -> None:
-    hapacol = "brand:ankhang:thuoc-giam-dau-ha-sot:hapacol-250-dhg"
-    efferalgan = "brand:ankhang:thuoc-giam-dau-ha-sot:efferalgan-500mg"
+    hapacol = "leaflet:thuoc-giam-dau-ha-sot:hapacol-250-dhg"
+    efferalgan = "leaflet:thuoc-giam-dau-ha-sot:efferalgan-500mg"
     records = [
         ColloquialMappingRecord(
             key="",

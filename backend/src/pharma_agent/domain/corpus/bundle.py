@@ -98,7 +98,7 @@ class SectionRecord(BaseModel):
 
 
 class GlossaryEntry(BaseModel):
-    """One row of ``data/resources/term_glossary.json``."""
+    """One row of ``data/sources/term_glossary.json``."""
 
     model_config = _STRICT
 
@@ -115,7 +115,7 @@ class GlossaryEntry(BaseModel):
 class ColloquialMappingRecord(BaseModel):
     """Colloquial names attached to sections.
 
-    ``key`` is the curated An Khang slug from ``data/resources/colloquial_mappings.json``
+    ``key`` is the curated leaflet slug from ``data/sources/colloquial_mappings.json``
     or, for a leaflet that only has title-derived product names, the leaflet slug; it
     may also be empty. It is copied into ``ColloquialMapping.key`` and never affects
     embedding text, term annotations or chunk version ids.

@@ -36,12 +36,12 @@ COLLECTION_KEY = "formulary"
 COLLECTION_TITLE = "Dược thư Quốc gia Việt Nam (fixture)"
 
 PARACETAMOL = "drug:paracetamol"
-LEAFLET = "leaflet:ankhang:thuoc-giam-dau:panadol-extra"
+LEAFLET = "leaflet:thuoc-giam-dau:panadol-extra"
 DOSAGE_SECTION = "drug:paracetamol:lieu-luong-va-cach-dung"
 PHARMACOLOGY_SECTION = "drug:paracetamol:duoc-ly-va-co-che-tac-dung"
 INTERACTIONS_SECTION = "drug:paracetamol:tuong-tac-thuoc"
 BRANDS_SECTION = "drug:paracetamol:biet-duoc"
-LEAFLET_SECTION = "leaflet:ankhang:thuoc-giam-dau:panadol-extra:cong-dung"
+LEAFLET_SECTION = "leaflet:thuoc-giam-dau:panadol-extra:cong-dung"
 
 FORMULARY_SOURCE = SourceInfo(title="Dược thư Quốc gia Việt Nam 2022", url=None)
 
@@ -82,10 +82,7 @@ def _documents() -> list[DocumentRecord]:
             key=LEAFLET,
             kind=DocumentKind.LEAFLET,
             title="Panadol Extra",
-            source=SourceInfo(
-                title="Nhà thuốc An Khang",
-                url="https://www.nhathuocankhang.com/thuoc-giam-dau/panadol-extra",
-            ),
+            source=SourceInfo(title="Tờ hướng dẫn sử dụng", url=None),
             attributes={"category": "thuoc-giam-dau"},
         ),
     ]
@@ -264,7 +261,7 @@ def build_small_bundle() -> KnowledgeBundle:
         ),
         source_digests={
             "source_pdf_sha256": sha256_hex("fixture source pdf"),
-            "snapshot_sha256": sha256_hex("fixture ankhang snapshot"),
+            "leaflet_source_manifest_sha256": sha256_hex("fixture leaflet source"),
         },
         document_count=len(documents),
         section_count=len(sections),
