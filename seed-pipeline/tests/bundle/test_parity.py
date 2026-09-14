@@ -7,7 +7,7 @@ from seed_pipeline.bundle.export import ExportRequest, export_bundle
 from seed_pipeline.bundle.parity import check_chunk_parity, legacy_chunk_view
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "rag_final_small"
-HAPACOL = "brand:ankhang:thuoc:hapacol-250-dhg-11500"
+HAPACOL = "leaflet:thuoc:hapacol-250-dhg-11500"
 
 
 def _bundle(tmp_path: Path) -> KnowledgeBundle:

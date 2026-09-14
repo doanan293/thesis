@@ -35,8 +35,8 @@ class ArtifactPaths:
         return self.root / "rag"
 
     @property
-    def ankhang_markdown_dir(self) -> Path:
-        return self.root / "ankhang-markdown"
+    def leaflet_markdown_dir(self) -> Path:
+        return self.root / "leaflet-markdown"
 
     @property
     def canonical_dir(self) -> Path:
@@ -58,7 +58,7 @@ class ArtifactPaths:
         return (
             self.raw_text.parent,
             self.rag_dir,
-            self.ankhang_markdown_dir,
+            self.leaflet_markdown_dir,
             self.canonical_dir,
             self.source_final_dir,
             self.candidate_final_dir,

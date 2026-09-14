@@ -9,9 +9,9 @@ from seed_pipeline.config.paths import (
 )
 from seed_pipeline.corpus.metadata.payload_layers import compact_colloquial_mapping
 from seed_pipeline.evaluation.build_section_retrieval_eval import (
-    ankhang_candidates,
     build_chunks_by_section,
     chunk_identifier,
+    leaflet_candidates,
     load_jsonl,
     normalize_spaces,
 )
@@ -21,7 +21,7 @@ DEFAULT_CHUNKS_PATH = EVALUATION_CHUNKS_PATH
 DEFAULT_OUTPUT_PATH = GOLD_DIR / "patient_queries.json"
 DEFAULT_TARGET_COUNT = 500
 
-ANKHANG_CATEGORY_ORDER = [
+LEAFLET_CATEGORY_ORDER = [
     "brand_ingredient",
     "brand_indication",
     "brand_dosage",
@@ -149,10 +149,10 @@ def display_product_name(section: dict) -> str:
     return min(names, key=lambda value: (len(value), value.lower()))
 
 
-def is_ankhang_product_section(section: dict) -> bool:
+def is_leaflet_product_section(section: dict) -> bool:
     return section.get("content_type") == "brand_page" and str(
         section.get("id", "")
-    ).startswith("brand:ankhang:")
+    ).startswith("leaflet:")
 
 
 def build_patient_query_candidates(
@@ -161,13 +161,13 @@ def build_patient_query_candidates(
     sections_by_id = {
         section["id"]: section
         for section in sections
-        if section.get("id") and is_ankhang_product_section(section)
+        if section.get("id") and is_leaflet_product_section(section)
     }
     if not sections_by_id:
-        raise RuntimeError("No An Khang product sections found in final RAG sections")
+        raise RuntimeError("No leaflet product sections found in final RAG sections")
 
     chunks_by_section = build_chunks_by_section(chunks)
-    raw_candidates = ankhang_candidates(sections_by_id, chunks_by_section)
+    raw_candidates = leaflet_candidates(sections_by_id, chunks_by_section)
     candidates: list[PatientQueryCandidate] = []
     seen: set[tuple[str, str]] = set()
 
@@ -193,7 +193,7 @@ def build_patient_query_candidates(
 
     if not candidates:
         raise RuntimeError(
-            "No An Khang product sections produced patient query candidates"
+            "No leaflet product sections produced patient query candidates"
         )
     return candidates
 
@@ -202,7 +202,7 @@ def ordered_candidates_by_category(
     candidates: list[PatientQueryCandidate],
 ) -> list[PatientQueryCandidate]:
     by_category: dict[str, list[PatientQueryCandidate]] = {
-        category: [] for category in ANKHANG_CATEGORY_ORDER
+        category: [] for category in LEAFLET_CATEGORY_ORDER
     }
     for candidate in candidates:
         by_category.setdefault(candidate.category, []).append(candidate)
@@ -216,7 +216,7 @@ def ordered_candidates_by_category(
     cursors = dict.fromkeys(by_category, 0)
     while True:
         progressed = False
-        for category in ANKHANG_CATEGORY_ORDER:
+        for category in LEAFLET_CATEGORY_ORDER:
             items = by_category.get(category, [])
             cursor = cursors.get(category, 0)
             if cursor >= len(items):
@@ -239,7 +239,7 @@ def row_for_candidate(candidate: PatientQueryCandidate, template_index: int) -> 
         "category": candidate.category,
         "expected_section_id": candidate.section_id,
         "difficulty": CATEGORY_DIFFICULTY.get(candidate.category, "medium"),
-        "notes": f"An Khang patient query for {candidate.category}",
+        "notes": f"leaflet patient query for {candidate.category}",
     }
 
 
@@ -267,9 +267,9 @@ def generate_patient_queries(
             pair = (row["query"].lower(), row["expected_section_id"])
             if pair in seen_pairs:
                 continue
-            if not row["expected_section_id"].startswith("brand:ankhang:"):
+            if not row["expected_section_id"].startswith("leaflet:"):
                 raise RuntimeError(
-                    f"Generated non-An Khang patient row: {row['expected_section_id']}"
+                    f"Generated non-leaflet patient row: {row['expected_section_id']}"
                 )
             rows.append(row)
             seen_pairs.add(pair)
@@ -280,7 +280,7 @@ def generate_patient_queries(
             break
 
     raise RuntimeError(
-        f"Could only generate {len(rows)} unique An Khang patient queries for target {target_count}"
+        f"Could only generate {len(rows)} unique leaflet patient queries for target {target_count}"
     )
 
 

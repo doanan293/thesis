@@ -66,7 +66,7 @@ def test_markdown_breakdown_tables_renders_only_compact_metrics():
                 "mrr": 0.75,
                 "multi_count": 1,
             },
-            "ankhang": {
+            "leaflet": {
                 "count": 1,
                 "hit@3": 1,
                 "hit@5": 1,
@@ -100,7 +100,7 @@ def test_markdown_breakdown_tables_renders_only_compact_metrics():
         in rendered
     )
     assert "## Breakdown by difficulty" in rendered
-    assert "| ankhang |" not in rendered
+    assert "| leaflet |" not in rendered
     assert "| chunk_risk |" not in rendered
     assert "Multi-section" not in rendered
     assert "Multi-all-hit" not in rendered

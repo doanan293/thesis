@@ -7,7 +7,7 @@ DEFAULT_MAX_ROWS = DEFAULT_TARGET_ROWS
 
 DEFAULT_EVAL_GROUP_QUOTAS = {
     "formulary": 5000,
-    "ankhang": 2500,
+    "leaflet": 2500,
     "patient_natural": 500,
     "chunk_risk": 1000,
     "multi_intent": 500,
@@ -27,12 +27,12 @@ NOISY_CONFUSER_QUERY_FORM_TARGETS = {
     "confuser": 200,
 }
 
-ANKHANG_QUERY_FORM_TARGETS = {
+LEAFLET_QUERY_FORM_TARGETS = {
     "brand_template": 2000,
     "colloquial_alias": 500,
 }
 
-ANKHANG_ALIAS_ANSWER_MODE_TARGETS = {
+LEAFLET_ALIAS_ANSWER_MODE_TARGETS = {
     "single": 400,
     "any_acceptable": 100,
 }
@@ -62,7 +62,7 @@ EVAL_HEADER = [
 ALLOWED_EVAL_GROUPS = set(DEFAULT_EVAL_GROUP_QUOTAS)
 ALLOWED_SOURCE_FAMILIES = {
     "drug_formulary",
-    "ankhang_brand",
+    "leaflet_brand",
     "general_appendix",
     "general_guidance",
 }
@@ -123,32 +123,32 @@ FORMULARY_CATEGORY_MAP = {
     "drug_fact": ("general_info", "formulary_general_info"),
 }
 
-ANKHANG_CATEGORY_MAP = {
-    "brand_ingredient": ("ingredient", "ankhang_ingredient"),
-    "brand_indication": ("indication", "ankhang_indication"),
-    "brand_dosage": ("dosage", "ankhang_dosage"),
-    "brand_contraindication": ("contraindication", "ankhang_contraindication"),
-    "brand_adr": ("adr", "ankhang_adr"),
-    "brand_precaution": ("precaution", "ankhang_precaution"),
-    "brand_interaction": ("interaction", "ankhang_interaction"),
-    "brand_pharmacology": ("pharmacology", "ankhang_pharmacology"),
-    "brand_storage": ("storage", "ankhang_storage"),
-    "brand_manufacturer": ("manufacturer", "ankhang_manufacturer"),
-    "brand_product": ("general_info", "ankhang_product"),
+LEAFLET_CATEGORY_MAP = {
+    "brand_ingredient": ("ingredient", "leaflet_ingredient"),
+    "brand_indication": ("indication", "leaflet_indication"),
+    "brand_dosage": ("dosage", "leaflet_dosage"),
+    "brand_contraindication": ("contraindication", "leaflet_contraindication"),
+    "brand_adr": ("adr", "leaflet_adr"),
+    "brand_precaution": ("precaution", "leaflet_precaution"),
+    "brand_interaction": ("interaction", "leaflet_interaction"),
+    "brand_pharmacology": ("pharmacology", "leaflet_pharmacology"),
+    "brand_storage": ("storage", "leaflet_storage"),
+    "brand_manufacturer": ("manufacturer", "leaflet_manufacturer"),
+    "brand_product": ("general_info", "leaflet_product"),
 }
 
-ANKHANG_SOURCE_SUBCATEGORY_PRIORITY = [
-    "ankhang_dosage",
-    "ankhang_indication",
-    "ankhang_ingredient",
-    "ankhang_contraindication",
-    "ankhang_adr",
-    "ankhang_precaution",
-    "ankhang_interaction",
-    "ankhang_storage",
-    "ankhang_pharmacology",
-    "ankhang_manufacturer",
-    "ankhang_product",
+LEAFLET_SOURCE_SUBCATEGORY_PRIORITY = [
+    "leaflet_dosage",
+    "leaflet_indication",
+    "leaflet_ingredient",
+    "leaflet_contraindication",
+    "leaflet_adr",
+    "leaflet_precaution",
+    "leaflet_interaction",
+    "leaflet_storage",
+    "leaflet_pharmacology",
+    "leaflet_manufacturer",
+    "leaflet_product",
 ]
 
 
@@ -158,11 +158,11 @@ class EvalTaxonomy:
     source_subcategory: str
 
 
-def taxonomy_for_source_category(category: str, is_ankhang: bool) -> tuple[str, str]:
-    mapping = ANKHANG_CATEGORY_MAP if is_ankhang else FORMULARY_CATEGORY_MAP
+def taxonomy_for_source_category(category: str, is_leaflet: bool) -> tuple[str, str]:
+    mapping = LEAFLET_CATEGORY_MAP if is_leaflet else FORMULARY_CATEGORY_MAP
     return mapping.get(
         category,
-        ("general_info", "ankhang_product" if is_ankhang else "formulary_general_info"),
+        ("general_info", "leaflet_product" if is_leaflet else "formulary_general_info"),
     )
 
 
@@ -170,8 +170,8 @@ def source_family_for_section(section: dict) -> str:
     section_id = str(section.get("id") or "")
     content_type = str(section.get("content_type") or "")
     title = str(section.get("title") or "").lower()
-    if content_type == "brand_page" or section_id.startswith("brand:ankhang:"):
-        return "ankhang_brand"
+    if content_type == "brand_page" or section_id.startswith("leaflet:"):
+        return "leaflet_brand"
     if section_id.startswith("general:phu-luc") or "phụ lục" in title:
         return "general_appendix"
     if content_type == "general_monograph" or section_id.startswith("general:"):

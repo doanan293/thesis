@@ -70,7 +70,7 @@ def node_to_markdown(node):
     return "".join(markdown)
 
 
-def parse_ankhang_html(file_path):
+def parse_leaflet_html(file_path):
     with open(file_path, encoding="utf-8") as f:
         html = f.read()
 
@@ -143,7 +143,7 @@ def parse_html_tree(html_dir: Path, output_dir: Path) -> ParseHtmlResult:
     success_count = 0
     skipped_count = 0
     for file_path in html_files:
-        md_content = parse_ankhang_html(file_path)
+        md_content = parse_leaflet_html(file_path)
         if md_content:
             destination = output_dir / file_path.relative_to(html_dir).with_suffix(
                 ".md"

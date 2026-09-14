@@ -42,7 +42,7 @@ from seed_pipeline.runtime.catalog import require_model
 DISPLAY_HIT_KS = (3, 5, 10, 30)
 BREAKDOWN_DIMENSIONS = ("eval_group", "difficulty")
 EVAL_GROUP_DISPLAY_LABELS = {
-    "ankhang": "brand_product_qa",
+    "leaflet": "brand_product_qa",
     "chunk_risk": "chunk_level_retrieval",
 }
 

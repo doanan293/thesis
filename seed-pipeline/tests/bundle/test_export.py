@@ -31,8 +31,8 @@ from seed_pipeline.corpus.canonical.build_canonical_rag import (
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "rag_final_small"
 DOSAGE = "drug:paracetamol:lieu-luong-va-cach-dung"
-PANADOL = "brand:ankhang:thuoc:panadol-extra-gsk-150-vien-11440"
-HAPACOL = "brand:ankhang:thuoc:hapacol-250-dhg-11500"
+PANADOL = "leaflet:thuoc:panadol-extra-gsk-150-vien-11440"
+HAPACOL = "leaflet:thuoc:hapacol-250-dhg-11500"
 
 
 def _request(output_dir: Path, *, force: bool = False) -> ExportRequest:
@@ -56,8 +56,8 @@ def test_export_groups_documents_and_keeps_section_keys(tmp_path: Path) -> None:
     assert [document.key for document in bundle.documents] == [
         "drug:paracetamol",
         "general:muc-luc-tra-cuu-biet-duoc-va-hoat-chat",
-        "leaflet:ankhang:thuoc:hapacol-250-dhg-11500",
-        "leaflet:ankhang:thuoc:panadol-extra-gsk-150-vien-11440",
+        "leaflet:thuoc:hapacol-250-dhg-11500",
+        "leaflet:thuoc:panadol-extra-gsk-150-vien-11440",
     ]
     assert [document.kind for document in bundle.documents] == [
         DocumentKind.DRUG_MONOGRAPH,
@@ -68,7 +68,7 @@ def test_export_groups_documents_and_keeps_section_keys(tmp_path: Path) -> None:
     assert bundle.documents[0].source.url is None
     assert bundle.documents[2].source == SourceInfo(
         title="Tờ hướng dẫn sử dụng",
-        url="https://www.nhathuocankhang.com/thuoc/hapacol-250-dhg-11500",
+        url=None,
     )
     assert [section.key for section in bundle.sections] == [
         DOSAGE,
@@ -183,3 +183,9 @@ def test_iter_section_chunks_runs_backend_chunker(tmp_path: Path) -> None:
     assert [draft.ordinal for draft in items[0].drafts] == [1, 2]
     assert items[0].document.key == "drug:paracetamol"
     assert gold_chunk_label(DOSAGE, 2) == f"{DOSAGE}:chunk-002"
+
+
+def test_collection_title_describes_the_content() -> None:
+    assert COLLECTION_TITLE == (
+        "Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng thuốc"
+    )

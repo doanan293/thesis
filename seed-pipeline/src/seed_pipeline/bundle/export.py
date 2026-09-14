@@ -32,7 +32,7 @@ from seed_pipeline.corpus.canonical.build_canonical_rag import (
     APPENDIX_LIST_SECTION_IDS,
     BRAND_INDEX_SECTION_ID,
 )
-from seed_pipeline.corpus.crawling.integrate_ankhang import (
+from seed_pipeline.corpus.crawling.integrate_leaflets import (
     product_names_from_title,
     resolve_colloquial_mapping,
 )
@@ -41,9 +41,8 @@ from seed_pipeline.corpus.processing.preprocess_rag_corpus import slugify
 from seed_pipeline.evaluation.artifact_contracts import iter_jsonl_objects
 
 COLLECTION_KEY = "formulary"
-COLLECTION_TITLE = "Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng An Khang"
-ANKHANG_SECTION_PREFIX = "brand:ankhang:"
-ANKHANG_BASE_URL = "https://www.nhathuocankhang.com"
+COLLECTION_TITLE = "Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng thuốc"
+LEAFLET_SECTION_PREFIX = "leaflet:"
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 
 
@@ -84,15 +83,13 @@ def document_for_section(row: Mapping[str, Any]) -> DocumentRecord:
     section_key = str(row["id"])
     title = str(row["title"])
     source_title = str(row.get("source") or "")
-    if section_key.startswith(ANKHANG_SECTION_PREFIX):
-        category, slug = _leaflet_path(section_key)
+    if section_key.startswith(LEAFLET_SECTION_PREFIX):
+        _leaflet_path(section_key)
         return DocumentRecord(
-            key=f"leaflet:ankhang:{category}:{slug}",
+            key=section_key,
             kind=DocumentKind.LEAFLET,
             title=title,
-            source=SourceInfo(
-                title=source_title, url=f"{ANKHANG_BASE_URL}/{category}/{slug}"
-            ),
+            source=SourceInfo(title=source_title),
         )
     content_type = str(row.get("content_type") or "")
     if content_type == "drug_monograph":
@@ -132,7 +129,7 @@ def export_bundle(request: ExportRequest) -> ExportResult:
     skipped: list[str] = []
     for row in iter_jsonl_objects(rag_final_dir / "sections.jsonl"):
         section_key = str(row["id"])
-        is_leaflet = section_key.startswith(ANKHANG_SECTION_PREFIX)
+        is_leaflet = section_key.startswith(LEAFLET_SECTION_PREFIX)
         blocks = (
             leaflet_blocks(str(row.get("text") or ""))
             if is_leaflet
@@ -241,9 +238,9 @@ class _MappingCollector:
 
 
 def _leaflet_path(section_key: str) -> tuple[str, str]:
-    category, _, slug = section_key.removeprefix(ANKHANG_SECTION_PREFIX).rpartition(":")
+    category, _, slug = section_key.removeprefix(LEAFLET_SECTION_PREFIX).rpartition(":")
     if not category or not slug:
-        raise ValueError(f"An Khang section key is malformed: {section_key}")
+        raise ValueError(f"Leaflet section key is malformed: {section_key}")
     return category, slug
 
 

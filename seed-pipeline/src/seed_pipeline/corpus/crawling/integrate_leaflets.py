@@ -433,7 +433,7 @@ def process_table(table_lines: list[str]) -> list[str]:
             return normalize_multicolumn_table_rows(table_lines)
 
 
-def separate_ankhang_heading_runs(text: str) -> str:
+def separate_leaflet_heading_runs(text: str) -> str:
     list_headings = [
         "Thận trọng khi sử dụng",
         "Thai kỳ và cho con bú",
@@ -986,7 +986,7 @@ def clean_text_quality(text):
         text = text.replace(old, new)
 
     text = remove_link_placeholder_sentences(text)
-    text = separate_ankhang_heading_runs(text)
+    text = separate_leaflet_heading_runs(text)
     text = re.sub(r"(Chất (?:cảm ứng|ức chế))(?=CYP)", r"\1 ", text)
     text = re.sub(r"(CYP\d[A-Z]\d)(?=Chất)", r"\1\n", text)
     text = re.sub(r"(?<=:)(?=\d)", " ", text)
@@ -1082,7 +1082,7 @@ def integrate_drug_file(file_path, *, markdown_root: Path, mappings=None):
     visual_sign = colloquial["visual_sign"]
     colloquial_mapping_key = colloquial["mapping_key"]
 
-    section_id = f"brand:ankhang:{category}:{slug}"
+    section_id = f"leaflet:{category}:{slug}"
 
     # Determine hydration strategy based on length of content
     strategy = (
@@ -1231,11 +1231,11 @@ def write_jsonl(path: Path, records: list[dict]) -> None:
             f.write(json.dumps(clean_unicode_value(record), ensure_ascii=False) + "\n")
 
 
-def is_ankhang_record(record: dict) -> bool:
-    return str(record.get("id") or "").startswith("brand:ankhang:")
+def is_leaflet_record(record: dict) -> bool:
+    return str(record.get("id") or "").startswith("leaflet:")
 
 
-def integrate_ankhang_corpus(
+def integrate_leaflet_corpus(
     *,
     markdown_dir: Path,
     sections_path: Path,
@@ -1264,9 +1264,9 @@ def integrate_ankhang_corpus(
     existing_sections = read_jsonl(sections_path)
     existing_chunks = read_jsonl(chunks_path)
     kept_sections = [
-        section for section in existing_sections if not is_ankhang_record(section)
+        section for section in existing_sections if not is_leaflet_record(section)
     ]
-    kept_chunks = [chunk for chunk in existing_chunks if not is_ankhang_record(chunk)]
+    kept_chunks = [chunk for chunk in existing_chunks if not is_leaflet_record(chunk)]
     final_sections = kept_sections + new_sections
     final_chunks = kept_chunks + new_chunks
 

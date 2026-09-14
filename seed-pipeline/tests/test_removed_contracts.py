@@ -22,6 +22,7 @@ REMOVED_MODULES = (
     "seed_pipeline.artifacts.snapshot",
     "seed_pipeline.corpus.crawling.collect_urls",
     "seed_pipeline.corpus.crawling.download_html",
+    "seed_pipeline.corpus.crawling.integrate_ankhang",
 )
 
 REMOVED_PATH_NAMES = (

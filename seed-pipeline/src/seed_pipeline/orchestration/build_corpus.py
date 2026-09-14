@@ -28,7 +28,7 @@ from seed_pipeline.config.paths import (
     SOURCES_DIR,
 )
 from seed_pipeline.corpus.canonical.build_canonical_rag import process_canonical_rag
-from seed_pipeline.corpus.crawling.integrate_ankhang import integrate_ankhang_corpus
+from seed_pipeline.corpus.crawling.integrate_leaflets import integrate_leaflet_corpus
 from seed_pipeline.corpus.crawling.parse_html import parse_html_tree
 from seed_pipeline.corpus.processing.clean_markdown_corpus import (
     process_corpus as clean_corpus,
@@ -151,9 +151,9 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         final_dir=paths.source_final_dir,
         max_chars=config.max_chars,
     )
-    parse_html_tree(leaflet_source.html_dir, paths.ankhang_markdown_dir)
-    integrate_ankhang_corpus(
-        markdown_dir=paths.ankhang_markdown_dir,
+    parse_html_tree(leaflet_source.html_dir, paths.leaflet_markdown_dir)
+    integrate_leaflet_corpus(
+        markdown_dir=paths.leaflet_markdown_dir,
         sections_path=paths.source_final_dir / "sections.jsonl",
         chunks_path=paths.source_final_dir / "chunks.jsonl",
         mappings_path=config.mappings_path,
@@ -167,7 +167,7 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         canonical_dir=paths.canonical_dir,
         rag_interim_dir=paths.rag_dir,
         docling_dir=config.curated_tables_path.parent,
-        ankhang_markdown_dir=paths.ankhang_markdown_dir,
+        leaflet_markdown_dir=paths.leaflet_markdown_dir,
         final_sections_path=paths.source_final_dir / "sections.jsonl",
         final_chunks_path=paths.source_final_dir / "chunks.jsonl",
         curated_tables_path=config.curated_tables_path,
@@ -178,7 +178,7 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         canonical_dir=paths.canonical_dir,
         rag_interim_dir=paths.rag_dir,
         docling_dir=config.curated_tables_path.parent,
-        ankhang_markdown_dir=paths.ankhang_markdown_dir,
+        leaflet_markdown_dir=paths.leaflet_markdown_dir,
         final_sections_path=paths.source_final_dir / "sections.jsonl",
         final_chunks_path=paths.source_final_dir / "chunks.jsonl",
         curated_tables_path=config.curated_tables_path,

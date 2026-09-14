@@ -12,9 +12,9 @@ from typing import Any
 
 from seed_pipeline.config.chunking import DEFAULT_CHUNK_MAX_CHARS
 from seed_pipeline.config.paths import (
-    ANKHANG_MARKDOWN_INTERIM_DIR,
     CANONICAL_INTERIM_DIR,
     DOCLING_INTERIM_DIR,
+    LEAFLET_MARKDOWN_INTERIM_DIR,
     RAG_FINAL_DIR,
     RAG_INTERIM_DIR,
 )
@@ -26,7 +26,7 @@ DEFAULT_FINAL_DIR = RAG_FINAL_DIR
 DEFAULT_CANONICAL_DIR = CANONICAL_INTERIM_DIR
 DEFAULT_RAG_INTERIM_DIR = RAG_INTERIM_DIR
 DEFAULT_DOCLING_DIR = DOCLING_INTERIM_DIR
-DEFAULT_ANKHANG_MARKDOWN_DIR = ANKHANG_MARKDOWN_INTERIM_DIR
+DEFAULT_LEAFLET_MARKDOWN_DIR = LEAFLET_MARKDOWN_INTERIM_DIR
 DEFAULT_REPORT_JSON = RAG_FINAL_DIR / "final_validation_report.json"
 DEFAULT_REPORT_MD = RAG_FINAL_DIR / "final_validation_report.md"
 
@@ -101,10 +101,10 @@ BRAND_INDEX_ENTRY_START_RE = re.compile(r"^- \*\*[^*]+\*\*: .+")
 BRAND_INDEX_DANGLING_RE = re.compile(r"- \*\*[^*]+\*\*:\s*$")
 BRAND_INDEX_CONTINUATION_RE = re.compile(r"^biệt dược chứa hoạt chất \*\*")
 SEVERITIES = {"blocking", "auto_fixable", "suspect", "accepted"}
-NON_ANKHANG_SOURCE = (
+NON_LEAFLET_SOURCE = (
     "Dược thư Quốc gia Việt Nam (Xuất bản lần thứ 2) – Nhà xuất bản Y học, Hà Nội, 2018"
 )
-ANKHANG_SOURCE = "Tờ hướng dẫn sử dụng"
+LEAFLET_SOURCE = "Tờ hướng dẫn sử dụng"
 SALBUTAMOL_DESCRIPTOR_SECTIONS = {
     "drug:salbutamol:noi-dung:part-002",
     "drug:salbutamol:thong-tin-chung:part-002",
@@ -308,7 +308,7 @@ class CorpusInputs:
     rag_sections: list[dict[str, Any]]
     rag_chunks: list[dict[str, Any]]
     curated_tables: list[dict[str, Any]]
-    ankhang_markdown_files: list[Path]
+    leaflet_markdown_files: list[Path]
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -440,7 +440,7 @@ def validate_chunk_source_blocks(
         chunks_by_section.setdefault(str(chunk.get("section_id") or ""), []).append(
             chunk
         )
-        if chunk.get("source") == ANKHANG_SOURCE:
+        if chunk.get("source") == LEAFLET_SOURCE:
             continue
         chunk_id = str(chunk.get("id") or "")
         source_block_id = str(chunk.get("source_block_id") or "")
@@ -596,7 +596,7 @@ def validate_quality_gate(
     max_chars: int = MAX_CHARS,
 ) -> None:
     for section in sections:
-        if section.get("source") == ANKHANG_SOURCE:
+        if section.get("source") == LEAFLET_SOURCE:
             continue
         section_id = str(section.get("id") or "")
         warnings = [str(warning) for warning in (section.get("warnings") or [])]
@@ -627,7 +627,7 @@ def validate_quality_gate(
         if len(text) > max_chars:
             errors.append(f"Chunk {chunk_id} text exceeds {max_chars} chars")
 
-        if chunk.get("source") == ANKHANG_SOURCE:
+        if chunk.get("source") == LEAFLET_SOURCE:
             continue
 
         warnings = [str(warning) for warning in (chunk.get("warnings") or [])]
@@ -651,7 +651,7 @@ def validate_quality_gate(
             section_chunks, key=lambda item: int(item.get("chunk_index") or 0)
         )
         for previous, current in itertools.pairwise(ordered):
-            if previous.get("source") == ANKHANG_SOURCE:
+            if previous.get("source") == LEAFLET_SOURCE:
                 continue
             previous_text = str(previous.get("text") or "").rstrip()
             current_text = str(current.get("text") or "").lstrip()
@@ -797,14 +797,14 @@ def load_inputs(
     canonical_dir: Path,
     rag_interim_dir: Path,
     docling_dir: Path,
-    ankhang_markdown_dir: Path,
+    leaflet_markdown_dir: Path,
     final_sections_path: Path | None = None,
     final_chunks_path: Path | None = None,
     curated_tables_path: Path | None = None,
 ) -> CorpusInputs:
-    ankhang_files = (
-        sorted(ankhang_markdown_dir.glob("**/*.md"))
-        if ankhang_markdown_dir.exists()
+    leaflet_files = (
+        sorted(leaflet_markdown_dir.glob("**/*.md"))
+        if leaflet_markdown_dir.exists()
         else []
     )
     return CorpusInputs(
@@ -817,7 +817,7 @@ def load_inputs(
         curated_tables=read_jsonl(
             curated_tables_path or docling_dir / "tables.curated.jsonl"
         ),
-        ankhang_markdown_files=ankhang_files,
+        leaflet_markdown_files=leaflet_files,
     )
 
 
@@ -956,7 +956,7 @@ def audit_source_blocks(inputs: CorpusInputs, report: ValidationReport) -> None:
         str(block.get("block_id") or ""): block for block in inputs.canonical_blocks
     }
     for chunk in inputs.final_chunks:
-        if chunk.get("source") == ANKHANG_SOURCE:
+        if chunk.get("source") == LEAFLET_SOURCE:
             continue
         chunk_id = str(chunk.get("id") or "")
         source_block_id = str(chunk.get("source_block_id") or "")
@@ -968,7 +968,7 @@ def audit_source_blocks(inputs: CorpusInputs, report: ValidationReport) -> None:
                 source=str(chunk.get("source") or ""),
                 category="source_mapping",
                 severity="blocking",
-                message="Non-An Khang chunk is missing source_block_id",
+                message="Non-leaflet chunk is missing source_block_id",
                 snippet=text_snippet(chunk.get("text")),
                 recommended_action="Rebuild final chunks from canonical blocks so every Dược thư chunk has source_block_id.",
             )
@@ -1158,7 +1158,7 @@ def audit_tables_and_chunks(inputs: CorpusInputs, report: ValidationReport) -> N
         if (
             has_table_row
             and not has_separator
-            and chunk.get("source") != ANKHANG_SOURCE
+            and chunk.get("source") != LEAFLET_SOURCE
         ):
             add_finding(
                 report,
@@ -1169,13 +1169,13 @@ def audit_tables_and_chunks(inputs: CorpusInputs, report: ValidationReport) -> N
                 severity="suspect",
                 message="Chunk contains Markdown table rows without a separator line",
                 snippet=text_snippet(text),
-                recommended_action="Inspect source block and table splitter before editing; some single-column An Khang layouts are intentionally flattened.",
+                recommended_action="Inspect source block and table splitter before editing; some single-column leaflet layouts are intentionally flattened.",
             )
 
 
-def audit_ankhang(inputs: CorpusInputs, report: ValidationReport) -> None:
+def audit_leaflet(inputs: CorpusInputs, report: ValidationReport) -> None:
     for section in inputs.final_sections:
-        if section.get("source") != ANKHANG_SOURCE:
+        if section.get("source") != LEAFLET_SOURCE:
             continue
         section_id = str(section.get("id") or "")
         text = str(section.get("text") or "")
@@ -1184,10 +1184,10 @@ def audit_ankhang(inputs: CorpusInputs, report: ValidationReport) -> None:
                 report,
                 record_id=section_id,
                 record_type="section",
-                source=ANKHANG_SOURCE,
-                category="ankhang",
+                source=LEAFLET_SOURCE,
+                category="leaflet",
                 severity="suspect",
-                message="An Khang page is missing expected H1 heading",
+                message="Leaflet page is missing expected H1 heading",
                 snippet=text_snippet(text),
                 recommended_action="Re-parse the source Markdown/HTML for this page before changing final text.",
             )
@@ -1196,12 +1196,12 @@ def audit_ankhang(inputs: CorpusInputs, report: ValidationReport) -> None:
                 report,
                 record_id=section_id,
                 record_type="section",
-                source=ANKHANG_SOURCE,
-                category="ankhang",
+                source=LEAFLET_SOURCE,
+                category="leaflet",
                 severity="suspect",
-                message="An Khang text contains raw HTML-like markup",
+                message="Leaflet text contains raw HTML-like markup",
                 snippet=text_snippet(text),
-                recommended_action="Fix the An Khang HTML-to-Markdown parser only after verifying the raw HTML source.",
+                recommended_action="Fix the leaflet HTML-to-Markdown parser only after verifying the raw HTML source.",
             )
 
 
@@ -1220,7 +1220,7 @@ def deep_audit_metrics_for(inputs: CorpusInputs) -> dict[str, Any]:
         "rag_interim_section_count": len(inputs.rag_sections),
         "rag_interim_chunk_count": len(inputs.rag_chunks),
         "curated_table_count": len(inputs.curated_tables),
-        "ankhang_markdown_file_count": len(inputs.ankhang_markdown_files),
+        "leaflet_markdown_file_count": len(inputs.leaflet_markdown_files),
         "section_sources": dict(sorted(section_sources.items())),
         "chunk_sources": dict(sorted(chunk_sources.items())),
     }
@@ -1233,7 +1233,7 @@ def apply_deep_audit_checks(inputs: CorpusInputs, report: ValidationReport) -> N
     audit_part_chains(inputs, report)
     audit_duplicates(inputs, report)
     audit_tables_and_chunks(inputs, report)
-    audit_ankhang(inputs, report)
+    audit_leaflet(inputs, report)
     report.findings.sort(
         key=lambda item: (item.severity, item.category, item.record_id, item.message)
     )
@@ -1245,7 +1245,7 @@ def run_deep_audit(
     canonical_dir: Path = DEFAULT_CANONICAL_DIR,
     rag_interim_dir: Path = DEFAULT_RAG_INTERIM_DIR,
     docling_dir: Path = DEFAULT_DOCLING_DIR,
-    ankhang_markdown_dir: Path = DEFAULT_ANKHANG_MARKDOWN_DIR,
+    leaflet_markdown_dir: Path = DEFAULT_LEAFLET_MARKDOWN_DIR,
     final_sections_path: Path | None = None,
     final_chunks_path: Path | None = None,
     curated_tables_path: Path | None = None,
@@ -1255,7 +1255,7 @@ def run_deep_audit(
         canonical_dir=Path(canonical_dir),
         rag_interim_dir=Path(rag_interim_dir),
         docling_dir=Path(docling_dir),
-        ankhang_markdown_dir=Path(ankhang_markdown_dir),
+        leaflet_markdown_dir=Path(leaflet_markdown_dir),
         final_sections_path=final_sections_path,
         final_chunks_path=final_chunks_path,
         curated_tables_path=curated_tables_path,
@@ -1272,7 +1272,7 @@ def validate_final_rag(
     canonical_dir: Path = DEFAULT_CANONICAL_DIR,
     rag_interim_dir: Path = DEFAULT_RAG_INTERIM_DIR,
     docling_dir: Path = DEFAULT_DOCLING_DIR,
-    ankhang_markdown_dir: Path = DEFAULT_ANKHANG_MARKDOWN_DIR,
+    leaflet_markdown_dir: Path = DEFAULT_LEAFLET_MARKDOWN_DIR,
     enforce_full_coverage: bool = True,
     include_deep_audit: bool = False,
     final_sections_path: Path | None = None,
@@ -1341,7 +1341,7 @@ def validate_final_rag(
             canonical_dir=Path(canonical_dir),
             rag_interim_dir=Path(rag_interim_dir),
             docling_dir=Path(docling_dir),
-            ankhang_markdown_dir=Path(ankhang_markdown_dir),
+            leaflet_markdown_dir=Path(leaflet_markdown_dir),
             final_sections_path=final_sections_path,
             final_chunks_path=final_chunks_path,
             curated_tables_path=curated_tables_path,

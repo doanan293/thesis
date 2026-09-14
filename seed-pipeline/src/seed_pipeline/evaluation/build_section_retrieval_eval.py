@@ -18,14 +18,14 @@ from seed_pipeline.evaluation.section_eval_schema import (
     ALLOWED_QUERY_FORMS,
     ALLOWED_RETRIEVAL_GRANULARITIES,
     ALLOWED_SOURCE_FAMILIES,
-    ANKHANG_ALIAS_ANSWER_MODE_TARGETS,
-    ANKHANG_QUERY_FORM_TARGETS,
     DEFAULT_EVAL_GROUP_QUOTAS,
     DEFAULT_MAX_ROWS,
     DEFAULT_MIN_ROWS,
     DEFAULT_TARGET_ROWS,
     EVAL_HEADER,
     FORMULARY_QUERY_FORM_TARGETS,
+    LEAFLET_ALIAS_ANSWER_MODE_TARGETS,
+    LEAFLET_QUERY_FORM_TARGETS,
     NOISY_CONFUSER_QUERY_FORM_TARGETS,
     answer_mode_for_expected_ids,
     clean_query_label,
@@ -71,7 +71,7 @@ SECTION_CATEGORY_RULES = [
     ),
 ]
 
-ANKHANG_CATEGORY_RULES = [
+LEAFLET_CATEGORY_RULES = [
     ("brand_ingredient", ("thành phần",)),
     ("brand_contraindication", ("chống chỉ định",)),
     ("brand_indication", ("công dụng", "chỉ định")),
@@ -90,7 +90,7 @@ ANKHANG_CATEGORY_RULES = [
     ("brand_manufacturer", ("nhà sản xuất", "thương hiệu", "quy cách đóng gói")),
 ]
 
-ANKHANG_CATEGORY_PRIORITY = [
+LEAFLET_CATEGORY_PRIORITY = [
     "brand_dosage",
     "brand_indication",
     "brand_ingredient",
@@ -197,7 +197,7 @@ def build_brand_overlap_index(
     section_terms: dict[str, set[str]] = defaultdict(set)
     for section in sections:
         section_id = section.get("id", "")
-        if not is_ankhang_section(section):
+        if not is_leaflet_section(section):
             continue
         mapping = colloquial_mapping_for_record(section)
         values = [
@@ -211,7 +211,7 @@ def build_brand_overlap_index(
 
     for chunk in chunks:
         section_id = chunk.get("section_id", "")
-        if not section_id.startswith("brand:ankhang:"):
+        if not section_id.startswith("leaflet:"):
             continue
         mapping = colloquial_mapping_for_record(chunk)
         values = [
@@ -226,7 +226,7 @@ def build_brand_overlap_index(
     return {term: sorted(section_ids) for term, section_ids in section_terms.items()}
 
 
-def find_ankhang_alternative_sections(
+def find_leaflet_alternative_sections(
     query: str,
     brand_names: list[str],
     overlap_index: dict[str, list[str]],
@@ -247,41 +247,41 @@ def markdown_headings(text: str) -> list[str]:
     return headings
 
 
-def infer_ankhang_category(text: str) -> str:
+def infer_leaflet_category(text: str) -> str:
     headings = markdown_headings(text)
     haystack = " ".join(headings) if headings else normalize_heading(text[:240])
-    for category, keywords in ANKHANG_CATEGORY_RULES:
+    for category, keywords in LEAFLET_CATEGORY_RULES:
         if any(keyword in haystack for keyword in keywords):
             return category
     return "brand_product"
 
 
-def ankhang_category_for_heading(heading: str) -> str:
+def leaflet_category_for_heading(heading: str) -> str:
     normalized = normalize_heading(heading)
-    for category, keywords in ANKHANG_CATEGORY_RULES:
+    for category, keywords in LEAFLET_CATEGORY_RULES:
         if any(keyword in normalized for keyword in keywords):
             return category
     return ""
 
 
-def ankhang_categories_for_text(text: str) -> list[str]:
+def leaflet_categories_for_text(text: str) -> list[str]:
     categories: list[str] = []
     for heading in markdown_headings(text):
-        category = ankhang_category_for_heading(heading)
+        category = leaflet_category_for_heading(heading)
         if category and category not in categories:
             categories.append(category)
     if categories:
         return categories
 
-    fallback = infer_ankhang_category(text)
+    fallback = infer_leaflet_category(text)
     return [fallback] if fallback else ["brand_product"]
 
 
-def ankhang_label_for_category(text: str, category: str) -> str:
+def leaflet_label_for_category(text: str, category: str) -> str:
     if category == "brand_product":
         return ""
     for heading in markdown_headings(text):
-        if ankhang_category_for_heading(heading) == category:
+        if leaflet_category_for_heading(heading) == category:
             return clean_query_label(heading)
     return chunk_context_label({"chunk_text": text})
 
@@ -760,7 +760,7 @@ CONFUSER_TEMPLATES = {
     ],
 }
 
-ANKHANG_QUERY_TEMPLATES = {
+LEAFLET_QUERY_TEMPLATES = {
     "brand_product": ("{title} là thuốc gì?", "brand_product"),
     "brand_ingredient": ("{title} có thành phần gì?", "brand_ingredient"),
     "brand_indication": ("{title} dùng để làm gì?", "brand_indication"),
@@ -904,8 +904,8 @@ def auto_query_for_chunk(chunk: dict, section: dict, category: str) -> str:
         if brand_match:
             return f"{brand_match.group(1)} là biệt dược của hoạt chất nào?"
         return "Tra cứu biệt dược trong mục lục hoạt chất"
-    if is_ankhang_section(section) or category.startswith("brand_"):
-        query, _style = ankhang_query_for_category(section, category)
+    if is_leaflet_section(section) or category.startswith("brand_"):
+        query, _style = leaflet_query_for_category(section, category)
         label = chunk_context_label(chunk)
         if label and label.lower() not in query.lower():
             return f"{query} (phần {label})"
@@ -1169,7 +1169,7 @@ def sections_by_title_and_category(
     grouped: dict[str, dict[str, tuple[dict, str, str, str]]] = defaultdict(dict)
     for item in section_items:
         section, category, _difficulty, _expected_role = item
-        if is_ankhang_section(section):
+        if is_leaflet_section(section):
             continue
         title = normalize_spaces(section.get("title", ""))
         if title:
@@ -1262,7 +1262,7 @@ def build_multi_intent_eval_rows(
         grouped: dict[str, list[tuple[dict, str, str, str]]] = defaultdict(list)
         for item in section_items:
             sec = item[0]
-            if is_ankhang_section(sec):
+            if is_leaflet_section(sec):
                 continue
             title = normalize_spaces(sec.get("title", ""))
             if title:
@@ -1334,10 +1334,10 @@ def build_multi_intent_eval_rows(
     return rows
 
 
-def is_ankhang_section(section: dict) -> bool:
+def is_leaflet_section(section: dict) -> bool:
     return section.get("content_type") == "brand_page" and str(
         section.get("id", "")
-    ).startswith("brand:ankhang:")
+    ).startswith("leaflet:")
 
 
 def is_chunk_risk(chunk: dict) -> bool:
@@ -1348,25 +1348,25 @@ def is_chunk_risk(chunk: dict) -> bool:
     )
 
 
-def ankhang_candidates(
+def leaflet_candidates(
     sections_by_id: dict[str, dict],
     chunks_by_section: dict[str, list[dict]],
 ) -> list[tuple[dict, dict | None, str]]:
     candidates = []
     seen: set[tuple[str, str, str]] = set()
     for section in sorted(sections_by_id.values(), key=lambda item: item["id"]):
-        if not is_ankhang_section(section):
+        if not is_leaflet_section(section):
             continue
         chunks = sorted(
             chunks_by_section.get(section["id"], []),
             key=lambda item: (item.get("chunk_index", 0), chunk_identifier(item)),
         )
-        section_categories = ankhang_categories_for_text(section.get("text", ""))
+        section_categories = leaflet_categories_for_text(section.get("text", ""))
         if "brand_product" not in section_categories:
             section_categories.append("brand_product")
 
         for category in section_categories:
-            chunk = first_chunk_for_ankhang_category(chunks, category)
+            chunk = first_chunk_for_leaflet_category(chunks, category)
             chunk_key = chunk_identifier(chunk) if chunk else ""
             candidate_key = (section["id"], chunk_key, category)
             if candidate_key in seen:
@@ -1375,7 +1375,7 @@ def ankhang_candidates(
             candidates.append((section, chunk, category))
 
     priority = {
-        category: index for index, category in enumerate(ANKHANG_CATEGORY_PRIORITY)
+        category: index for index, category in enumerate(LEAFLET_CATEGORY_PRIORITY)
     }
     return sorted(
         candidates,
@@ -1387,23 +1387,23 @@ def ankhang_candidates(
     )
 
 
-def ankhang_query_for_category(section: dict, category: str) -> tuple[str, str]:
-    template, style = ANKHANG_QUERY_TEMPLATES.get(
-        category, ANKHANG_QUERY_TEMPLATES["brand_product"]
+def leaflet_query_for_category(section: dict, category: str) -> tuple[str, str]:
+    template, style = LEAFLET_QUERY_TEMPLATES.get(
+        category, LEAFLET_QUERY_TEMPLATES["brand_product"]
     )
     return template.format(title=normalize_spaces(section.get("title", ""))), style
 
 
-def first_chunk_for_ankhang_category(chunks: list[dict], category: str) -> dict | None:
+def first_chunk_for_leaflet_category(chunks: list[dict], category: str) -> dict | None:
     for chunk in chunks:
-        if category in ankhang_categories_for_text(chunk_body_text(chunk)):
+        if category in leaflet_categories_for_text(chunk_body_text(chunk)):
             return chunk
     return chunks[0] if chunks else None
 
 
 def taxonomy_for_section_category(section: dict, category: str) -> tuple[str, str]:
     return taxonomy_for_source_category(
-        category, is_ankhang=is_ankhang_section(section)
+        category, is_leaflet=is_leaflet_section(section)
     )
 
 
@@ -1435,10 +1435,10 @@ def eval_group_for_row(query_form: str, section: dict, source_hint: str = "") ->
         return "noisy_confuser"
     if query_form == "chunk_coverage" or source_hint == "coverage":
         return "chunk_risk"
-    if query_form in {"brand_template", "colloquial_alias"} or is_ankhang_section(
+    if query_form in {"brand_template", "colloquial_alias"} or is_leaflet_section(
         section
     ):
-        return "ankhang"
+        return "leaflet"
     return "formulary"
 
 
@@ -1452,15 +1452,15 @@ def retrieval_granularity_for_row(
     return retrieval_granularity_from_hydrate_strategy(strategy, role)
 
 
-def make_ankhang_row(
+def make_leaflet_row(
     query_id: str,
     section: dict,
     chunk: dict | None,
     category: str,
 ) -> dict:
-    query, style = ankhang_query_for_category(section, category)
+    query, style = leaflet_query_for_category(section, category)
     if chunk:
-        label = ankhang_label_for_category(chunk_body_text(chunk), category)
+        label = leaflet_label_for_category(chunk_body_text(chunk), category)
         if label and label.lower() not in query.lower():
             query = f"{query} (phần {label})"
     expected_chunk_id = chunk_identifier(chunk) if chunk else ""
@@ -1474,7 +1474,7 @@ def make_ankhang_row(
     return make_row(
         query_id=query_id,
         query=query,
-        eval_group="ankhang",
+        eval_group="leaflet",
         source_family=source_family_for_section(section),
         query_form=query_form,
         intent_category=intent_category,
@@ -1482,11 +1482,11 @@ def make_ankhang_row(
         section=section,
         expected_chunk_role=role,
         difficulty="medium",
-        notes=f"coverage ankhang subsection {category}",
+        notes=f"coverage leaflet subsection {category}",
         expected_chunk_id=expected_chunk_id,
         expected_chunk_index=expected_chunk_index,
         retrieval_granularity=granularity,
-        eval_tags=["ankhang", category],
+        eval_tags=["leaflet", category],
     )
 
 
@@ -1520,7 +1520,7 @@ def normalize_alias_key(alias: str) -> str:
 def build_colloquial_alias_overlap_index(sections: list[dict]) -> dict[str, dict]:
     grouped: dict[str, dict] = {}
     for section in sorted(sections, key=lambda item: str(item.get("id") or "")):
-        if not is_ankhang_section(section):
+        if not is_leaflet_section(section):
             continue
         section_id = str(section.get("id") or "")
         if not section_id:
@@ -1557,7 +1557,7 @@ def make_colloquial_alias_row(
     )
     query = template.format(alias=alias)
     if chunk:
-        label = ankhang_label_for_category(chunk_body_text(chunk), category)
+        label = leaflet_label_for_category(chunk_body_text(chunk), category)
         if label and label.lower() not in query.lower():
             query = f"{query} (phần {label})"
     expected_chunk_id = chunk_identifier(chunk) if chunk else ""
@@ -1570,7 +1570,7 @@ def make_colloquial_alias_row(
     return make_row(
         query_id=query_id,
         query=query,
-        eval_group="ankhang",
+        eval_group="leaflet",
         source_family=source_family_for_section(section),
         query_form="colloquial_alias",
         intent_category=intent_category,
@@ -1582,7 +1582,7 @@ def make_colloquial_alias_row(
         expected_chunk_id=expected_chunk_id,
         expected_chunk_index=expected_chunk_index,
         retrieval_granularity=granularity,
-        eval_tags=["ankhang", category, "colloquial_alias"],
+        eval_tags=["leaflet", category, "colloquial_alias"],
     )
 
 
@@ -1599,7 +1599,7 @@ def make_colloquial_alias_any_acceptable_row(
     return make_row(
         query_id=query_id,
         query=query,
-        eval_group="ankhang",
+        eval_group="leaflet",
         source_family=source_family_for_section(section),
         query_form="colloquial_alias",
         intent_category=intent_category,
@@ -1614,7 +1614,7 @@ def make_colloquial_alias_any_acceptable_row(
         expected_chunk_index=-1,
         retrieval_granularity="section",
         eval_tags=[
-            "ankhang",
+            "leaflet",
             "brand_product",
             "colloquial_alias",
             "ambiguous_alias",
@@ -1657,7 +1657,7 @@ def generate_rows(
     accumulator = EvalRowAccumulator()
     section_items = section_candidates(sections_by_id, chunks_by_section)
     formulary_section_items = [
-        item for item in section_items if not is_ankhang_section(item[0])
+        item for item in section_items if not is_leaflet_section(item[0])
     ]
     if not formulary_section_items:
         formulary_section_items = section_items
@@ -1795,16 +1795,16 @@ def generate_rows(
         )
         return accumulator.add(row)
 
-    ankhang_count = 0
-    ankhang_targets = weighted_targets(ANKHANG_QUERY_FORM_TARGETS, quotas["ankhang"])
-    ankhang_alias_target = ankhang_targets.get("colloquial_alias", 0)
-    ankhang_hybrid_target = ankhang_targets.get("hybrid_entity_intent", 0)
-    ankhang_template_target = (
-        quotas["ankhang"] - ankhang_alias_target - ankhang_hybrid_target
+    leaflet_count = 0
+    leaflet_targets = weighted_targets(LEAFLET_QUERY_FORM_TARGETS, quotas["leaflet"])
+    leaflet_alias_target = leaflet_targets.get("colloquial_alias", 0)
+    leaflet_hybrid_target = leaflet_targets.get("hybrid_entity_intent", 0)
+    leaflet_template_target = (
+        quotas["leaflet"] - leaflet_alias_target - leaflet_hybrid_target
     )
-    all_ankhang_items = ankhang_candidates(sections_by_id, chunks_by_section)
+    all_leaflet_items = leaflet_candidates(sections_by_id, chunks_by_section)
     alias_answer_targets = weighted_targets(
-        ANKHANG_ALIAS_ANSWER_MODE_TARGETS, ankhang_alias_target
+        LEAFLET_ALIAS_ANSWER_MODE_TARGETS, leaflet_alias_target
     )
     alias_single_target = alias_answer_targets.get("single", 0)
     alias_any_target = alias_answer_targets.get("any_acceptable", 0)
@@ -1816,7 +1816,7 @@ def generate_rows(
 
     single_alias_items = [
         item
-        for item in all_ankhang_items
+        for item in all_leaflet_items
         if any(
             normalize_alias_key(alias) not in ambiguous_alias_keys
             for alias in product_aliases_for_section(item[0])
@@ -1842,7 +1842,7 @@ def generate_rows(
         if aliases:
             alias = aliases[(alias_index // len(single_alias_items)) % len(aliases)]
             row = make_colloquial_alias_row(
-                f"ankhang-alias-{alias_single_count + 1:04d}",
+                f"leaflet-alias-{alias_single_count + 1:04d}",
                 section,
                 chunk,
                 category,
@@ -1851,7 +1851,7 @@ def generate_rows(
             row["query"] = unique_query(row["query"], section, accumulator.seen_queries)
             if accumulator.add(row):
                 alias_single_count += 1
-                ankhang_count += 1
+                leaflet_count += 1
         alias_index += 1
         alias_attempts += 1
 
@@ -1878,7 +1878,7 @@ def generate_rows(
         expected_ids = list(group["section_ids"])
         section = sections_by_id[expected_ids[0]]
         row = make_colloquial_alias_any_acceptable_row(
-            f"ankhang-alias-any-{alias_any_count + 1:04d}",
+            f"leaflet-alias-any-{alias_any_count + 1:04d}",
             section,
             str(group["alias"]),
             expected_ids,
@@ -1886,7 +1886,7 @@ def generate_rows(
         row["query"] = unique_query(row["query"], section, accumulator.seen_queries)
         if accumulator.add(row):
             alias_any_count += 1
-            ankhang_count += 1
+            leaflet_count += 1
         alias_any_index += 1
 
     if strict_alias_targets and alias_any_count != alias_any_target:
@@ -1894,17 +1894,17 @@ def generate_rows(
             f"could only generate {alias_any_count} any_acceptable colloquial alias rows"
         )
 
-    ankhang_items = spread_items(all_ankhang_items, ankhang_template_target)
-    ankhang_index = 0
-    while ankhang_count < quotas["ankhang"] and ankhang_items:
-        section, chunk, category = ankhang_items[ankhang_index % len(ankhang_items)]
-        row = make_ankhang_row(
-            f"ankhang-{ankhang_count + 1:04d}", section, chunk, category
+    leaflet_items = spread_items(all_leaflet_items, leaflet_template_target)
+    leaflet_index = 0
+    while leaflet_count < quotas["leaflet"] and leaflet_items:
+        section, chunk, category = leaflet_items[leaflet_index % len(leaflet_items)]
+        row = make_leaflet_row(
+            f"leaflet-{leaflet_count + 1:04d}", section, chunk, category
         )
         row["query"] = unique_query(row["query"], section, accumulator.seen_queries)
         if accumulator.add(row):
-            ankhang_count += 1
-        ankhang_index += 1
+            leaflet_count += 1
+        leaflet_index += 1
 
     chunk_risk_count = 0
     chunk_risk_items = spread_items(
@@ -1916,8 +1916,8 @@ def generate_rows(
         category, difficulty, expected_role = category_for_section(
             section, chunks_by_section.get(section["id"], [])
         )
-        if is_ankhang_section(section):
-            category = infer_ankhang_category(chunk_body_text(chunk))
+        if is_leaflet_section(section):
+            category = infer_leaflet_category(chunk_body_text(chunk))
             difficulty = "medium"
             expected_role = chunk.get("chunk_role") or "prose"
         if append_auto_row(
@@ -1949,7 +1949,7 @@ def generate_rows(
             chunks_by_section,
             max(effective_target, lexical_target),
         )
-        if not is_ankhang_section(item[1])
+        if not is_leaflet_section(item[1])
     ]
     if not auto_candidates:
         auto_candidates = auto_candidate_chunks(
@@ -2085,8 +2085,8 @@ def row_eval_groups(row: dict) -> set[str]:
 
     if row.get("source_family") == "drug_formulary":
         groups.add("drug_formulary")
-    if row.get("source_family") == "ankhang_brand":
-        groups.add("ankhang")
+    if row.get("source_family") == "leaflet_brand":
+        groups.add("leaflet")
     if row.get("intent_category") == "table_lookup" or role == "table":
         groups.add("table")
     if role in {"index_entry", "appendix_list"} or granularity == "chunk_exact":
@@ -2106,7 +2106,7 @@ def validate_required_eval_groups(
         observed.update(row_eval_groups(row))
     required = required_groups or {
         "formulary",
-        "ankhang",
+        "leaflet",
         "chunk_risk",
         "table",
         "search_index",
@@ -2119,49 +2119,49 @@ def validate_required_eval_groups(
         raise ValueError(f"expected required eval group(s), missing: {missing}")
 
 
-def validate_ankhang_category_coverage(rows: list[dict]) -> None:
+def validate_leaflet_category_coverage(rows: list[dict]) -> None:
     if len(rows) < 1000:
         return
 
-    ankhang_rows = [row for row in rows if row.get("source_family") == "ankhang_brand"]
-    if not ankhang_rows:
+    leaflet_rows = [row for row in rows if row.get("source_family") == "leaflet_brand"]
+    if not leaflet_rows:
         return
 
     category_counts: dict[str, int] = defaultdict(int)
-    for row in ankhang_rows:
+    for row in leaflet_rows:
         category_counts[row.get("source_subcategory", "")] += 1
 
     observed_categories = {
         category for category, count in category_counts.items() if count > 0
     }
-    if observed_categories <= {"ankhang_product", "ankhang_ingredient"}:
+    if observed_categories <= {"leaflet_product", "leaflet_ingredient"}:
         raise ValueError(
-            "An Khang eval coverage collapsed: only ankhang_product/ankhang_ingredient categories are present"
+            "Leaflet eval coverage collapsed: only leaflet_product/leaflet_ingredient categories are present"
         )
 
     safety_total = sum(
         category_counts[category]
         for category in (
-            "ankhang_contraindication",
-            "ankhang_adr",
-            "ankhang_precaution",
-            "ankhang_interaction",
+            "leaflet_contraindication",
+            "leaflet_adr",
+            "leaflet_precaution",
+            "leaflet_interaction",
         )
     )
     missing_thresholds = []
-    if category_counts["ankhang_dosage"] < 20:
+    if category_counts["leaflet_dosage"] < 20:
         missing_thresholds.append(
-            f"ankhang_dosage={category_counts['ankhang_dosage']} < 20"
+            f"leaflet_dosage={category_counts['leaflet_dosage']} < 20"
         )
-    if category_counts["ankhang_indication"] < 20:
+    if category_counts["leaflet_indication"] < 20:
         missing_thresholds.append(
-            f"ankhang_indication={category_counts['ankhang_indication']} < 20"
+            f"leaflet_indication={category_counts['leaflet_indication']} < 20"
         )
     if safety_total < 20:
         missing_thresholds.append(f"brand_safety_total={safety_total} < 20")
     if missing_thresholds:
         raise ValueError(
-            f"An Khang eval coverage below threshold: {', '.join(missing_thresholds)}"
+            f"Leaflet eval coverage below threshold: {', '.join(missing_thresholds)}"
         )
 
 
@@ -2291,7 +2291,7 @@ def validate_rows(
         required_query_forms = (
             set(FORMULARY_QUERY_FORM_TARGETS)
             | set(NOISY_CONFUSER_QUERY_FORM_TARGETS)
-            | set(ANKHANG_QUERY_FORM_TARGETS)
+            | set(LEAFLET_QUERY_FORM_TARGETS)
             | {"brand_template", "chunk_coverage", "multi_intent"}
         )
         if "patient_natural" in eval_groups:
@@ -2301,7 +2301,7 @@ def validate_rows(
             raise ValueError(
                 f"expected all query forms, missing: {missing_query_forms}"
             )
-    validate_ankhang_category_coverage(rows)
+    validate_leaflet_category_coverage(rows)
 
 
 def save_jsonl(path: Path, rows: list[dict]) -> None:
@@ -2385,10 +2385,10 @@ def load_patient_queries(
                 f"Invalid expected_section_id '{section_id}' in patient query: '{query}'"
             )
         section = sections_by_id[section_id]
-        if not is_ankhang_section(section):
+        if not is_leaflet_section(section):
             raise ValueError(
-                "Patient query expected_section_id must be An Khang "
-                f"brand:ankhang:* section, got '{section_id}' for query: '{query}'"
+                "Patient query expected_section_id must be a leaflet section "
+                f"(leaflet:*), got '{section_id}' for query: '{query}'"
             )
         chunks = chunks_by_section.get(section_id, [])
         expected_chunk_role = (
@@ -2470,7 +2470,7 @@ def build_jsonl(
 
     required_groups = {
         "formulary",
-        "ankhang",
+        "leaflet",
         "chunk_risk",
         "multi_intent",
         "noisy_confuser",
