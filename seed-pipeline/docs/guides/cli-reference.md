@@ -89,6 +89,17 @@ Report nằm ở `reports/baseline/top<K>-window<N>/` và `reports/rerank/<model
 
 Stage production tự benchmark workload một lần nếu chưa có profile hợp lệ và lưu ở `data/cache/kaggle_profiles/<workload>/<model>.json`; profile mất hiệu lực khi model, runtime, topology hoặc search space đổi. Lỗi benchmark dừng pipeline.
 
+## Archive dữ liệu
+
+Mọi file dưới `data/` mà Git bỏ qua (trừ `data/work/`) được lưu trong dataset Kaggle private `<owner>/seed-pipeline-data`, `<owner>` là username của profile `--kaggle-account`. `push` đóng gói thành các phần `seed-pipeline-data.tar.zst.part-NNNN` (tối đa 1.900 MiB mỗi phần) cùng `archive-manifest.json` ghi sha256 từng phần và từng file, dựng ở `data/work/archive/`, rồi tạo dataset hoặc version mới.
+
+```bash
+uv run seed data push --kaggle-account acc1 --message "Rebuild evaluation runs"
+uv run seed data pull --kaggle-account acc1
+```
+
+`pull` tải lại các phần còn thiếu hoặc lệch checksum, kiểm sha256 từng phần và từng file, bỏ qua file đã giống hệt. File đang có mà khác archive thì lệnh dừng và liệt kê; thêm `--force` để ghi đè.
+
 ## Exit codes
 
 | Code | Meaning |

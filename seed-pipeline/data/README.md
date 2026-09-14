@@ -24,7 +24,14 @@ Git keeps only small files that are maintained by hand or quoted in the thesis r
 - `manifest.json` and `validation_report.json` of the corpus artifacts;
 - `run.json`, `manifest.json` and `report.md` of evaluation runs.
 
-Everything else under `data/`, except `work/`, lives in a private Kaggle dataset and is stored and restored with `seed data push` and `seed data pull`, which check the sha256 of every part and every file.
+Everything else under `data/`, except `work/`, lives in a private Kaggle dataset and is stored and restored with `seed data push` and `seed data pull`, which check the sha256 of every part and every file:
+
+```bash
+uv run seed data push --kaggle-account acc1 --message "Rebuild evaluation runs"
+uv run seed data pull --kaggle-account acc1
+```
+
+The first push after a fresh setup needs the owner's confirmation; pull refuses to overwrite files that differ from the archive unless `--force` is given.
 
 ## Leaflet source
 
