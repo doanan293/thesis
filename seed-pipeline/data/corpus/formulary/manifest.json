@@ -1,0 +1,88 @@
+{
+  "schema_version": "knowledge-bundle/v1",
+  "collection": {
+    "key": "formulary",
+    "title": "Dược thư Quốc gia Việt Nam và tờ hướng dẫn sử dụng thuốc"
+  },
+  "generator": {
+    "name": "seed-pipeline",
+    "version": "0.1.0",
+    "build_id": "2821afc13cb9686f"
+  },
+  "source_digests": {
+    "source_pdf_sha256": "2aa81c846a5e760f82658c46816ab63174204a7d95b3e2755b6565288e53d0d1",
+    "leaflet_source_manifest_sha256": "fd109094bf619f792e49a3d71e53114a7218cd0d53257cccf21e4511371c66ea",
+    "leaflet_source_file_count": "2434",
+    "curated_curated_tables_sha256": "818c7828f24180445571d72fe0a5f51d2e374a25c4998827f8a4e16dd0fbde41",
+    "curated_glossary_sha256": "efb491df91f68fd8fd9f4a0c836b06211758de703ba0f7cddbfc39c415b6f2ff",
+    "curated_mappings_sha256": "967ae7e6a3b572f07b6bb625acecabe2c7e4091cef638857cb6fa8e405b98ab9",
+    "curated_table_overrides_sha256": "6c3b043b9f3dd1d17107bea9b33c62d58c454c50a779632963f8d6daf6089474"
+  },
+  "document_count": 3120,
+  "section_count": 12326,
+  "files": {
+    "documents.jsonl": {
+      "sha256": "db4d8e8fb177700b5cf4b08fc12f5ab115153443bf29774bd4ac74bf2603d22c",
+      "bytes": 778276
+    },
+    "sections.jsonl": {
+      "sha256": "7785eff4f0ce24e44476759febb942c0837ee9144e9cce9b3d6b39821a004bd4",
+      "bytes": 59150162
+    },
+    "glossary.json": {
+      "sha256": "bcedbf996455ddde29070de1b4151d911c452a8d2a12309e056f31d0636091f6",
+      "bytes": 22283
+    },
+    "colloquial_mappings.json": {
+      "sha256": "7ab3f902a32e3d53d44489c083b0da3219c3320d8e86028f812c06410dd5575f",
+      "bytes": 764594
+    },
+    "embeddings/bge_m3_567m_fp16.jsonl": {
+      "sha256": "5ca47a50b7a696d44a633c31bbdb71238a288abfaf43ecf7561a353c244ee58c",
+      "bytes": 139223626
+    },
+    "embeddings/embeddinggemma_300m.jsonl": {
+      "sha256": "9f775714e6625a60a58f049d3a373464841b7c9f055822cc93889da9e7b2222c",
+      "bytes": 105072552
+    },
+    "embeddings/qwen3_embedding_0_6b_fp16.jsonl": {
+      "sha256": "4b24fbda182cfb6b49720fb8b4d5ce9bf72f51276daefb3db0b42f0615bac134",
+      "bytes": 139223626
+    },
+    "embeddings/qwen3_embedding_4b_fp16.jsonl": {
+      "sha256": "1a121ee1bedf6fd9c5d532f1ccf9cca19c26c1da62c36457830ccf10df111cb4",
+      "bytes": 343581258
+    },
+    "embeddings/qwen3_embedding_8b_fp16.jsonl": {
+      "sha256": "545f4704466448b524e5836d805f2f731a3011ecc7fba5943e0772f6e1f5ee99",
+      "bytes": 547938890
+    }
+  },
+  "embeddings": [
+    {
+      "model": "bge-m3:567m-fp16",
+      "dims": 1024,
+      "file": "embeddings/bge_m3_567m_fp16.jsonl"
+    },
+    {
+      "model": "embeddinggemma:300m",
+      "dims": 768,
+      "file": "embeddings/embeddinggemma_300m.jsonl"
+    },
+    {
+      "model": "qwen3-embedding:0.6b-fp16",
+      "dims": 1024,
+      "file": "embeddings/qwen3_embedding_0_6b_fp16.jsonl"
+    },
+    {
+      "model": "qwen3-embedding:4b-fp16",
+      "dims": 2560,
+      "file": "embeddings/qwen3_embedding_4b_fp16.jsonl"
+    },
+    {
+      "model": "qwen3-embedding:8b-fp16",
+      "dims": 4096,
+      "file": "embeddings/qwen3_embedding_8b_fp16.jsonl"
+    }
+  ]
+}

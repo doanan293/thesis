@@ -1,0 +1,33 @@
+{
+  "block_count": 10079,
+  "build_id": "2821afc13cb9686f",
+  "config_digest": "ef458870696bc09cc2c49eec509bf0915a7245624d1a421f76e9ffd5611dc0c2",
+  "curated_input_digests": {
+    "curated_tables": "818c7828f24180445571d72fe0a5f51d2e374a25c4998827f8a4e16dd0fbde41",
+    "glossary": "efb491df91f68fd8fd9f4a0c836b06211758de703ba0f7cddbfc39c415b6f2ff",
+    "mappings": "967ae7e6a3b572f07b6bb625acecabe2c7e4091cef638857cb6fa8e405b98ab9",
+    "table_overrides": "6c3b043b9f3dd1d17107bea9b33c62d58c454c50a779632963f8d6daf6089474"
+  },
+  "files": {
+    "blocks.jsonl": {
+      "bytes": 16561903,
+      "sha256": "e3bf1e6fc2e83d6a223f6c24d558930647e746bf067a90dbe082824e3b22c0c0"
+    },
+    "sections.jsonl": {
+      "bytes": 62747353,
+      "sha256": "827907735bbc16a1e3460f6f22b71fe6662bb78c9648d4a9882709b2f02c91cf"
+    },
+    "validation_report.json": {
+      "bytes": 45992,
+      "sha256": "8342abebcce709109d3e1a341394344db4beb11f886e36c22265851527b2c28a"
+    }
+  },
+  "leaflet_source": {
+    "file_count": 2434,
+    "manifest_sha256": "fd109094bf619f792e49a3d71e53114a7218cd0d53257cccf21e4511371c66ea"
+  },
+  "schema_version": "rag-final-v3",
+  "section_count": 12326,
+  "source_pdf_sha256": "2aa81c846a5e760f82658c46816ab63174204a7d95b3e2755b6565288e53d0d1",
+  "validation_ok": true
+}
