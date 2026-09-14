@@ -1,29 +1,43 @@
 import asyncio
 from collections.abc import Sequence
+from functools import partial
 
 import pytest
 
 from pharma_agent.application.corpus.import_bundle import ImportOutcome
 from pharma_agent.application.corpus.indexing import EmbeddingCounts, EmbeddingResolver
-from pharma_agent.domain.corpus.bundle import KnowledgeBundle
+from pharma_agent.domain.corpus.bundle import read_bundle_embeddings
 from pharma_agent.domain.corpus.models import (
     CorpusImportError,
     ReleaseStatus,
     build_snapshot,
 )
 from pharma_agent.domain.retrieval.ports import RetrievalError
-from tests.corpus_fixtures import DOSAGE_SECTION, small_bundle, with_section_text
+from tests.corpus_fixtures import (
+    DOSAGE_SECTION,
+    FIXTURE_DIR,
+    no_bundle_embeddings,
+    small_bundle,
+    small_bundle_embeddings,
+    with_section_text,
+)
 from tests.corpus_memory import (
     CorpusAdapters,
     InMemoryEmbeddingCache,
     InMemoryVectorIndex,
     build_importer,
 )
-from tests.fakes import FAKE_EMBEDDING_MODEL, NOW, FakeEmbedder, fake_vector
+from tests.fakes import (
+    FAKE_EMBEDDING_DIMENSION,
+    FAKE_EMBEDDING_MODEL,
+    NOW,
+    FakeEmbedder,
+    fake_vector,
+)
 
 
-def without_vectors(bundle: KnowledgeBundle) -> KnowledgeBundle:
-    return bundle.model_copy(update={"embeddings": {}})
+def unchanged_bundle_embeddings(model: str, dims: int) -> dict[str, list[float]]:
+    raise AssertionError("an unchanged bundle must not load its vectors")
 
 
 async def test_import_takes_vectors_from_cache_then_bundle_then_embedder() -> None:
@@ -36,19 +50,13 @@ async def test_import_takes_vectors_from_cache_then_bundle_then_embedder() -> No
     await adapters.cache.put_many(
         FAKE_EMBEDDING_MODEL, 4, {cached: fake_vector(texts[cached])}
     )
-    partial = bundle.model_copy(
-        update={
-            "embeddings": {
-                FAKE_EMBEDDING_MODEL: {
-                    sha: bundle.embeddings[FAKE_EMBEDDING_MODEL][sha] for sha in bundled
-                }
-            }
-        }
-    )
+    shipped = small_bundle_embeddings(FAKE_EMBEDDING_MODEL, FAKE_EMBEDDING_DIMENSION)
     embedder = FakeEmbedder()
 
     report = await build_importer(adapters, embedder, batch_size=2)(
-        partial, publish=False
+        bundle,
+        embeddings=lambda _model, _dims: {sha: shipped[sha] for sha in bundled},
+        publish=False,
     )
 
     assert (report.outcome, report.published, report.collection_key) == (
@@ -92,13 +100,17 @@ async def test_import_takes_vectors_from_cache_then_bundle_then_embedder() -> No
 async def test_publish_then_same_bundle_is_no_change() -> None:
     adapters = CorpusAdapters()
     embedder = FakeEmbedder()
-    first = await build_importer(adapters, embedder)(small_bundle(), publish=True)
+    first = await build_importer(adapters, embedder)(
+        small_bundle(), embeddings=small_bundle_embeddings, publish=True
+    )
     assert first.outcome is ImportOutcome.IMPORTED and first.published
     assert first.release.published_at == NOW
     assert embedder.batches == []  # the fixture ships every vector
 
     again_embedder = FakeEmbedder()
-    again = await build_importer(adapters, again_embedder)(small_bundle(), publish=True)
+    again = await build_importer(adapters, again_embedder)(
+        small_bundle(), embeddings=unchanged_bundle_embeddings, publish=True
+    )
 
     assert again.outcome is ImportOutcome.NO_CHANGE
     assert again.release == first.release
@@ -112,10 +124,10 @@ async def test_publish_then_same_bundle_is_no_change() -> None:
 async def test_ready_unpublished_release_is_reused() -> None:
     adapters = CorpusAdapters()
     first = await build_importer(adapters, FakeEmbedder())(
-        small_bundle(), publish=False
+        small_bundle(), embeddings=small_bundle_embeddings, publish=False
     )
     second = await build_importer(adapters, FakeEmbedder())(
-        small_bundle(), publish=True
+        small_bundle(), embeddings=small_bundle_embeddings, publish=True
     )
 
     assert second.outcome is ImportOutcome.REUSED
@@ -127,12 +139,12 @@ async def test_ready_unpublished_release_is_reused() -> None:
 
 async def test_failed_embedding_leaves_building_release_and_rerun_resumes() -> None:
     adapters = CorpusAdapters()
-    bundle = without_vectors(small_bundle())
+    bundle = small_bundle()
     texts = build_snapshot(bundle).embedding_texts()
 
     with pytest.raises(RetrievalError):
         await build_importer(adapters, FakeEmbedder(fail_on_batch=2), batch_size=2)(
-            bundle, publish=True
+            bundle, embeddings=no_bundle_embeddings, publish=True
         )
 
     (summary,) = await adapters.repository.list_releases("formulary")
@@ -140,7 +152,9 @@ async def test_failed_embedding_leaves_building_release_and_rerun_resumes() -> N
     assert len(adapters.cache.vectors) == 2
 
     retry = FakeEmbedder()
-    report = await build_importer(adapters, retry, batch_size=2)(bundle, publish=True)
+    report = await build_importer(adapters, retry, batch_size=2)(
+        bundle, embeddings=no_bundle_embeddings, publish=True
+    )
 
     assert report.outcome is ImportOutcome.IMPORTED
     assert report.release.id == summary.release.id
@@ -154,11 +168,15 @@ async def test_failed_embedding_leaves_building_release_and_rerun_resumes() -> N
 async def test_changed_bundle_adds_release_and_rewrites_release_ids() -> None:
     adapters = CorpusAdapters()
     original = small_bundle()
-    first = await build_importer(adapters, FakeEmbedder())(original, publish=True)
+    first = await build_importer(adapters, FakeEmbedder())(
+        original, embeddings=small_bundle_embeddings, publish=True
+    )
     edited = with_section_text(original, DOSAGE_SECTION, "Ghi chú liều mới.")
     embedder = FakeEmbedder()
 
-    second = await build_importer(adapters, embedder)(edited, publish=True)
+    second = await build_importer(adapters, embedder)(
+        edited, embeddings=small_bundle_embeddings, publish=True
+    )
 
     old = build_snapshot(original)
     new = build_snapshot(edited)
@@ -192,7 +210,9 @@ async def test_bundle_vectors_declared_with_other_dims_are_ignored() -> None:
         }
     )
     report = await build_importer(adapters, FakeEmbedder())(
-        bundle.model_copy(update={"manifest": manifest}), publish=False
+        bundle,
+        embeddings=partial(read_bundle_embeddings, FIXTURE_DIR, manifest),
+        publish=False,
     )
     assert report.release.stats is not None
     assert report.release.stats.embeddings_from_bundle == 0
@@ -203,13 +223,13 @@ async def test_bundle_vectors_declared_with_other_dims_are_ignored() -> None:
 
 async def test_wrong_vector_length_is_rejected_before_any_write() -> None:
     adapters = CorpusAdapters()
-    bundle = small_bundle()
-    vectors = dict(bundle.embeddings[FAKE_EMBEDDING_MODEL])
+    vectors = small_bundle_embeddings(FAKE_EMBEDDING_MODEL, FAKE_EMBEDDING_DIMENSION)
     vectors[next(iter(vectors))] = [0.5]
-    broken = bundle.model_copy(update={"embeddings": {FAKE_EMBEDDING_MODEL: vectors}})
 
     with pytest.raises(CorpusImportError, match="dims"):
-        await build_importer(adapters, FakeEmbedder())(broken, publish=True)
+        await build_importer(adapters, FakeEmbedder())(
+            small_bundle(), embeddings=lambda _model, _dims: vectors, publish=True
+        )
 
     assert adapters.repository.stage_calls == 0
     assert adapters.index.ensure_calls == 0
@@ -222,7 +242,9 @@ async def test_missing_points_keep_the_release_building() -> None:
     )
 
     with pytest.raises(CorpusImportError, match="expected"):
-        await build_importer(adapters, FakeEmbedder())(small_bundle(), publish=True)
+        await build_importer(adapters, FakeEmbedder())(
+            small_bundle(), embeddings=small_bundle_embeddings, publish=True
+        )
 
     (summary,) = await adapters.repository.list_releases("formulary")
     assert summary.release.status is ReleaseStatus.BUILDING and not summary.current

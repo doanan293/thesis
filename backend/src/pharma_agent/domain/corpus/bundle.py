@@ -1,16 +1,20 @@
 """Knowledge bundle ``knowledge-bundle/v1`` (spec C §5): models, file IO and validation.
 
-Public API: seed-pipeline builds a ``KnowledgeBundle`` and calls ``write_bundle``; the
-backend import calls ``read_bundle``. Both run the same content checks.
+Public API: seed-pipeline builds a ``KnowledgeBundle``, calls ``write_bundle`` and then adds
+each model's vectors with ``write_bundle_embeddings``; the backend import calls
+``read_bundle`` and loads the vectors of its model with ``read_bundle_embeddings``. Both
+sides run the same checks. Embedding files are streamed line by line, so memory holds at
+most one model's vectors however many models a bundle ships.
 """
 
 import base64
 import binascii
 import hashlib
 import json
+import os
 import re
 import struct
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Final, Literal
@@ -174,6 +178,8 @@ class BundleManifest(BaseModel):
 
 
 class KnowledgeBundle(BaseModel):
+    """The manifest and knowledge content; vectors stay in the embedding files."""
+
     model_config = _STRICT
 
     manifest: BundleManifest
@@ -181,7 +187,6 @@ class KnowledgeBundle(BaseModel):
     sections: list[SectionRecord]
     glossary: list[GlossaryEntry]
     colloquial_mappings: list[ColloquialMappingRecord]
-    embeddings: dict[str, dict[str, list[float]]] = Field(default_factory=dict)
 
 
 class BundleValidationError(DomainError):
@@ -202,13 +207,7 @@ def encode_vector(values: Sequence[float]) -> str:
 
 
 def decode_vector(data: str, dims: int) -> list[float]:
-    try:
-        raw = base64.b64decode(data, validate=True)
-    except binascii.Error as error:
-        raise ValueError(f"vector is not valid base64: {error}") from error
-    if len(raw) != dims * 4:
-        raise ValueError(f"vector has {len(raw)} bytes, expected {dims * 4} (dims * 4)")
-    return list(struct.unpack(f"<{dims}f", raw))
+    return list(struct.unpack(f"<{dims}f", _vector_bytes(data, dims)))
 
 
 class _EmbeddingLine(BaseModel):
@@ -224,19 +223,14 @@ _MAPPINGS_ADAPTER = TypeAdapter(list[ColloquialMappingRecord])
 
 
 def read_bundle(directory: Path) -> KnowledgeBundle:
-    """Read and validate a bundle directory; every problem is reported at once."""
-    manifest_path = directory / MANIFEST_FILE
-    if not manifest_path.is_file():
-        raise BundleValidationError([f"{MANIFEST_FILE}: file is missing"])
-    try:
-        manifest = BundleManifest.model_validate_json(manifest_path.read_bytes())
-    except ValidationError as error:
-        raise BundleValidationError(
-            _validation_problems(MANIFEST_FILE, error)
-        ) from error
+    """Read and validate a bundle directory; every problem is reported at once.
 
+    Embedding files are checked line by line without keeping their vectors.
+    """
+    manifest = _read_manifest(directory)
     problems: list[str] = []
-    texts = _read_manifest_files(directory, manifest, problems)
+    line_problems: list[str] = []
+    texts = _read_manifest_files(directory, manifest, problems, line_problems)
     documents = _parse_jsonl(
         DOCUMENTS_FILE, texts.get(DOCUMENTS_FILE, ""), DocumentRecord, problems
     )
@@ -262,14 +256,7 @@ def read_bundle(directory: Path) -> KnowledgeBundle:
                 f"{name} ({_record_count(texts[name])} records)"
             )
     problems.extend(_content_problems(documents, sections, glossary, mappings))
-
-    embeddings: dict[str, dict[str, list[float]]] = {}
-    for entry in manifest.embeddings:
-        text = texts.get(entry.file)
-        if text is not None and entry.dims >= 1:
-            embeddings[entry.model] = _parse_embeddings(
-                entry.file, text, entry.dims, problems
-            )
+    problems.extend(line_problems)
 
     if problems:
         raise BundleValidationError(problems)
@@ -279,61 +266,63 @@ def read_bundle(directory: Path) -> KnowledgeBundle:
         sections=[record for _, record in sections],
         glossary=glossary,
         colloquial_mappings=mappings,
-        embeddings=embeddings,
     )
 
 
+def read_bundle_embeddings(
+    directory: Path, manifest: BundleManifest, model: str, dims: int
+) -> dict[str, list[float]]:
+    """Vectors of `model` keyed by embedding_text_sha256, streamed from its file.
+
+    Empty when `manifest` declares no embeddings for `model` with `dims`. The file is
+    checked again, so a change after ``read_bundle`` raises BundleValidationError.
+    """
+    if not any(
+        (entry.model, entry.dims) == (model, dims) for entry in manifest.embeddings
+    ):
+        return {}
+    name = _embedding_file_name(model)
+    expected = manifest.files.get(name)
+    if expected is None:
+        raise BundleValidationError(
+            [f"{MANIFEST_FILE}: files.{name}: missing entry for {model!r}"]
+        )
+    path = directory / name
+    if not path.is_file():
+        raise BundleValidationError([f"{name}: file is missing"])
+
+    vectors: dict[str, list[float]] = {}
+
+    def keep(sha: str, raw: bytes) -> None:
+        vectors[sha] = list(struct.unpack(f"<{dims}f", raw))
+
+    problems: list[str] = []
+    size, digest = _scan_embedding_file(path, name, dims, problems, keep)
+    problems.extend(_digest_problems(name, size, digest, expected))
+    if problems:
+        raise BundleValidationError(problems)
+    return vectors
+
+
 def write_bundle(bundle: KnowledgeBundle, directory: Path) -> BundleManifest:
-    """Validate, write every file and return the manifest with computed digests."""
+    """Validate, write the content files and return the manifest with computed digests.
+
+    The manifest lists no embeddings; add them with ``write_bundle_embeddings``.
+    """
     problems = _content_problems(
         list(enumerate(bundle.documents, start=1)),
         list(enumerate(bundle.sections, start=1)),
         bundle.glossary,
         bundle.colloquial_mappings,
     )
+    if problems:
+        raise BundleValidationError(problems)
     payloads: dict[str, bytes] = {
         DOCUMENTS_FILE: _jsonl_bytes(bundle.documents),
         SECTIONS_FILE: _jsonl_bytes(bundle.sections),
         GLOSSARY_FILE: _json_list_bytes(bundle.glossary),
         COLLOQUIAL_MAPPINGS_FILE: _json_list_bytes(bundle.colloquial_mappings),
     }
-    embedding_files: list[BundleEmbeddingFile] = []
-    for model, vectors in sorted(bundle.embeddings.items()):
-        where = f"embeddings[{model!r}]"
-        file_name = f"{EMBEDDINGS_DIR}/{model_slug(model)}.jsonl"
-        lengths = sorted({len(vector) for vector in vectors.values()})
-        if not model_slug(model):
-            problems.append(f"{where}: model name must contain letters or digits")
-        elif file_name in payloads:
-            problems.append(f"{where}: model slug collides with another model")
-        elif len(lengths) != 1 or lengths[0] < 1:
-            problems.append(
-                f"{where}: vectors must share one non-zero length, got {lengths}"
-            )
-        else:
-            problems.extend(
-                f"{where}: {sha!r} is not a sha256 hex digest"
-                for sha in vectors
-                if not _SHA256_RE.match(sha)
-            )
-            lines = [
-                json.dumps(
-                    {
-                        "embedding_text_sha256": sha,
-                        "dims": lengths[0],
-                        "vector": encode_vector(vector),
-                    },
-                    separators=(",", ":"),
-                )
-                for sha, vector in sorted(vectors.items())
-            ]
-            payloads[file_name] = "".join(f"{line}\n" for line in lines).encode()
-            embedding_files.append(
-                BundleEmbeddingFile(model=model, dims=lengths[0], file=file_name)
-            )
-    if problems:
-        raise BundleValidationError(problems)
-
     manifest = BundleManifest(
         schema_version=bundle.manifest.schema_version,
         collection=bundle.manifest.collection,
@@ -345,17 +334,125 @@ def write_bundle(bundle: KnowledgeBundle, directory: Path) -> BundleManifest:
             name: BundleFile(sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
             for name, data in payloads.items()
         },
-        embeddings=embedding_files,
     )
     directory.mkdir(parents=True, exist_ok=True)
-    if embedding_files:
-        (directory / EMBEDDINGS_DIR).mkdir(exist_ok=True)
     for name, data in payloads.items():
         (directory / name).write_bytes(data)
-    (directory / MANIFEST_FILE).write_text(
-        manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
+    _write_manifest(directory, manifest)
     return manifest
+
+
+def write_bundle_embeddings(
+    directory: Path, model: str, vectors: Iterable[tuple[str, Sequence[float]]]
+) -> BundleManifest:
+    """Add or replace the embedding file of `model` and return the updated manifest.
+
+    `vectors` yields (embedding_text_sha256, vector) pairs sorted by hash without
+    duplicates. They are streamed to a temporary file that replaces the model's file only
+    when every pair is valid; the manifest is replaced last. Other models' files are not
+    read, so memory does not grow with the number or size of the models.
+    """
+    manifest = _read_manifest(directory)
+    where = f"embeddings[{model!r}]"
+    if not model_slug(model):
+        raise BundleValidationError(
+            [f"{where}: model name must contain letters or digits"]
+        )
+    name = _embedding_file_name(model)
+    for entry in manifest.embeddings:
+        if entry.model != model and _embedding_file_name(entry.model) == name:
+            raise BundleValidationError(
+                [f"{where}: model slug collides with {entry.model!r}"]
+            )
+    temporary = directory / f".{model_slug(model)}.jsonl.tmp"
+    try:
+        listed, dims = _write_embedding_lines(temporary, where, vectors)
+        (directory / EMBEDDINGS_DIR).mkdir(exist_ok=True)
+        os.replace(temporary, directory / name)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    embeddings = sorted(
+        [
+            *(entry for entry in manifest.embeddings if entry.model != model),
+            BundleEmbeddingFile(model=model, dims=dims, file=name),
+        ],
+        key=lambda entry: entry.model,
+    )
+    files = {
+        file: entry
+        for file, entry in manifest.files.items()
+        if not file.startswith(f"{EMBEDDINGS_DIR}/")
+    }
+    for entry in embeddings:
+        current = listed if entry.model == model else manifest.files.get(entry.file)
+        if current is not None:
+            files[entry.file] = current
+    updated = manifest.model_copy(update={"files": files, "embeddings": embeddings})
+    _write_manifest(directory, updated)
+    return updated
+
+
+def _embedding_file_name(model: str) -> str:
+    return f"{EMBEDDINGS_DIR}/{model_slug(model)}.jsonl"
+
+
+def _read_manifest(directory: Path) -> BundleManifest:
+    manifest_path = directory / MANIFEST_FILE
+    if not manifest_path.is_file():
+        raise BundleValidationError([f"{MANIFEST_FILE}: file is missing"])
+    try:
+        return BundleManifest.model_validate_json(manifest_path.read_bytes())
+    except ValidationError as error:
+        raise BundleValidationError(
+            _validation_problems(MANIFEST_FILE, error)
+        ) from error
+
+
+def _write_manifest(directory: Path, manifest: BundleManifest) -> None:
+    """Replace the manifest atomically so a reader never sees a partial file."""
+    temporary = directory / f".{MANIFEST_FILE}.tmp"
+    temporary.write_text(manifest.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, directory / MANIFEST_FILE)
+
+
+def _write_embedding_lines(
+    path: Path, where: str, vectors: Iterable[tuple[str, Sequence[float]]]
+) -> tuple[BundleFile, int]:
+    problems: list[str] = []
+    lengths: set[int] = set()
+    previous: str | None = None
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("wb") as handle:
+        for sha, vector in vectors:
+            lengths.add(len(vector))
+            if not _SHA256_RE.match(sha):
+                problems.append(f"{where}: {sha!r} is not a sha256 hex digest")
+                continue
+            if previous == sha:
+                problems.append(f"{where}: {sha!r} is a duplicate")
+            elif previous is not None and sha < previous:
+                problems.append(f"{where}: {sha!r} is not sorted after {previous!r}")
+            previous = sha
+            if problems:
+                continue
+            record = {
+                "embedding_text_sha256": sha,
+                "dims": len(vector),
+                "vector": encode_vector(vector),
+            }
+            line = (json.dumps(record, separators=(",", ":")) + "\n").encode()
+            handle.write(line)
+            digest.update(line)
+            size += len(line)
+    if len(lengths) != 1 or 0 in lengths:
+        problems.append(
+            f"{where}: vectors must share one non-zero length, got {sorted(lengths)}"
+        )
+    if problems:
+        raise BundleValidationError(problems)
+    return BundleFile(sha256=digest.hexdigest(), bytes=size), lengths.pop()
 
 
 def _format_loc(loc: Sequence[int | str]) -> str:
@@ -375,14 +472,36 @@ def _validation_problems(where: str, error: ValidationError) -> list[str]:
     ]
 
 
+def _digest_problems(
+    name: str, size: int, sha256: str, expected: BundleFile
+) -> list[str]:
+    problems: list[str] = []
+    if size != expected.bytes:
+        problems.append(
+            f"{name}: size {size} bytes does not match manifest ({expected.bytes})"
+        )
+    if sha256 != expected.sha256:
+        problems.append(f"{name}: sha256 does not match manifest")
+    return problems
+
+
 def _read_manifest_files(
-    directory: Path, manifest: BundleManifest, problems: list[str]
+    directory: Path,
+    manifest: BundleManifest,
+    problems: list[str],
+    line_problems: list[str],
 ) -> dict[str, str]:
+    """Check every listed file and return the text of the content files.
+
+    Digest problems follow the manifest's file order in `problems`; embedding files are
+    streamed and their line problems go to `line_problems`.
+    """
     expected_embedding_files: set[str] = set()
+    embedding_dims: dict[str, int] = {}
     seen_models: set[str] = set()
     for index, entry in enumerate(manifest.embeddings):
         where = f"{MANIFEST_FILE}: embeddings[{index}]"
-        expected_file = f"{EMBEDDINGS_DIR}/{model_slug(entry.model)}.jsonl"
+        expected_file = _embedding_file_name(entry.model)
         if not model_slug(entry.model):
             problems.append(f"{where}.model: must contain letters or digits")
             continue
@@ -397,6 +516,8 @@ def _read_manifest_files(
             )
         elif entry.file not in manifest.files:
             problems.append(f"{where}.file: {entry.file!r} is not listed in files")
+        elif entry.dims >= 1:
+            embedding_dims.setdefault(entry.file, entry.dims)
         expected_embedding_files.add(expected_file)
 
     problems.extend(
@@ -415,19 +536,88 @@ def _read_manifest_files(
         if not path.is_file():
             problems.append(f"{name}: file is missing")
             continue
-        data = path.read_bytes()
-        if len(data) != expected.bytes:
-            problems.append(
-                f"{name}: size {len(data)} bytes does not match manifest "
-                f"({expected.bytes})"
+        if name not in REQUIRED_FILES:
+            size, digest = _scan_embedding_file(
+                path, name, embedding_dims.get(name), line_problems
             )
-        if hashlib.sha256(data).hexdigest() != expected.sha256:
-            problems.append(f"{name}: sha256 does not match manifest")
+            problems.extend(_digest_problems(name, size, digest, expected))
+            continue
+        data = path.read_bytes()
+        problems.extend(
+            _digest_problems(
+                name, len(data), hashlib.sha256(data).hexdigest(), expected
+            )
+        )
         try:
             texts[name] = data.decode("utf-8")
         except UnicodeDecodeError:
             problems.append(f"{name}: file is not valid UTF-8")
     return texts
+
+
+def _scan_embedding_file(
+    path: Path,
+    name: str,
+    dims: int | None,
+    problems: list[str],
+    keep: Callable[[str, bytes], None] | None = None,
+) -> tuple[int, str]:
+    """Stream an embedding file and return its size and sha256.
+
+    Lines are validated only when `dims` is known; `keep` receives the hash and raw
+    float32 bytes of every valid line.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    first_lines: dict[str, int] = {}
+    utf8 = True
+    with path.open("rb") as handle:
+        for line_number, raw in enumerate(handle, start=1):
+            digest.update(raw)
+            size += len(raw)
+            if dims is None or not utf8 or not raw.strip():
+                continue
+            try:
+                line = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                problems.append(f"{name}: file is not valid UTF-8")
+                utf8 = False
+                continue
+            where = f"{name}:{line_number}"
+            try:
+                record = _EmbeddingLine.model_validate_json(line)
+            except ValidationError as error:
+                problems.extend(_validation_problems(where, error))
+                continue
+            sha = record.embedding_text_sha256
+            if record.dims != dims:
+                problems.append(
+                    f"{where}: dims: {record.dims} does not match manifest dims {dims}"
+                )
+            elif sha in first_lines:
+                problems.append(
+                    f"{where}: embedding_text_sha256: duplicate of line {first_lines[sha]}"
+                )
+            else:
+                first_lines[sha] = line_number
+                try:
+                    vector = _vector_bytes(record.vector, dims)
+                except ValueError as error:
+                    problems.append(f"{where}: vector: {error}")
+                    continue
+                if keep is not None:
+                    keep(sha, vector)
+    return size, digest.hexdigest()
+
+
+def _vector_bytes(data: str, dims: int) -> bytes:
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except binascii.Error as error:
+        raise ValueError(f"vector is not valid base64: {error}") from error
+    if len(raw) != dims * 4:
+        raise ValueError(f"vector has {len(raw)} bytes, expected {dims * 4} (dims * 4)")
+    return raw
 
 
 def _record_count(text: str) -> int:
@@ -564,42 +754,16 @@ def _content_problems(
     return problems
 
 
-def _parse_embeddings(
-    name: str, text: str, dims: int, problems: list[str]
-) -> dict[str, list[float]]:
-    vectors: dict[str, list[float]] = {}
-    first_lines: dict[str, int] = {}
-    for line_number, line in enumerate(text.split("\n"), start=1):
-        if not line.strip():
-            continue
-        where = f"{name}:{line_number}"
-        try:
-            record = _EmbeddingLine.model_validate_json(line)
-        except ValidationError as error:
-            problems.extend(_validation_problems(where, error))
-            continue
-        sha = record.embedding_text_sha256
-        if record.dims != dims:
-            problems.append(
-                f"{where}: dims: {record.dims} does not match manifest dims {dims}"
-            )
-        elif sha in first_lines:
-            problems.append(
-                f"{where}: embedding_text_sha256: duplicate of line {first_lines[sha]}"
-            )
-        else:
-            first_lines[sha] = line_number
-            try:
-                vectors[sha] = decode_vector(record.vector, dims)
-            except ValueError as error:
-                problems.append(f"{where}: vector: {error}")
-    return vectors
-
-
 def _jsonl_bytes(records: Sequence[BaseModel]) -> bytes:
     return "".join(f"{record.model_dump_json()}\n" for record in records).encode()
 
 
 def _json_list_bytes(records: Sequence[BaseModel]) -> bytes:
-    payload = [record.model_dump(mode="json") for record in records]
-    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode()
+    return (
+        json.dumps(
+            [record.model_dump(mode="json") for record in records],
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n"
+    ).encode()

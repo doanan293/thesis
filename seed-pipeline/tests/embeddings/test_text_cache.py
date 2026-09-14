@@ -79,6 +79,21 @@ def test_cache_persists_vectors_per_model(tmp_path: Path) -> None:
         cache.set(text_sha256("b"), [0.1])
 
 
+def test_records_for_reads_this_models_full_records_from_the_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "cache.jsonl"
+    other = "embeddinggemma:300m"
+    open_text_cache(path, other).set(text_sha256("a"), [0.5] * 768)
+    cache = open_text_cache(path, MODEL)
+    cache.set(text_sha256("a"), _vector(0.25))
+
+    (record,) = cache.records_for([text_sha256("b"), text_sha256("a")])
+
+    assert (record["model"], record["embedding"]) == (MODEL, _vector(0.25))
+    assert open_text_cache(path, other).get(text_sha256("a")) == [0.5] * 768
+
+
 def test_embed_missing_only_embeds_new_texts(tmp_path: Path) -> None:
     cache = open_text_cache(tmp_path / "cache.jsonl", MODEL)
     cache.set(text_sha256("đã có"), _vector(1.0))

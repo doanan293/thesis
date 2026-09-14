@@ -7,7 +7,7 @@
 3. Block `kind` (`prose`, `table`, `list`, `index_entries`) và section `retrieval` (`default`, `index_only`) thay cho các ID viết cứng trước đây (`BRAND_INDEX_SECTION_ID`, `APPENDIX_LIST_SECTION_IDS`).
 4. Chia chunk, `context_header`, `embedding_text`, thuật ngữ và colloquial mapping do `chunk_section` của backend tính. seed-pipeline import backend như thư viện và không có chunker riêng.
 5. Vector được tính trước theo `(model, sha256(embedding_text))`. Backend chỉ dùng vector có model và số chiều khớp setting; phần thiếu backend tự embed qua endpoint đã cấu hình. Kernel Kaggle chỉ nhận text và hash, không import backend.
-6. Chạy `uv run seed validate` trước `seed bundle export`. Export và embed ghi bundle vào thư mục tạm, validate bằng `read_bundle`, rồi mới thay thư mục đích.
+6. Chạy `uv run seed validate` trước `seed bundle export`. Export ghi bundle vào thư mục tạm, validate bằng `read_bundle`, rồi mới thay thư mục đích. Embed ghi vector của một model theo từng dòng vào file tạm (`write_bundle_embeddings`), chỉ thay `embeddings/<model_slug>.jsonl` và manifest khi mọi dòng hợp lệ, không đọc lại file của model khác. Backend import cũng chỉ nạp vector của model đang cấu hình (`read_bundle_embeddings`), nên RAM không tăng theo số model trong bundle.
 7. Hydrate (`full_section`, `chunk_window`, `search_only`) là policy của backend (`pharma_agent.domain.corpus.hydrate`), không nằm trong bundle.
 8. Đổi thuật toán chunk trong backend thì backend tăng `CHUNKER_VERSION`; import lại bundle tạo release mới.
 9. Evaluation retrieval chạy qua `RetrievalService` của backend nên đo đúng retrieval lúc chạy; vector query lấy từ cache của `seed embed queries`, không embed lại; gold label vẫn theo section key.

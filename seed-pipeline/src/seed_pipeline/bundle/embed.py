@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,10 +11,10 @@ from pharma_agent.domain.corpus.bundle import (
     KnowledgeBundle,
     model_slug,
     read_bundle,
+    write_bundle_embeddings,
 )
 
 from seed_pipeline.bundle.chunks import iter_section_chunks
-from seed_pipeline.bundle.io import write_validated_bundle
 from seed_pipeline.config.defaults import (
     DEFAULT_BUDGET_SECONDS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
@@ -26,6 +27,7 @@ from seed_pipeline.embeddings.service import (
 )
 from seed_pipeline.embeddings.text_cache import (
     EmbeddingInput,
+    TextEmbeddingCache,
     TextEmbeddingError,
     write_embedding_inputs,
 )
@@ -69,6 +71,11 @@ def collect_embedding_inputs(bundle: KnowledgeBundle) -> list[EmbeddingInput]:
 def embed_bundle(
     request: BundleEmbedRequest, backend: TextEmbeddingBackend
 ) -> BundleEmbedResult:
+    """Fill the cache for the bundle's texts, then stream the model's vectors into it.
+
+    Only the new model's file and the manifest are written; the other models' embedding
+    files are neither loaded nor rewritten.
+    """
     spec = require_model(request.model)
     bundle = read_bundle(request.bundle_dir)
     inputs = collect_embedding_inputs(bundle)
@@ -97,23 +104,26 @@ def embed_bundle(
             incomplete=stage.incomplete,
         )
     cache = open_text_cache(stage.cache_path, request.model)
-    vectors: dict[str, list[float]] = {}
-    for item in inputs:
-        vector = cache.get(item.embedding_text_sha256)
-        if vector is None:
-            raise TextEmbeddingError(
-                f"Embedding cache {stage.cache_path} is missing {item.embedding_text_sha256}"
-            )
-        vectors[item.embedding_text_sha256] = vector
-    updated = bundle.model_copy(
-        update={"embeddings": {**bundle.embeddings, request.model: vectors}}
+    manifest = write_bundle_embeddings(
+        request.bundle_dir, request.model, _cached_vectors(cache, inputs)
     )
-    manifest = write_validated_bundle(updated, request.bundle_dir)
     return BundleEmbedResult(
         manifest=manifest,
         inputs=len(inputs),
-        vectors=len(vectors),
+        vectors=len(inputs),
         embeddings_file=f"embeddings/{model_slug(request.model)}.jsonl",
         actions=stage.actions,
         incomplete=False,
     )
+
+
+def _cached_vectors(
+    cache: TextEmbeddingCache, inputs: Sequence[EmbeddingInput]
+) -> Iterator[tuple[str, list[float]]]:
+    for item in inputs:
+        vector = cache.get(item.embedding_text_sha256)
+        if vector is None:
+            raise TextEmbeddingError(
+                f"Embedding cache {cache.path} is missing {item.embedding_text_sha256}"
+            )
+        yield item.embedding_text_sha256, vector

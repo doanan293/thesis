@@ -17,6 +17,7 @@ from tests.corpus_fixtures import (
     DOSAGE_SECTION,
     FIXTURE_DIR,
     small_bundle,
+    small_bundle_embeddings,
     with_section_text,
 )
 from tests.corpus_memory import (
@@ -99,7 +100,7 @@ def test_release_commands(corpus: FakeCorpus, monkeypatch: pytest.MonkeyPatch) -
     edited = with_section_text(small_bundle(), DOSAGE_SECTION, "Ghi chú từ CLI.")
     second = asyncio.run(
         build_importer(corpus.adapters, corpus.embedder, clock=corpus.clock)(
-            edited, publish=True
+            edited, embeddings=small_bundle_embeddings, publish=True
         )
     ).release
 

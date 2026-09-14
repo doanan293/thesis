@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import os
-from collections.abc import Callable, Hashable, Iterable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -89,43 +89,42 @@ def _rewrite_bytes(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def load_records(path: Path) -> list[dict[str, Any]]:
+def iter_records(path: Path) -> Iterator[dict[str, Any]]:
+    """Yield verified records one line at a time, never reading the whole file.
+
+    A torn last line (invalid JSON without a trailing newline, left by an interrupted
+    append) is cut from the file when it is reached; invalid JSON elsewhere raises.
+    """
     path = Path(path)
     if not path.exists():
-        return []
-    raw_lines = path.read_bytes().splitlines(keepends=True)
-    last_nonempty = max(
-        (index for index, raw in enumerate(raw_lines) if raw.strip()),
-        default=-1,
-    )
-    records: list[dict[str, Any]] = []
-    for index, raw in enumerate(raw_lines):
-        if not raw.strip():
-            continue
-        line_number = index + 1
-        try:
-            record = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            if index == last_nonempty and not raw.endswith(b"\n"):
-                _rewrite_bytes(
-                    path,
-                    b"".join(
-                        json.dumps(
-                            item,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            allow_nan=False,
-                        ).encode("utf-8")
-                        + b"\n"
-                        for item in records
-                    ),
-                )
-                return records
-            raise CacheRecordError(
-                f"invalid JSON in {path}:{line_number}: {exc}"
-            ) from exc
-        records.append(verify_record(record, path=path, line_number=line_number))
-    return records
+        return
+    offset = 0
+    with path.open("rb") as handle:
+        for line_number, raw in enumerate(handle, start=1):
+            start, offset = offset, offset + len(raw)
+            if not raw.strip():
+                continue
+            try:
+                record = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                if not raw.endswith(b"\n"):
+                    _truncate(path, start)
+                    return
+                raise CacheRecordError(
+                    f"invalid JSON in {path}:{line_number}: {exc}"
+                ) from exc
+            yield verify_record(record, path=path, line_number=line_number)
+
+
+def load_records(path: Path) -> list[dict[str, Any]]:
+    return list(iter_records(path))
+
+
+def _truncate(path: Path, size: int) -> None:
+    with path.open("r+b") as handle:
+        handle.truncate(size)
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def _encode_records(records: Iterable[Mapping[str, Any]]) -> bytes:

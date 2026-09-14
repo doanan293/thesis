@@ -26,6 +26,7 @@ from tests.corpus_fixtures import (
     DOSAGE_SECTION,
     LEAFLET_SECTION,
     small_bundle,
+    small_bundle_embeddings,
     with_renamed_documents,
     with_section_text,
 )
@@ -109,7 +110,9 @@ async def test_import_indexes_points_without_text_and_is_idempotent(
     bundle = small_bundle()
     snapshot = build_snapshot(bundle)
 
-    report = await stack.importer(bundle, publish=True)
+    report = await stack.importer(
+        bundle, embeddings=small_bundle_embeddings, publish=True
+    )
 
     release = report.release
     assert report.outcome is ImportOutcome.IMPORTED
@@ -147,15 +150,23 @@ async def test_import_indexes_points_without_text_and_is_idempotent(
     )
     assert str(chunk.id) in [str(point.id) for point in found.points]
 
-    again = await stack.importer(bundle, publish=True)
+    again = await stack.importer(
+        bundle, embeddings=small_bundle_embeddings, publish=True
+    )
     assert again.outcome is ImportOutcome.NO_CHANGE and again.release == release
     assert await stack.index.count_release(release.id) == len(snapshot.release_chunks)
     assert stack.embedder.batches == []
 
 
 async def test_publish_and_rollback_switch_the_current_release(stack: Stack) -> None:
-    r1 = (await stack.importer(small_bundle(), publish=True)).release
-    r2 = (await stack.importer(edited(), publish=True)).release
+    r1 = (
+        await stack.importer(
+            small_bundle(), embeddings=small_bundle_embeddings, publish=True
+        )
+    ).release
+    r2 = (
+        await stack.importer(edited(), embeddings=small_bundle_embeddings, publish=True)
+    ).release
     ids1, ids2 = chunk_ids(small_bundle()), chunk_ids(edited())
 
     collection = await stack.repository.get_collection("formulary")
@@ -184,8 +195,14 @@ async def test_publish_and_rollback_switch_the_current_release(stack: Stack) -> 
 async def test_gc_keeps_cited_chunk_versions_and_deletes_orphan_points(
     stack: Stack,
 ) -> None:
-    r1 = (await stack.importer(small_bundle(), publish=True)).release
-    r2 = (await stack.importer(edited(), publish=True)).release
+    r1 = (
+        await stack.importer(
+            small_bundle(), embeddings=small_bundle_embeddings, publish=True
+        )
+    ).release
+    r2 = (
+        await stack.importer(edited(), embeddings=small_bundle_embeddings, publish=True)
+    ).release
     ids1, ids2 = chunk_ids(small_bundle()), chunk_ids(edited())
     old_only = ids1 - ids2
     assert len(old_only) >= 2
@@ -232,8 +249,14 @@ async def test_gc_keeps_cited_chunk_versions_and_deletes_orphan_points(
 
 
 async def test_reindex_rebuilds_a_deleted_qdrant_collection(stack: Stack) -> None:
-    r1 = (await stack.importer(small_bundle(), publish=True)).release
-    r2 = (await stack.importer(edited(), publish=True)).release
+    r1 = (
+        await stack.importer(
+            small_bundle(), embeddings=small_bundle_embeddings, publish=True
+        )
+    ).release
+    r2 = (
+        await stack.importer(edited(), embeddings=small_bundle_embeddings, publish=True)
+    ).release
     ids1, ids2 = chunk_ids(small_bundle()), chunk_ids(edited())
 
     await stack.client.delete_collection(PHYSICAL)
@@ -251,9 +274,11 @@ async def test_reindex_rebuilds_a_deleted_qdrant_collection(stack: Stack) -> Non
 
 
 async def test_gc_deletes_documents_and_sections_of_retired_keys(stack: Stack) -> None:
-    await stack.importer(small_bundle(), publish=True)
+    await stack.importer(
+        small_bundle(), embeddings=small_bundle_embeddings, publish=True
+    )
     renamed = with_renamed_documents(small_bundle(), "-v2")
-    await stack.importer(renamed, publish=True)
+    await stack.importer(renamed, embeddings=small_bundle_embeddings, publish=True)
 
     report = await stack.releases.gc("formulary", keep=1)
 

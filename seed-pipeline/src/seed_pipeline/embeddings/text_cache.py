@@ -7,7 +7,8 @@ import hashlib
 import json
 import math
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from array import array
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, Protocol
 from seed_pipeline.cache.jsonl_records import (
     CacheRecordError,
     append_record,
-    load_records,
+    iter_records,
 )
 from seed_pipeline.integrations.kaggle.workers.scheduling import stream_map_ordered
 
@@ -100,6 +101,12 @@ def _vector(value: object, vector_dim: int) -> list[float]:
 
 
 class TextEmbeddingCache:
+    """The vectors of one model in a checksummed JSONL cache file.
+
+    The file is read line by line and each vector is kept as a float64 array, eight bytes
+    per value, so a 4096-dimension cache of 25,000 texts takes about 1 GB of memory.
+    """
+
     def __init__(
         self, path: Path, *, model: str, model_sha256: str, vector_dim: int
     ) -> None:
@@ -107,35 +114,38 @@ class TextEmbeddingCache:
         self.model = model
         self.model_sha256 = model_sha256
         self.vector_dim = vector_dim
-        self._records: dict[str, dict[str, Any]] = {}
-        try:
-            records = load_records(self.path)
-        except CacheRecordError as exc:
-            raise TextEmbeddingError(str(exc)) from exc
-        for record in records:
-            if cache_record_key(record)[0::2] != (model, vector_dim):
-                continue
+        self._vectors: dict[str, array[float]] = {}
+        for record in self._own_records():
             if record.get("model_sha256") != model_sha256:
                 raise TextEmbeddingError(
                     f"Model digest mismatch in {self.path} for "
                     f"{record.get('embedding_text_sha256')}"
                 )
-            _vector(record.get("embedding"), vector_dim)
-            self._records[str(record["embedding_text_sha256"])] = record
+            self._vectors[str(record["embedding_text_sha256"])] = array(
+                "d", _vector(record.get("embedding"), vector_dim)
+            )
+
+    def _own_records(self) -> Iterator[dict[str, Any]]:
+        try:
+            for record in iter_records(self.path):
+                if cache_record_key(record)[0::2] == (self.model, self.vector_dim):
+                    yield record
+        except CacheRecordError as exc:
+            raise TextEmbeddingError(str(exc)) from exc
 
     def __len__(self) -> int:
-        return len(self._records)
+        return len(self._vectors)
 
     def digests(self) -> list[str]:
-        return sorted(self._records)
+        return sorted(self._vectors)
 
     def get(self, digest: str) -> list[float] | None:
-        record = self._records.get(digest)
-        return None if record is None else _vector(record["embedding"], self.vector_dim)
+        vector = self._vectors.get(digest)
+        return None if vector is None else vector.tolist()
 
     def set(self, digest: str, embedding: Sequence[float]) -> None:
         vector = _vector(list(embedding), self.vector_dim)
-        record = append_record(
+        append_record(
             self.path,
             {
                 "model": self.model,
@@ -147,21 +157,29 @@ class TextEmbeddingCache:
             },
             schema=CACHE_SCHEMA,
         )
-        self._records[digest] = record
+        self._vectors[digest] = array("d", vector)
 
     def missing(self, inputs: Iterable[EmbeddingInput]) -> list[EmbeddingInput]:
         seen: set[str] = set()
         missing: list[EmbeddingInput] = []
         for item in inputs:
             digest = item.embedding_text_sha256
-            if digest in seen or digest in self._records:
+            if digest in seen or digest in self._vectors:
                 continue
             seen.add(digest)
             missing.append(item)
         return missing
 
     def records_for(self, digests: Iterable[str]) -> list[dict[str, Any]]:
-        return [self._records[digest] for digest in digests if digest in self._records]
+        """Full cache records of the cached `digests`, read again from the file."""
+        requested = [digest for digest in digests if digest in self._vectors]
+        wanted = set(requested)
+        found: dict[str, dict[str, Any]] = {}
+        for record in self._own_records():
+            digest = str(record["embedding_text_sha256"])
+            if digest in wanted:
+                found[digest] = record
+        return [found[digest] for digest in requested if digest in found]
 
 
 def embed_missing(

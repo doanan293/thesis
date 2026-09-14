@@ -38,7 +38,11 @@ from pharma_agent.infrastructure.persistence.postgres.alembic_config import (
 )
 from pharma_agent.infrastructure.retrieval.qdrant_index import physical_collection_name
 from pharma_agent.infrastructure.settings import Settings
-from tests.corpus_fixtures import COLLECTION_KEY, small_bundle
+from tests.corpus_fixtures import (
+    COLLECTION_KEY,
+    small_bundle,
+    small_bundle_embeddings,
+)
 from tests.e2e.scenario_llm import ScenarioLlm
 from tests.fakes import FAKE_EMBEDDING_DIMENSION, FAKE_EMBEDDING_MODEL, FakeEmbedder
 
@@ -141,7 +145,9 @@ async def prepare_backing_services(settings: Settings) -> None:
     )
     await reset_qdrant(settings)
     async with open_corpus_services(settings, embedder=FakeEmbedder()) as services:
-        await services.importer(small_bundle(), publish=True)
+        await services.importer(
+            small_bundle(), embeddings=small_bundle_embeddings, publish=True
+        )
 
 
 def e2e_container_factory() -> ContainerFactory:

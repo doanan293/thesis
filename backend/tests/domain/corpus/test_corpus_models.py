@@ -28,9 +28,15 @@ from tests.corpus_fixtures import (
     PARACETAMOL,
     PHARMACOLOGY_SECTION,
     small_bundle,
+    small_bundle_embeddings,
     with_section_text,
 )
-from tests.fakes import FAKE_EMBEDDING_MODEL, NOW, FakeEmbedder
+from tests.fakes import (
+    FAKE_EMBEDDING_DIMENSION,
+    FAKE_EMBEDDING_MODEL,
+    NOW,
+    FakeEmbedder,
+)
 
 
 def test_snapshot_maps_the_fixture_to_rows() -> None:
@@ -95,7 +101,7 @@ def test_snapshot_maps_the_fixture_to_rows() -> None:
     )
 
     assert set(snapshot.embedding_texts()) == set(
-        bundle.embeddings[FAKE_EMBEDDING_MODEL]
+        small_bundle_embeddings(FAKE_EMBEDDING_MODEL, FAKE_EMBEDDING_DIMENSION)
     )
     stats = snapshot.stats()
     assert (stats.documents, stats.sections, stats.section_revisions) == (2, 5, 5)

@@ -1,8 +1,9 @@
 """The small knowledge bundle shared by the backend tests and seed-pipeline's contract test.
 
-`build_small_bundle()` is the source of truth. After changing it, or after P1's chunker or
-enrichment changes, regenerate the committed copy with `uv run python -m tests.corpus_fixtures`;
-`tests/test_corpus_fixtures.py` fails while the committed copy is stale.
+`build_small_bundle()` and `build_small_embeddings()` are the source of truth. After changing
+them, or after P1's chunker or enrichment changes, regenerate the committed copy with
+`uv run python -m tests.corpus_fixtures`; `tests/test_corpus_fixtures.py` fails while the
+committed copy is stale.
 """
 
 import shutil
@@ -12,7 +13,6 @@ from pharma_agent.domain.corpus.bundle import (
     BlockKind,
     BlockRecord,
     BundleCollection,
-    BundleEmbeddingFile,
     BundleGenerator,
     BundleManifest,
     ColloquialMappingRecord,
@@ -23,13 +23,14 @@ from pharma_agent.domain.corpus.bundle import (
     RetrievalMode,
     SectionRecord,
     SourceInfo,
-    model_slug,
     read_bundle,
+    read_bundle_embeddings,
     write_bundle,
+    write_bundle_embeddings,
 )
 from pharma_agent.domain.corpus.chunking import chunk_section
 from pharma_agent.domain.corpus.identity import sha256_hex
-from tests.fakes import FAKE_EMBEDDING_DIMENSION, FAKE_EMBEDDING_MODEL, fake_vector
+from tests.fakes import FAKE_EMBEDDING_MODEL, fake_vector
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "knowledge_bundle_small"
 COLLECTION_KEY = "formulary"
@@ -244,15 +245,6 @@ def _colloquial_mappings() -> list[ColloquialMappingRecord]:
 def build_small_bundle() -> KnowledgeBundle:
     documents = _documents()
     sections = _sections()
-    glossary = _glossary()
-    mappings = _colloquial_mappings()
-    documents_by_key = {document.key: document for document in documents}
-    vectors: dict[str, list[float]] = {}
-    for section in sections:
-        for draft in chunk_section(
-            documents_by_key[section.document_key], section, glossary, mappings
-        ):
-            vectors[draft.embedding_text_sha256] = fake_vector(draft.embedding_text)
     manifest = BundleManifest(
         schema_version="knowledge-bundle/v1",
         collection=BundleCollection(key=COLLECTION_KEY, title=COLLECTION_TITLE),
@@ -266,27 +258,52 @@ def build_small_bundle() -> KnowledgeBundle:
         document_count=len(documents),
         section_count=len(sections),
         files={},
-        embeddings=[
-            BundleEmbeddingFile(
-                model=FAKE_EMBEDDING_MODEL,
-                dims=FAKE_EMBEDDING_DIMENSION,
-                file=f"embeddings/{model_slug(FAKE_EMBEDDING_MODEL)}.jsonl",
-            )
-        ],
     )
     return KnowledgeBundle(
         manifest=manifest,
         documents=documents,
         sections=sections,
-        glossary=glossary,
-        colloquial_mappings=mappings,
-        embeddings={FAKE_EMBEDDING_MODEL: vectors},
+        glossary=_glossary(),
+        colloquial_mappings=_colloquial_mappings(),
+    )
+
+
+def build_small_embeddings(bundle: KnowledgeBundle) -> dict[str, list[float]]:
+    """Fake vectors for every chunk of `bundle`, keyed by embedding_text_sha256."""
+    documents = {document.key: document for document in bundle.documents}
+    return {
+        draft.embedding_text_sha256: fake_vector(draft.embedding_text)
+        for section in bundle.sections
+        for draft in chunk_section(
+            documents[section.document_key],
+            section,
+            bundle.glossary,
+            bundle.colloquial_mappings,
+        )
+    }
+
+
+def write_small_bundle(directory: Path) -> None:
+    bundle = build_small_bundle()
+    write_bundle(bundle, directory)
+    write_bundle_embeddings(
+        directory, FAKE_EMBEDDING_MODEL, sorted(build_small_embeddings(bundle).items())
     )
 
 
 def small_bundle() -> KnowledgeBundle:
     """The committed fixture, read and validated by P1's `read_bundle`."""
     return read_bundle(FIXTURE_DIR)
+
+
+def small_bundle_embeddings(model: str, dims: int) -> dict[str, list[float]]:
+    """The vectors the committed fixture ships, loaded the way `corpus import` loads them."""
+    return read_bundle_embeddings(FIXTURE_DIR, small_bundle().manifest, model, dims)
+
+
+def no_bundle_embeddings(model: str, dims: int) -> dict[str, list[float]]:
+    """A bundle that ships no vectors for any model."""
+    return {}
 
 
 def with_section_text(
@@ -311,7 +328,7 @@ def regenerate(directory: Path = FIXTURE_DIR) -> None:
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
-    write_bundle(build_small_bundle(), directory)
+    write_small_bundle(directory)
 
 
 if __name__ == "__main__":

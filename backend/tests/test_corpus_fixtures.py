@@ -8,7 +8,6 @@ from pharma_agent.domain.corpus.bundle import (
     DocumentKind,
     RetrievalMode,
     read_bundle,
-    write_bundle,
 )
 from pharma_agent.domain.corpus.hydrate import (
     FULL_SECTION_MAX_CHARS,
@@ -23,9 +22,10 @@ from tests.corpus_fixtures import (
     INTERACTIONS_SECTION,
     LEAFLET_SECTION,
     PHARMACOLOGY_SECTION,
-    build_small_bundle,
     small_bundle,
+    small_bundle_embeddings,
     with_section_text,
+    write_small_bundle,
 )
 from tests.fakes import (
     FAKE_EMBEDDING_DIMENSION,
@@ -46,7 +46,7 @@ def _files(directory: Path) -> list[str]:
 def test_committed_fixture_matches_the_generator(tmp_path: Path) -> None:
     target = tmp_path / "bundle"
     target.mkdir()
-    write_bundle(build_small_bundle(), target)
+    write_small_bundle(target)
     assert read_bundle(target) == small_bundle(), (
         "stale fixture: run `uv run python -m tests.corpus_fixtures` and commit it"
     )
@@ -78,7 +78,8 @@ def test_fixture_covers_every_case_the_corpus_tests_need() -> None:
         FAKE_EMBEDDING_DIMENSION,
     )
     assert embedding_file.file == "embeddings/fake_embedding_4d.jsonl"
-    assert len(bundle.embeddings[FAKE_EMBEDDING_MODEL]) >= len(bundle.sections)
+    vectors = small_bundle_embeddings(FAKE_EMBEDDING_MODEL, FAKE_EMBEDDING_DIMENSION)
+    assert len(vectors) >= len(bundle.sections)
 
 
 def test_with_section_text_changes_only_that_section() -> None:

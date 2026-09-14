@@ -5,6 +5,7 @@ import json
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,11 @@ import typer
 
 from pharma_agent.application.corpus.import_bundle import ImportReport
 from pharma_agent.application.progress import EventType, ProgressEvent
-from pharma_agent.domain.corpus.bundle import BundleValidationError, read_bundle
+from pharma_agent.domain.corpus.bundle import (
+    BundleValidationError,
+    read_bundle,
+    read_bundle_embeddings,
+)
 from pharma_agent.domain.corpus.models import ReleaseSummary
 from pharma_agent.domain.retrieval.models import Hit, HydrateStrategy, page_label
 from pharma_agent.domain.shared.errors import DomainError
@@ -349,7 +354,10 @@ def corpus_import(
         raise typer.Exit(code=2)
 
     async def action(services: CorpusServices) -> None:
-        _echo_import(await services.importer(bundle, publish=publish))
+        embeddings = partial(read_bundle_embeddings, bundle_dir, bundle.manifest)
+        _echo_import(
+            await services.importer(bundle, embeddings=embeddings, publish=publish)
+        )
 
     _run_corpus(action)
 

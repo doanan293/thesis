@@ -20,6 +20,7 @@ from tests.corpus_fixtures import (
     DOSAGE_SECTION,
     LEAFLET_SECTION,
     small_bundle,
+    small_bundle_embeddings,
     with_renamed_documents,
     with_section_text,
 )
@@ -43,7 +44,10 @@ class Services:
     async def publish_bundle(
         self, bundle: KnowledgeBundle, *, publish: bool = True
     ) -> Release:
-        return (await self.importer(bundle, publish=publish)).release
+        report = await self.importer(
+            bundle, embeddings=small_bundle_embeddings, publish=publish
+        )
+        return report.release
 
 
 def services() -> Services:
@@ -84,7 +88,7 @@ async def test_list_and_publish_follow_release_status() -> None:
 
     with pytest.raises(RetrievalError):
         await build_importer(s.adapters, FakeEmbedder(fail_on_batch=1), clock=s.clock)(
-            v3(), publish=False
+            v3(), embeddings=small_bundle_embeddings, publish=False
         )
     building = (await s.releases.list_releases("formulary"))[0].release
     assert building.status is ReleaseStatus.BUILDING

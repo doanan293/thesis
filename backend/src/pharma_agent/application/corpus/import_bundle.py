@@ -6,7 +6,7 @@ service. Every step is idempotent on hashed ids, so rerunning after a failure re
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
@@ -45,21 +45,20 @@ class ImportReport(BaseModel):
     published: bool
 
 
-def bundle_vectors(
-    bundle: KnowledgeBundle, model: str, dimension: int
-) -> Mapping[str, list[float]]:
-    """Precomputed vectors usable for `model`, keyed by embedding_text_sha256.
+# Loads the vectors a bundle ships for (model, dims), keyed by embedding_text_sha256, and
+# returns an empty mapping when it ships none. The CLI passes
+# `functools.partial(read_bundle_embeddings, directory, manifest)`.
+type BundleEmbeddings = Callable[[str, int], Mapping[str, Sequence[float]]]
 
-    Only vectors declared in the manifest with the same model and dims are used. Raises
-    CorpusImportError when a declared vector has another length.
+
+def bundle_vectors(
+    embeddings: BundleEmbeddings, model: str, dimension: int
+) -> Mapping[str, Sequence[float]]:
+    """Precomputed vectors the bundle ships for `model`, keyed by embedding_text_sha256.
+
+    Raises CorpusImportError when a vector has another length than `dimension`.
     """
-    declared = any(
-        entry.model == model and entry.dims == dimension
-        for entry in bundle.manifest.embeddings
-    )
-    if not declared:
-        return {}
-    vectors = bundle.embeddings.get(model, {})
+    vectors = embeddings(model, dimension)
     wrong = sorted(sha for sha, vector in vectors.items() if len(vector) != dimension)
     if wrong:
         raise CorpusImportError(
@@ -93,10 +92,16 @@ class ImportKnowledgeBundle:
         )
         self._writer = IndexWriter(index, cache, model=embedder.model)
 
-    async def __call__(self, bundle: KnowledgeBundle, *, publish: bool) -> ImportReport:
+    async def __call__(
+        self,
+        bundle: KnowledgeBundle,
+        *,
+        embeddings: BundleEmbeddings,
+        publish: bool,
+    ) -> ImportReport:
+        """Import `bundle`; `embeddings` is not called when the bundle is unchanged."""
         model = self._embedder.model
         snapshot = build_snapshot(bundle)
-        vectors = bundle_vectors(bundle, model, self._embedder.dimension)
         key = snapshot.collection.key
 
         current = await self._current_release(key)
@@ -112,6 +117,7 @@ class ImportKnowledgeBundle:
                 published=True,
             )
 
+        vectors = bundle_vectors(embeddings, model, self._embedder.dimension)
         await self._index.ensure_collection()
         existing = await self._repository.find_release(
             snapshot.collection.id,
@@ -149,7 +155,7 @@ class ImportKnowledgeBundle:
     async def _build(
         self,
         snapshot: CorpusSnapshot,
-        vectors: Mapping[str, list[float]],
+        vectors: Mapping[str, Sequence[float]],
         release: Release,
     ) -> None:
         embeddings = await self._resolver.ensure(snapshot.embedding_texts(), vectors)

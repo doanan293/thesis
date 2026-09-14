@@ -23,12 +23,16 @@ from pharma_agent.domain.corpus.bundle import (
     SourceInfo,
     encode_vector,
     read_bundle,
+    read_bundle_embeddings,
     write_bundle,
+    write_bundle_embeddings,
 )
 
+MODEL = "fake-embedding-4d"
 EMBEDDINGS_FILE = "embeddings/fake_embedding_4d.jsonl"
 SHA_DOSE = hashlib.sha256("PARACETAMOL\n> Liều lượng".encode()).hexdigest()
 SHA_TABLE = hashlib.sha256("PARACETAMOL\n> Tương tác thuốc".encode()).hexdigest()
+VECTORS = {SHA_DOSE: [0.5, -1.25, 3.0, 0.0], SHA_TABLE: [1.0, 0.0, 0.0, 0.0]}
 LEAFLET_SECTION = "leaflet:thuoc-giam-dau-ha-sot:panadol-extra-gsk-150-vien-11440"
 
 
@@ -125,13 +129,12 @@ def make_bundle() -> KnowledgeBundle:
                 section_keys=[LEAFLET_SECTION],
             )
         ],
-        embeddings={
-            "fake-embedding-4d": {
-                SHA_DOSE: [0.5, -1.25, 3.0, 0.0],
-                SHA_TABLE: [1.0, 0.0, 0.0, 0.0],
-            }
-        },
     )
+
+
+def write_full_bundle(directory: Path) -> BundleManifest:
+    write_bundle(make_bundle(), directory)
+    return write_bundle_embeddings(directory, MODEL, sorted(VECTORS.items()))
 
 
 def rewrite(directory: Path, name: str, content: str) -> None:
@@ -159,6 +162,12 @@ def problems_of(directory: Path) -> list[str]:
     return caught.value.problems
 
 
+def embedding_problems_of(directory: Path, manifest: BundleManifest) -> list[str]:
+    with pytest.raises(BundleValidationError) as caught:
+        read_bundle_embeddings(directory, manifest, MODEL, 4)
+    return caught.value.problems
+
+
 def jsonl(*records: object) -> str:
     return "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records)
 
@@ -166,7 +175,7 @@ def jsonl(*records: object) -> str:
 def test_write_then_read_round_trips_with_computed_manifest(tmp_path: Path) -> None:
     bundle = make_bundle()
 
-    manifest = write_bundle(bundle, tmp_path)
+    manifest = write_full_bundle(tmp_path)
 
     assert manifest.document_count == 2
     assert manifest.section_count == 3
@@ -178,15 +187,18 @@ def test_write_then_read_round_trips_with_computed_manifest(tmp_path: Path) -> N
         "sections.jsonl",
     ]
     assert manifest.embeddings == [
-        BundleEmbeddingFile(model="fake-embedding-4d", dims=4, file=EMBEDDINGS_FILE)
+        BundleEmbeddingFile(model=MODEL, dims=4, file=EMBEDDINGS_FILE)
     ]
     sections_text = (tmp_path / "sections.jsonl").read_text(encoding="utf-8")
     assert len(sections_text.splitlines()) == 3
     assert "Liều lượng và cách dùng" in sections_text
     assert read_bundle(tmp_path) == bundle.model_copy(update={"manifest": manifest})
+    assert read_bundle_embeddings(tmp_path, manifest, MODEL, 4) == VECTORS
 
 
-def test_write_bundle_replaces_placeholder_manifest_fields(tmp_path: Path) -> None:
+def test_write_bundle_writes_content_and_replaces_placeholder_manifest_fields(
+    tmp_path: Path,
+) -> None:
     bundle = make_bundle()
     placeholder = bundle.manifest.model_copy(
         update={
@@ -211,23 +223,15 @@ def test_write_bundle_replaces_placeholder_manifest_fields(tmp_path: Path) -> No
     assert manifest.files["documents.jsonl"] == BundleFile(
         sha256=hashlib.sha256(documents).hexdigest(), bytes=len(documents)
     )
-    assert manifest.embeddings == [
-        BundleEmbeddingFile(model="fake-embedding-4d", dims=4, file=EMBEDDINGS_FILE)
+    assert sorted(manifest.files) == [
+        "colloquial_mappings.json",
+        "documents.jsonl",
+        "glossary.json",
+        "sections.jsonl",
     ]
-    assert read_bundle(tmp_path).manifest == manifest
-
-
-def test_write_bundle_without_embeddings_lists_no_embedding_files(
-    tmp_path: Path,
-) -> None:
-    manifest = write_bundle(
-        make_bundle().model_copy(update={"embeddings": {}}), tmp_path
-    )
-
     assert manifest.embeddings == []
-    assert EMBEDDINGS_FILE not in manifest.files
     assert not (tmp_path / "embeddings").exists()
-    assert read_bundle(tmp_path).embeddings == {}
+    assert read_bundle(tmp_path).manifest == manifest
 
 
 @pytest.mark.parametrize("key", ["", "panadol-extra-gsk-150-vien-11440"])
@@ -242,20 +246,62 @@ def test_colloquial_mapping_key_may_be_empty_or_a_slug(
     assert read_bundle(tmp_path).colloquial_mappings[0].key == key
 
 
-def test_write_bundle_is_deterministic(tmp_path: Path) -> None:
-    first = write_bundle(make_bundle(), tmp_path / "a")
-    second = write_bundle(make_bundle(), tmp_path / "b")
+def test_bundle_files_do_not_depend_on_the_order_models_are_embedded(
+    tmp_path: Path,
+) -> None:
+    other = {SHA_DOSE: [0.25, 0.75]}
+    write_bundle(make_bundle(), tmp_path / "a")
+    write_bundle_embeddings(tmp_path / "a", MODEL, sorted(VECTORS.items()))
+    first = write_bundle_embeddings(tmp_path / "a", "other-2d", other.items())
+    write_bundle(make_bundle(), tmp_path / "b")
+    write_bundle_embeddings(tmp_path / "b", "other-2d", other.items())
+    second = write_bundle_embeddings(tmp_path / "b", MODEL, sorted(VECTORS.items()))
 
     assert first == second
-    assert (tmp_path / "a" / EMBEDDINGS_FILE).read_bytes() == (
-        tmp_path / "b" / EMBEDDINGS_FILE
+    assert list(first.files) == [
+        "documents.jsonl",
+        "sections.jsonl",
+        "glossary.json",
+        "colloquial_mappings.json",
+        EMBEDDINGS_FILE,
+        "embeddings/other_2d.jsonl",
+    ]
+    assert (tmp_path / "a" / "manifest.json").read_bytes() == (
+        tmp_path / "b" / "manifest.json"
     ).read_bytes()
+    for name in first.files:
+        assert (tmp_path / "a" / name).read_bytes() == (
+            tmp_path / "b" / name
+        ).read_bytes()
+
+
+def test_write_bundle_embeddings_replaces_one_model_and_keeps_the_others(
+    tmp_path: Path,
+) -> None:
+    write_full_bundle(tmp_path)
+    write_bundle_embeddings(tmp_path, "other-2d", [(SHA_TABLE, [0.25, 0.75])])
+    replaced = {SHA_DOSE: [2.0, 2.0, 2.0, 2.0]}
+
+    manifest = write_bundle_embeddings(tmp_path, MODEL, replaced.items())
+
+    assert manifest.embeddings == [
+        BundleEmbeddingFile(model=MODEL, dims=4, file=EMBEDDINGS_FILE),
+        BundleEmbeddingFile(model="other-2d", dims=2, file="embeddings/other_2d.jsonl"),
+    ]
+    assert read_bundle(tmp_path).manifest == manifest
+    assert read_bundle_embeddings(tmp_path, manifest, MODEL, 4) == replaced
+    assert read_bundle_embeddings(tmp_path, manifest, "other-2d", 2) == {
+        SHA_TABLE: [0.25, 0.75]
+    }
+    assert sorted(path.name for path in (tmp_path / "embeddings").iterdir()) == [
+        "fake_embedding_4d.jsonl",
+        "other_2d.jsonl",
+    ]
 
 
 def test_write_bundle_rejects_invalid_content_before_writing(tmp_path: Path) -> None:
     bundle = make_bundle()
     bundle.documents.append(bundle.documents[0])
-    bundle.embeddings["fake-embedding-4d"][SHA_TABLE] = [1.0, 0.0, 0.0]
 
     with pytest.raises(BundleValidationError) as caught:
         write_bundle(bundle, tmp_path)
@@ -263,10 +309,65 @@ def test_write_bundle_rejects_invalid_content_before_writing(tmp_path: Path) -> 
     assert caught.value.problems == [
         "documents.jsonl:3: key: duplicate document key 'drug:paracetamol' "
         "(first on line 1)",
-        "embeddings['fake-embedding-4d']: vectors must share one non-zero length, "
-        "got [3, 4]",
     ]
     assert not (tmp_path / "manifest.json").exists()
+
+
+def test_write_bundle_embeddings_rejects_invalid_vectors_and_keeps_the_bundle(
+    tmp_path: Path,
+) -> None:
+    manifest = write_full_bundle(tmp_path)
+    before = (tmp_path / EMBEDDINGS_FILE).read_bytes()
+    first, second = sorted(VECTORS)
+
+    with pytest.raises(BundleValidationError) as caught:
+        write_bundle_embeddings(
+            tmp_path,
+            MODEL,
+            [
+                (second, [1.0] * 4),
+                (first, [1.0] * 3),
+                (first, [1.0] * 4),
+                ("abc", [1.0] * 4),
+            ],
+        )
+
+    where = f"embeddings[{MODEL!r}]"
+    assert caught.value.problems == [
+        f"{where}: {first!r} is not sorted after {second!r}",
+        f"{where}: {first!r} is a duplicate",
+        f"{where}: 'abc' is not a sha256 hex digest",
+        f"{where}: vectors must share one non-zero length, got [3, 4]",
+    ]
+    assert (tmp_path / EMBEDDINGS_FILE).read_bytes() == before
+    assert read_bundle(tmp_path).manifest == manifest
+    assert sorted(path.name for path in (tmp_path / "embeddings").iterdir()) == [
+        "fake_embedding_4d.jsonl"
+    ]
+
+
+def test_write_bundle_embeddings_needs_a_manifest_vectors_and_a_free_slug(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(BundleValidationError) as missing:
+        write_bundle_embeddings(tmp_path, MODEL, sorted(VECTORS.items()))
+    assert missing.value.problems == ["manifest.json: file is missing"]
+
+    write_full_bundle(tmp_path)
+    cases = {
+        "!!!": "embeddings['!!!']: model name must contain letters or digits",
+        "Fake Embedding 4D": "embeddings['Fake Embedding 4D']: model slug collides "
+        f"with {MODEL!r}",
+    }
+    for model, problem in cases.items():
+        with pytest.raises(BundleValidationError) as caught:
+            write_bundle_embeddings(tmp_path, model, sorted(VECTORS.items()))
+        assert caught.value.problems == [problem]
+    with pytest.raises(BundleValidationError) as empty:
+        write_bundle_embeddings(tmp_path, "other-2d", [])
+    assert empty.value.problems == [
+        "embeddings['other-2d']: vectors must share one non-zero length, got []"
+    ]
 
 
 def test_missing_manifest(tmp_path: Path) -> None:
@@ -283,10 +384,12 @@ def test_schema_version_must_match(tmp_path: Path) -> None:
 
 
 def test_file_digests_sizes_and_listing_must_match(tmp_path: Path) -> None:
-    manifest_written = write_bundle(make_bundle(), tmp_path)
+    manifest_written = write_full_bundle(tmp_path)
     written_bytes = manifest_written.files["documents.jsonl"].bytes
-    with (tmp_path / "documents.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write("\n")
+    embedding_bytes = manifest_written.files[EMBEDDINGS_FILE].bytes
+    for name in ("documents.jsonl", EMBEDDINGS_FILE):
+        with (tmp_path / name).open("a", encoding="utf-8") as handle:
+            handle.write("\n")
     (tmp_path / "glossary.json").unlink()
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     edit_manifest(
@@ -300,6 +403,9 @@ def test_file_digests_sizes_and_listing_must_match(tmp_path: Path) -> None:
         f"({written_bytes})",
         "documents.jsonl: sha256 does not match manifest",
         "glossary.json: file is missing",
+        f"{EMBEDDINGS_FILE}: size {embedding_bytes + 1} bytes does not match manifest "
+        f"({embedding_bytes})",
+        f"{EMBEDDINGS_FILE}: sha256 does not match manifest",
         "manifest.json: files.notes.txt: not part of knowledge-bundle/v1",
         "manifest.json: document_count: 5 does not match documents.jsonl (2 records)",
     ]
@@ -436,7 +542,7 @@ def test_a_section_belongs_to_at_most_one_colloquial_mapping(tmp_path: Path) -> 
 
 
 def test_embedding_lines_are_validated(tmp_path: Path) -> None:
-    write_bundle(make_bundle(), tmp_path)
+    write_full_bundle(tmp_path)
     rewrite(
         tmp_path,
         EMBEDDINGS_FILE,
@@ -463,8 +569,7 @@ def test_embedding_lines_are_validated(tmp_path: Path) -> None:
             },
         ),
     )
-
-    assert problems_of(tmp_path) == [
+    expected = [
         f"{EMBEDDINGS_FILE}:1: dims: 3 does not match manifest dims 4",
         f"{EMBEDDINGS_FILE}:2: vector: vector has 12 bytes, expected 16 (dims * 4)",
         f"{EMBEDDINGS_FILE}:3: embedding_text_sha256: duplicate of line 2",
@@ -472,14 +577,39 @@ def test_embedding_lines_are_validated(tmp_path: Path) -> None:
         "'^[0-9a-f]{64}$'",
     ]
 
+    assert problems_of(tmp_path) == expected
+    manifest = BundleManifest.model_validate_json(
+        (tmp_path / "manifest.json").read_bytes()
+    )
+    assert embedding_problems_of(tmp_path, manifest) == expected
+
+
+def test_read_bundle_embeddings_loads_only_a_declared_model_and_rechecks_its_file(
+    tmp_path: Path,
+) -> None:
+    manifest = write_full_bundle(tmp_path)
+
+    assert read_bundle_embeddings(tmp_path, manifest, MODEL, 8) == {}
+    assert read_bundle_embeddings(tmp_path, manifest, "other-2d", 2) == {}
+
+    size = manifest.files[EMBEDDINGS_FILE].bytes
+    with (tmp_path / EMBEDDINGS_FILE).open("a", encoding="utf-8") as handle:
+        handle.write("\n")
+    assert embedding_problems_of(tmp_path, manifest) == [
+        f"{EMBEDDINGS_FILE}: size {size + 1} bytes does not match manifest ({size})",
+        f"{EMBEDDINGS_FILE}: sha256 does not match manifest",
+    ]
+    (tmp_path / EMBEDDINGS_FILE).unlink()
+    assert embedding_problems_of(tmp_path, manifest) == [
+        f"{EMBEDDINGS_FILE}: file is missing"
+    ]
+
 
 def test_manifest_embedding_entries_must_name_their_file(tmp_path: Path) -> None:
-    write_bundle(make_bundle(), tmp_path)
+    write_full_bundle(tmp_path)
     edit_manifest(
         tmp_path,
-        embeddings=[
-            {"model": "fake-embedding-4d", "dims": 0, "file": "embeddings/other.jsonl"}
-        ],
+        embeddings=[{"model": MODEL, "dims": 0, "file": "embeddings/other.jsonl"}],
     )
 
     assert problems_of(tmp_path) == [

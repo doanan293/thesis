@@ -37,7 +37,12 @@ from pharma_agent.infrastructure.corpus_factory import (
 from pharma_agent.infrastructure.persistence.postgres.database import Database
 from pharma_agent.infrastructure.retrieval.postgres_corpus import PostgresHydrator
 from pharma_agent.infrastructure.settings import Settings
-from tests.corpus_fixtures import COLLECTION_KEY, DOSAGE_SECTION, small_bundle
+from tests.corpus_fixtures import (
+    COLLECTION_KEY,
+    DOSAGE_SECTION,
+    small_bundle,
+    small_bundle_embeddings,
+)
 from tests.corpus_rows import long_paragraph, reset_corpus
 from tests.fakes import FAKE_EMBEDDING_DIMENSION, FAKE_EMBEDDING_MODEL, FakeEmbedder
 
@@ -161,7 +166,9 @@ async def test_imported_bundle_is_searchable_and_hydrates_both_strategies(
         )
 
     bundle = bundle_with_long_section(FIRST_MARKERS)
-    await platform.corpus.importer(bundle, publish=True)
+    await platform.corpus.importer(
+        bundle, embeddings=small_bundle_embeddings, publish=True
+    )
 
     await retrieval.retriever.verify_corpus(
         embedding_model=FAKE_EMBEDDING_MODEL, dimension=FAKE_EMBEDDING_DIMENSION
@@ -212,7 +219,9 @@ async def test_bm25_mode_searches_the_imported_release_without_embedding(
     platform: Platform,
 ) -> None:
     await platform.corpus.importer(
-        bundle_with_long_section(FIRST_MARKERS), publish=True
+        bundle_with_long_section(FIRST_MARKERS),
+        embeddings=small_bundle_embeddings,
+        publish=True,
     )
     embedder = FakeEmbedder()
     stack = build_retrieval_service(
@@ -234,7 +243,11 @@ async def test_custom_qdrant_collection_is_used_for_import_and_search(
         platform.dsn, platform.qdrant_url, qdrant_collection="p3_custom_alias"
     )
     async with open_corpus_services(settings, embedder=FakeEmbedder()) as corpus:
-        await corpus.importer(bundle_with_long_section(FIRST_MARKERS), publish=True)
+        await corpus.importer(
+            bundle_with_long_section(FIRST_MARKERS),
+            embeddings=small_bundle_embeddings,
+            publish=True,
+        )
 
     aliases = (await qdrant_client.get_aliases()).aliases
     assert {a.alias_name: a.collection_name for a in aliases} == {
@@ -258,12 +271,16 @@ async def test_custom_qdrant_collection_is_used_for_import_and_search(
 async def test_publish_and_rollback_switch_search_results(platform: Platform) -> None:
     retrieval = platform.retrieval
     await platform.corpus.importer(
-        bundle_with_long_section(FIRST_MARKERS), publish=True
+        bundle_with_long_section(FIRST_MARKERS),
+        embeddings=small_bundle_embeddings,
+        publish=True,
     )
     first = await retrieval.reader.current_releases([COLLECTION_KEY])
 
     await platform.corpus.importer(
-        bundle_with_long_section(EDITED_MARKERS), publish=True
+        bundle_with_long_section(EDITED_MARKERS),
+        embeddings=small_bundle_embeddings,
+        publish=True,
     )
     second = await retrieval.reader.current_releases([COLLECTION_KEY])
     assert second.keys() == first.keys() and second != first
