@@ -88,8 +88,8 @@ def test_export_groups_documents_and_keeps_section_keys(tmp_path: Path) -> None:
     assert result.manifest.generator.build_id == "fixture-build-0001"
     assert result.manifest.source_digests == {
         "source_pdf_sha256": "1" * 64,
-        "snapshot_id": "ankhang-2026-07-24-97f5b5c43eee",
-        "snapshot_sha256": "2" * 64,
+        "leaflet_source_manifest_sha256": "2" * 64,
+        "leaflet_source_file_count": "2",
         "curated_curated_tables_sha256": "5" * 64,
         "curated_glossary_sha256": "6" * 64,
         "curated_mappings_sha256": "7" * 64,

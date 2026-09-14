@@ -25,7 +25,7 @@ from seed_pipeline.config.enums import Backend
 from seed_pipeline.config.paths import (
     BUNDLE_EMBED_WORK_DIR,
     RAG_FINAL_DIR,
-    RESOURCES_DIR,
+    SOURCES_DIR,
 )
 from seed_pipeline.embeddings.service import (
     KaggleTextEmbeddingBackend,
@@ -49,8 +49,8 @@ def export_command(
     *,
     output: Path,
     rag_final_dir: Path = RAG_FINAL_DIR,
-    glossary: Path = RESOURCES_DIR / "term_glossary.json",
-    mappings: Path = RESOURCES_DIR / "colloquial_mappings.json",
+    glossary: Path = SOURCES_DIR / "term_glossary.json",
+    mappings: Path = SOURCES_DIR / "colloquial_mappings.json",
     force: bool = False,
 ) -> CommandResult:
     try:
@@ -84,9 +84,9 @@ def export(
         Path, typer.Option("--output", file_okay=False, resolve_path=True)
     ],
     rag_final_dir: Annotated[Path, typer.Option("--rag-final-dir")] = RAG_FINAL_DIR,
-    glossary: Annotated[Path, typer.Option("--glossary")] = RESOURCES_DIR
+    glossary: Annotated[Path, typer.Option("--glossary")] = SOURCES_DIR
     / "term_glossary.json",
-    mappings: Annotated[Path, typer.Option("--mappings")] = RESOURCES_DIR
+    mappings: Annotated[Path, typer.Option("--mappings")] = SOURCES_DIR
     / "colloquial_mappings.json",
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:

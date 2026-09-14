@@ -83,3 +83,37 @@ def write_leaflet_manifest(path: Path, manifest: LeafletManifest) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
+
+
+@dataclass(frozen=True)
+class LeafletSource:
+    html_dir: Path
+    manifest_sha256: str
+    file_count: int
+
+
+def verify_leaflet_source(leaflets_dir: Path) -> LeafletSource:
+    leaflets_dir = Path(leaflets_dir)
+    manifest_path = leaflets_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise LeafletSourceError(f"Leaflet manifest is missing: {manifest_path}")
+    manifest = read_leaflet_manifest(manifest_path)
+    html_dir = leaflets_dir / "html"
+    present = (
+        {path.relative_to(html_dir).as_posix() for path in html_dir.rglob("*.html")}
+        if html_dir.is_dir()
+        else set()
+    )
+    expected = {item.path for item in manifest.files}
+    if present != expected:
+        raise LeafletSourceError(
+            f"Leaflet HTML under {html_dir} does not match {manifest_path}: "
+            f"{len(expected - present)} missing, {len(present - expected)} unexpected"
+        )
+    for item in manifest.files:
+        path = html_dir / item.path
+        if path.stat().st_size != item.size or file_sha256(path) != item.sha256:
+            raise LeafletSourceError(
+                f"Leaflet file changed since the crawl: {item.path}"
+            )
+    return LeafletSource(html_dir, file_sha256(manifest_path), len(manifest.files))

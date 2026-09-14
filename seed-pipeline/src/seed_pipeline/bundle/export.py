@@ -322,10 +322,11 @@ def _glossary(path: Path) -> list[GlossaryEntry]:
 
 
 def _source_digests(manifest: Mapping[str, Any]) -> dict[str, str]:
+    leaflet_source = manifest["leaflet_source"]
     digests = {
         "source_pdf_sha256": str(manifest["source_pdf_sha256"]),
-        "snapshot_id": str(manifest["snapshot_id"]),
-        "snapshot_sha256": str(manifest["snapshot_sha256"]),
+        "leaflet_source_manifest_sha256": str(leaflet_source["manifest_sha256"]),
+        "leaflet_source_file_count": str(leaflet_source["file_count"]),
     }
     curated = manifest.get("curated_input_digests") or {}
     for name, digest in sorted(curated.items()):

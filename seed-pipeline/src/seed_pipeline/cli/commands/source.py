@@ -16,9 +16,9 @@ from seed_pipeline.cli.runtime import (
 )
 from seed_pipeline.config.paths import (
     DOCLING_INTERIM_DIR,
+    FORMULARY_PDF_PATH,
     LEAFLETS_DIR,
     RAG_FINAL_SECTIONS_PATH,
-    RAW_DIR,
     TEXT_INTERIM_DIR,
 )
 from seed_pipeline.corpus.sources.crawl import (
@@ -92,8 +92,7 @@ def _fetch(url: str, timeout: float) -> bytes:
 @source_app.command("extract-tables")
 def extract_tables(
     ctx: typer.Context,
-    pdf: Annotated[Path, typer.Option("--pdf")] = RAW_DIR
-    / "duoc-thu-quoc-gia-viet-nam.pdf",
+    pdf: Annotated[Path, typer.Option("--pdf")] = FORMULARY_PDF_PATH,
     markdown: Annotated[Path, typer.Option("--markdown")] = TEXT_INTERIM_DIR
     / "full.cleaned.md",
     output_dir: Annotated[Path, typer.Option("--output-dir")] = DOCLING_INTERIM_DIR,

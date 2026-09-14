@@ -41,18 +41,10 @@ LEAFLETS_DIR = SOURCES_DIR / "leaflets"
 LEAFLETS_HTML_DIR = LEAFLETS_DIR / "html"
 LEAFLETS_URLS_DIR = LEAFLETS_DIR / "urls"
 LEAFLETS_MANIFEST_PATH = LEAFLETS_DIR / "manifest.json"
+FORMULARY_PDF_PATH = SOURCES_DIR / "duoc-thu-quoc-gia-viet-nam.pdf"
+SOURCES_CURATION_DIR = SOURCES_DIR / "curation"
 
-# Build inputs stay in the pre-migration folders until the leaflet source tasks move them.
-HEAVY_DATA_DIR = DATA_DIR / "heavy"
-RESOURCES_DIR = DATA_DIR / "resources"
-RESOURCES_CURATION_DIR = RESOURCES_DIR / "curation"
-MANIFESTS_DIR = DATA_DIR / "manifests"
-HEAVY_RAW_DIR = HEAVY_DATA_DIR / "raw"
-RAW_DIR = HEAVY_RAW_DIR
-RAW_ANKHANG_DIR = RAW_DIR / "ankhang"
-RAW_CURATION_DIR = RESOURCES_CURATION_DIR
-RAW_ANKHANG_SNAPSHOTS_DIR = RAW_ANKHANG_DIR / "snapshots"
-MIGRATION_DIR = HEAVY_DATA_DIR / "migration"
+MIGRATION_DIR = DATA_DIR / "heavy" / "migration"
 
 CORPUS_DIR = DATA_DIR / "corpus"
 RAG_FINAL_DIR = CORPUS_DIR / "rag-final"

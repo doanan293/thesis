@@ -19,6 +19,9 @@ REMOVED_MODULES = (
     "seed_pipeline.evaluation.rejudge_service",
     "seed_pipeline.evaluation.rejudging",
     "seed_pipeline.evaluation.query_embedding_artifact",
+    "seed_pipeline.artifacts.snapshot",
+    "seed_pipeline.corpus.crawling.collect_urls",
+    "seed_pipeline.corpus.crawling.download_html",
 )
 
 REMOVED_PATH_NAMES = (
@@ -37,6 +40,17 @@ REMOVED_PATH_NAMES = (
     "RAG_FINAL_VALIDATION_PATH",
     "retrieval_run_roots",
     "query_embedding_bundle_dir",
+    "HEAVY_DATA_DIR",
+    "HEAVY_RAW_DIR",
+    "RAW_DIR",
+    "RAW_ANKHANG_DIR",
+    "RAW_ANKHANG_SNAPSHOTS_DIR",
+    "RAW_CURATION_DIR",
+    "RESOURCES_DIR",
+    "RESOURCES_CURATION_DIR",
+    "RESOURCES_ANKHANG_DIR",
+    "RAW_ANKHANG_HTML_DIR",
+    "MANIFESTS_DIR",
 )
 
 

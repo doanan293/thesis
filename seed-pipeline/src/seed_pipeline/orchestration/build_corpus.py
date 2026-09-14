@@ -18,16 +18,14 @@ from seed_pipeline.artifacts.contract import (
 )
 from seed_pipeline.artifacts.paths import ArtifactPaths, retain_failed_workspace
 from seed_pipeline.artifacts.publisher import publish_contract
-from seed_pipeline.artifacts.snapshot import extract_snapshot, verify_snapshot
 from seed_pipeline.config.chunking import DEFAULT_CHUNK_MAX_CHARS
 from seed_pipeline.config.paths import (
     BUILD_WORK_DIR,
-    MANIFESTS_DIR,
+    FORMULARY_PDF_PATH,
+    LEAFLETS_DIR,
     RAG_FINAL_DIR,
-    RAW_ANKHANG_SNAPSHOTS_DIR,
-    RAW_CURATION_DIR,
-    RAW_DIR,
-    RESOURCES_DIR,
+    SOURCES_CURATION_DIR,
+    SOURCES_DIR,
 )
 from seed_pipeline.corpus.canonical.build_canonical_rag import process_canonical_rag
 from seed_pipeline.corpus.crawling.integrate_ankhang import integrate_ankhang_corpus
@@ -39,6 +37,7 @@ from seed_pipeline.corpus.processing.extract_pymupdf_text import process_pdf
 from seed_pipeline.corpus.processing.preprocess_rag_corpus import (
     process_corpus as preprocess_corpus,
 )
+from seed_pipeline.corpus.sources.leaflet_source import verify_leaflet_source
 from seed_pipeline.corpus.validation.validate_final_rag import (
     combine_validation_reports,
     read_jsonl,
@@ -50,8 +49,7 @@ from seed_pipeline.corpus.validation.validate_final_rag import (
 @dataclass(frozen=True)
 class BuildConfig:
     pdf_path: Path
-    snapshot_archive: Path
-    snapshot_manifest: Path
+    leaflets_dir: Path
     curated_tables_path: Path
     table_overrides_path: Path
     mappings_path: Path
@@ -75,15 +73,12 @@ class BuildHooks:
 def _digest_payload(config: BuildConfig) -> dict[str, Any]:
     return {
         "pdf": sha256_file(config.pdf_path),
-        "snapshot_archive": sha256_file(config.snapshot_archive),
-        "snapshot_manifest": sha256_file(config.snapshot_manifest),
+        "leaflet_manifest": sha256_file(config.leaflets_dir / "manifest.json"),
         "curated_tables": sha256_file(config.curated_tables_path),
         "table_overrides": sha256_file(config.table_overrides_path),
         "mappings": sha256_file(config.mappings_path),
         "glossary": sha256_file(config.glossary_path),
-        "valid_syllables": sha256_file(
-            RESOURCES_DIR / "vietnamese_valid_syllables.json"
-        ),
+        "valid_syllables": sha256_file(SOURCES_DIR / "vietnamese_valid_syllables.json"),
         "max_chars": config.max_chars,
         "schema_version": "rag-final-v3",
     }
@@ -125,28 +120,20 @@ def _update_source_audit_counts(source_final_dir: Path) -> None:
 
 def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
     require_materialized_pdf(config.pdf_path)
-    require_materialized_file(config.snapshot_archive)
-    require_materialized_file(config.snapshot_manifest)
     for input_path in (
         config.curated_tables_path,
         config.table_overrides_path,
         config.mappings_path,
         config.glossary_path,
-        RESOURCES_DIR / "vietnamese_valid_syllables.json",
+        SOURCES_DIR / "vietnamese_valid_syllables.json",
     ):
         require_materialized_file(input_path)
-    snapshot_manifest = verify_snapshot(
-        config.snapshot_archive, config.snapshot_manifest
-    )
+    leaflet_source = verify_leaflet_source(config.leaflets_dir)
+    # The HTML is read in place, so only the PDF stages need room in the workspace.
     require_workspace_capacity(
         paths.root,
-        required_bytes=3
-        * (config.pdf_path.stat().st_size + config.snapshot_archive.stat().st_size),
-    )
-    extract_snapshot(
-        config.snapshot_archive,
-        config.snapshot_manifest,
-        paths.ankhang_html_dir,
+        required_bytes=3 * config.pdf_path.stat().st_size
+        + sum(path.stat().st_size for path in leaflet_source.html_dir.rglob("*.html")),
     )
     process_pdf(config.pdf_path, paths.raw_text)
     clean_corpus(input_path=paths.raw_text, output_path=paths.cleaned_text)
@@ -164,7 +151,7 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         final_dir=paths.source_final_dir,
         max_chars=config.max_chars,
     )
-    parse_html_tree(paths.ankhang_html_dir, paths.ankhang_markdown_dir)
+    parse_html_tree(leaflet_source.html_dir, paths.ankhang_markdown_dir)
     integrate_ankhang_corpus(
         markdown_dir=paths.ankhang_markdown_dir,
         sections_path=paths.source_final_dir / "sections.jsonl",
@@ -217,8 +204,10 @@ def build_candidate(config: BuildConfig, paths: ArtifactPaths) -> None:
         paths.candidate_final_dir,
         build_id=build_id_for(input_digests),
         source_pdf_sha256=input_digests["pdf"],
-        snapshot_id=str(snapshot_manifest["snapshot_id"]),
-        snapshot_sha256=str(snapshot_manifest["archive_sha256"]),
+        leaflet_source={
+            "manifest_sha256": leaflet_source.manifest_sha256,
+            "file_count": leaflet_source.file_count,
+        },
         curated_input_digests={
             key: input_digests[key]
             for key in ("curated_tables", "table_overrides", "mappings", "glossary")
@@ -241,6 +230,9 @@ def run_build(
     *,
     hooks: BuildHooks = DEFAULT_BUILD_HOOKS,
 ) -> BuildResult:
+    # The build id hashes only the leaflet manifest, so the HTML is checked first; an
+    # edited file would otherwise pass the "already built" shortcut below.
+    verify_leaflet_source(config.leaflets_dir)
     payload = _digest_payload(config)
     build_id = build_id_for(payload)
     if config.final_dir.is_dir():
@@ -265,32 +257,12 @@ def run_build(
     return BuildResult(build_id=build_id, final_dir=config.final_dir)
 
 
-def latest_snapshot_pair(
-    snapshot_dir: Path, manifest_dir: Path | None = None
-) -> tuple[Path, Path]:
-    snapshot_dir = Path(snapshot_dir)
-    manifest_dir = Path(manifest_dir or snapshot_dir)
-    manifests = sorted(manifest_dir.glob("*.manifest.json"))
-    if not manifests:
-        raise FileNotFoundError(f"No snapshot manifests found in {snapshot_dir}")
-    manifest_path = manifests[-1]
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    archive_path = snapshot_dir / str(manifest["archive_name"])
-    verify_snapshot(archive_path, manifest_path)
-    return archive_path, manifest_path
-
-
 def default_config() -> BuildConfig:
-    archive, manifest = latest_snapshot_pair(
-        RAW_ANKHANG_SNAPSHOTS_DIR,
-        MANIFESTS_DIR / "source",
-    )
     return BuildConfig(
-        pdf_path=RAW_DIR / "duoc-thu-quoc-gia-viet-nam.pdf",
-        snapshot_archive=archive,
-        snapshot_manifest=manifest,
-        curated_tables_path=RAW_CURATION_DIR / "docling_tables.jsonl",
-        table_overrides_path=RAW_CURATION_DIR / "table_duplicate_overrides.json",
-        mappings_path=RESOURCES_DIR / "colloquial_mappings.json",
-        glossary_path=RESOURCES_DIR / "term_glossary.json",
+        pdf_path=FORMULARY_PDF_PATH,
+        leaflets_dir=LEAFLETS_DIR,
+        curated_tables_path=SOURCES_CURATION_DIR / "docling_tables.jsonl",
+        table_overrides_path=SOURCES_CURATION_DIR / "table_duplicate_overrides.json",
+        mappings_path=SOURCES_DIR / "colloquial_mappings.json",
+        glossary_path=SOURCES_DIR / "term_glossary.json",
     )

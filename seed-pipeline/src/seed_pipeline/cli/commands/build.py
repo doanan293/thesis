@@ -18,8 +18,7 @@ from seed_pipeline.orchestration.build_corpus import default_config, run_build
 def build_command(
     *,
     pdf: Path | None = None,
-    snapshot_archive: Path | None = None,
-    snapshot_manifest: Path | None = None,
+    leaflets_dir: Path | None = None,
     curated_tables: Path | None = None,
     table_overrides: Path | None = None,
     mappings: Path | None = None,
@@ -32,16 +31,7 @@ def build_command(
     config = replace(
         config,
         pdf_path=pdf if pdf is not None else config.pdf_path,
-        snapshot_archive=(
-            snapshot_archive
-            if snapshot_archive is not None
-            else config.snapshot_archive
-        ),
-        snapshot_manifest=(
-            snapshot_manifest
-            if snapshot_manifest is not None
-            else config.snapshot_manifest
-        ),
+        leaflets_dir=leaflets_dir if leaflets_dir is not None else config.leaflets_dir,
         curated_tables_path=(
             curated_tables if curated_tables is not None else config.curated_tables_path
         ),
@@ -68,10 +58,7 @@ def build_command(
 def build(
     ctx: typer.Context,
     pdf: Annotated[Path | None, typer.Option("--pdf")] = None,
-    snapshot_archive: Annotated[Path | None, typer.Option("--snapshot-archive")] = None,
-    snapshot_manifest: Annotated[
-        Path | None, typer.Option("--snapshot-manifest")
-    ] = None,
+    leaflets_dir: Annotated[Path | None, typer.Option("--leaflets-dir")] = None,
     curated_tables: Annotated[Path | None, typer.Option("--curated-tables")] = None,
     table_overrides: Annotated[Path | None, typer.Option("--table-overrides")] = None,
     mappings: Annotated[Path | None, typer.Option("--mappings")] = None,
@@ -84,8 +71,7 @@ def build(
         state_from_context(ctx),
         lambda: build_command(
             pdf=pdf,
-            snapshot_archive=snapshot_archive,
-            snapshot_manifest=snapshot_manifest,
+            leaflets_dir=leaflets_dir,
             curated_tables=curated_tables,
             table_overrides=table_overrides,
             mappings=mappings,

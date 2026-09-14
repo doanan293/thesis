@@ -33,8 +33,7 @@ def _published(tmp_path: Path, *, block_section: str = "drug:a:b") -> Path:
         final_dir,
         build_id="build",
         source_pdf_sha256="pdf",
-        snapshot_id="snapshot",
-        snapshot_sha256="archive",
+        leaflet_source={"manifest_sha256": "leaflets", "file_count": 2},
         curated_input_digests={"glossary": "g"},
         config_digest="config",
     )
@@ -48,6 +47,11 @@ def test_manifest_tracks_sections_and_blocks(tmp_path: Path) -> None:
     assert manifest["schema_version"] == CONTRACT_SCHEMA_VERSION == "rag-final-v3"
     assert (manifest["section_count"], manifest["block_count"]) == (1, 1)
     assert "chunk_count" not in manifest
+    assert manifest["leaflet_source"] == {
+        "manifest_sha256": "leaflets",
+        "file_count": 2,
+    }
+    assert "snapshot_id" not in manifest
     assert set(manifest["files"]) == {
         "sections.jsonl",
         "blocks.jsonl",

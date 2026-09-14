@@ -7,9 +7,9 @@ from pathlib import Path
 
 import fitz
 
-from seed_pipeline.config.paths import RAW_DIR, TEXT_INTERIM_DIR
+from seed_pipeline.config.paths import FORMULARY_PDF_PATH, TEXT_INTERIM_DIR
 
-DEFAULT_PDF = RAW_DIR / "duoc-thu-quoc-gia-viet-nam.pdf"
+DEFAULT_PDF = FORMULARY_PDF_PATH
 DEFAULT_OUTPUT = TEXT_INTERIM_DIR / "full.md"
 
 REGION_TITLES = {"CÁC CHUYÊN LUẬN CHUNG", "CÁC CHUYÊN LUẬN THUỐC", "CÁC PHỤ LỤC"}

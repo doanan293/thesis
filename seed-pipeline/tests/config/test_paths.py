@@ -21,3 +21,13 @@ def test_evaluation_cache_corpus_and_work_folders_follow_the_layout() -> None:
     assert paths.EVALUATION_CHUNKS_PATH == (
         paths.WORK_DIR / "evaluation-chunks" / "chunks.jsonl"
     )
+
+
+def test_build_inputs_live_in_sources() -> None:
+    assert paths.SOURCES_DIR == paths.DATA_DIR / "sources"
+    assert paths.FORMULARY_PDF_PATH == (
+        paths.SOURCES_DIR / "duoc-thu-quoc-gia-viet-nam.pdf"
+    )
+    assert paths.LEAFLETS_DIR == paths.SOURCES_DIR / "leaflets"
+    assert paths.LEAFLETS_MANIFEST_PATH == paths.LEAFLETS_DIR / "manifest.json"
+    assert paths.SOURCES_CURATION_DIR == paths.SOURCES_DIR / "curation"

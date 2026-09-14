@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -72,8 +73,7 @@ def build_manifest(
     *,
     build_id: str,
     source_pdf_sha256: str,
-    snapshot_id: str,
-    snapshot_sha256: str,
+    leaflet_source: Mapping[str, object],
     curated_input_digests: dict[str, str],
     config_digest: str,
 ) -> dict[str, Any]:
@@ -92,8 +92,7 @@ def build_manifest(
         "schema_version": CONTRACT_SCHEMA_VERSION,
         "build_id": build_id,
         "source_pdf_sha256": source_pdf_sha256,
-        "snapshot_id": snapshot_id,
-        "snapshot_sha256": snapshot_sha256,
+        "leaflet_source": dict(leaflet_source),
         "curated_input_digests": dict(sorted(curated_input_digests.items())),
         "config_digest": config_digest,
         "section_count": len(sections),

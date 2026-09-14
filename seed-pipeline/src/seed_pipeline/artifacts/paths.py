@@ -35,10 +35,6 @@ class ArtifactPaths:
         return self.root / "rag"
 
     @property
-    def ankhang_html_dir(self) -> Path:
-        return self.root / "ankhang-html"
-
-    @property
     def ankhang_markdown_dir(self) -> Path:
         return self.root / "ankhang-markdown"
 
@@ -62,7 +58,6 @@ class ArtifactPaths:
         return (
             self.raw_text.parent,
             self.rag_dir,
-            self.ankhang_html_dir,
             self.ankhang_markdown_dir,
             self.canonical_dir,
             self.source_final_dir,

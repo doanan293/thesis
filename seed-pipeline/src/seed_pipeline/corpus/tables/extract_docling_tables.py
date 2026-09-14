@@ -12,9 +12,13 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from seed_pipeline.config.paths import DOCLING_INTERIM_DIR, RAW_DIR, TEXT_INTERIM_DIR
+from seed_pipeline.config.paths import (
+    DOCLING_INTERIM_DIR,
+    FORMULARY_PDF_PATH,
+    TEXT_INTERIM_DIR,
+)
 
-DEFAULT_PDF = RAW_DIR / "duoc-thu-quoc-gia-viet-nam.pdf"
+DEFAULT_PDF = FORMULARY_PDF_PATH
 DEFAULT_CLEANED_MD = TEXT_INTERIM_DIR / "full.cleaned.md"
 DEFAULT_OUTPUT_DIR = DOCLING_INTERIM_DIR
 PAGE_MARKER_RE = re.compile(r"<!--\s*page\s+(\d{4})\s*-->")

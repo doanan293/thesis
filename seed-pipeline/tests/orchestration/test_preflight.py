@@ -2,7 +2,7 @@ from seed_pipeline.config.enums import Backend
 from seed_pipeline.orchestration.preflight import run_preflight
 
 
-def test_missing_heavy_pdf_requests_archive_restore(tmp_path):
+def test_missing_formulary_pdf_requests_archive_restore(tmp_path):
     report = run_preflight(
         Backend.LOCAL,
         project_root=tmp_path,
@@ -10,8 +10,8 @@ def test_missing_heavy_pdf_requests_archive_restore(tmp_path):
     )
 
     issue = next(item for item in report.issues if item.check == "raw-inputs")
-    assert "data/heavy/raw/duoc-thu-quoc-gia-viet-nam.pdf" in (issue.resource or "")
-    assert "restore data/heavy" in issue.message.lower()
+    assert "data/sources/duoc-thu-quoc-gia-viet-nam.pdf" in (issue.resource or "")
+    assert "restore data/sources" in issue.message.lower()
 
 
 def _profile_env(tmp_path, *, include_token=True):
