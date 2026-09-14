@@ -1,10 +1,12 @@
 import threading
+from pathlib import Path
 
 import pytest
 
 from seed_pipeline.integrations.kaggle.job_lock import (
     kaggle_cache_lock,
     kaggle_job_lock,
+    lock_file_name,
 )
 
 
@@ -58,3 +60,36 @@ def test_cache_lock_serializes_writers(tmp_path):
     assert entered.wait(1.0)
     assert finished.wait(1.0)
     thread.join()
+
+
+def test_lock_file_is_named_after_the_target_inside_data(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    target = data / "cache" / "text_embeddings" / "qwen3_embedding_4b_fp16.jsonl"
+
+    assert (
+        lock_file_name(target, "job", data_dir=data)
+        == "cache__text_embeddings__qwen3_embedding_4b_fp16.jsonl.job.lock"
+    )
+
+
+def test_lock_file_for_a_target_outside_data_is_marked_external(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    target = tmp_path / "elsewhere" / "run.json"
+    expected = "_external/" + target.resolve().as_posix().lstrip("/")
+
+    assert lock_file_name(target, "cache", data_dir=data) == (
+        expected.replace("/", "__") + ".cache.lock"
+    )
+
+
+def test_job_and_cache_locks_on_one_target_can_nest(tmp_path: Path) -> None:
+    target = tmp_path / "cache.jsonl"
+    lock_root = tmp_path / "locks"
+
+    with (
+        kaggle_job_lock(target, lock_root=lock_root),
+        kaggle_cache_lock(target, lock_root=lock_root),
+    ):
+        kinds = sorted(path.name.rsplit(".", 2)[-2] for path in lock_root.iterdir())
+
+    assert kinds == ["cache", "job"]

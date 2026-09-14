@@ -1,28 +1,47 @@
 from __future__ import annotations
 
 import fcntl
-import hashlib
 from collections.abc import Generator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
+from typing import Literal
 
-from seed_pipeline.config.paths import WORK_DIR
+from seed_pipeline.config.paths import DATA_DIR, LOCK_DIR
+
+LockKind = Literal["job", "cache"]
+MAX_LOCK_FILE_NAME_BYTES = 255
 
 
-def _lock_path(target: Path, lock_root: Path) -> tuple[Path, str]:
-    canonical = str(Path(target).resolve(strict=False))
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return Path(lock_root) / f"{digest}.lock", canonical
+def lock_file_name(
+    target: Path, kind: LockKind, *, data_dir: Path | None = None
+) -> str:
+    """Name a lock after its target: the path under data/ with "/" replaced by "__".
+
+    The kind is part of the name because one command holds a job lock and a cache lock on
+    the same target, and flock locks belong to the open handle, not to the process.
+    """
+    resolved = Path(target).resolve(strict=False)
+    base = Path(DATA_DIR if data_dir is None else data_dir).resolve(strict=False)
+    try:
+        relative = resolved.relative_to(base).as_posix()
+    except ValueError:
+        relative = "_external/" + resolved.as_posix().lstrip("/")
+    name = f"{relative.replace('/', '__')}.{kind}.lock"
+    if len(name.encode("utf-8")) > MAX_LOCK_FILE_NAME_BYTES:
+        raise ValueError(f"Lock target path is too long for a lock file name: {target}")
+    return name
 
 
 @contextmanager
 def _acquire(
     target: Path,
     *,
+    kind: LockKind,
     lock_root: Path,
     non_blocking: bool,
 ) -> Generator[Path, None, None]:
-    lock_path, canonical = _lock_path(target, lock_root)
+    canonical = str(Path(target).resolve(strict=False))
+    lock_path = Path(lock_root) / lock_file_name(target, kind)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as handle:
         flags = fcntl.LOCK_EX | (fcntl.LOCK_NB if non_blocking else 0)
@@ -48,8 +67,8 @@ def kaggle_job_lock(
     *,
     lock_root: Path | None = None,
 ) -> AbstractContextManager[Path]:
-    root = lock_root if lock_root is not None else (WORK_DIR / "kaggle-job-locks")
-    return _acquire(target, lock_root=root, non_blocking=True)
+    root = LOCK_DIR if lock_root is None else lock_root
+    return _acquire(target, kind="job", lock_root=root, non_blocking=True)
 
 
 def kaggle_cache_lock(
@@ -57,5 +76,5 @@ def kaggle_cache_lock(
     *,
     lock_root: Path | None = None,
 ) -> AbstractContextManager[Path]:
-    root = lock_root if lock_root is not None else (WORK_DIR / "kaggle-cache-locks")
-    return _acquire(target, lock_root=root, non_blocking=False)
+    root = LOCK_DIR if lock_root is None else lock_root
+    return _acquire(target, kind="cache", lock_root=root, non_blocking=False)

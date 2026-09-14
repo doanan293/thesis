@@ -215,10 +215,8 @@ def test_kaggle_rerank_allows_different_models_in_the_same_run(
     complete_run, monkeypatch, tmp_path
 ):
     from seed_pipeline.evaluation import rerank_service
-    from seed_pipeline.integrations.kaggle import job_lock
 
     monkeypatch.setattr(rerank_service, "WORK_DIR", tmp_path / "work")
-    monkeypatch.setattr(job_lock, "WORK_DIR", tmp_path / "work")
 
     first_entered = threading.Event()
     release_first = threading.Event()
@@ -252,10 +250,8 @@ def test_kaggle_rerank_allows_different_models_in_the_same_run(
 
 def test_kaggle_rerank_serializes_same_model_across_runs(tmp_path, monkeypatch):
     from seed_pipeline.evaluation import rerank_service
-    from seed_pipeline.integrations.kaggle import job_lock
 
     monkeypatch.setattr(rerank_service, "WORK_DIR", tmp_path / "work")
-    monkeypatch.setattr(job_lock, "WORK_DIR", tmp_path / "work")
 
     first_entered = threading.Event()
     release_first = threading.Event()
