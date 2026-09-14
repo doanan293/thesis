@@ -138,7 +138,7 @@ def ensure_runtime_profile(
     if dry_run and runtime_sha256 is None:
         return ProfileResolution(
             None,
-            Path(profile_root) / workload / spec.slug / "dry-run.json",
+            Path(profile_root) / workload / f"{spec.slug}.json",
             "benchmark-required",
         )
     if runtime_sha256 is None:

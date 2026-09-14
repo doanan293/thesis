@@ -77,6 +77,8 @@ def test_profile_store_round_trips_and_rejects_corruption(tmp_path):
         benchmark_job_sha256="d" * 64,
     )
     path = store.save(profile, model_slug="qwen3_reranker_0_6b_fp16")
+    assert path.parent.parent == tmp_path
+    assert path.name == "qwen3_reranker_0_6b_fp16.json"
 
     assert (
         store.load(profile.identity, model_slug="qwen3_reranker_0_6b_fp16") == profile

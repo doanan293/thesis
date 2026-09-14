@@ -77,7 +77,7 @@ def test_prepare_bundle_serializes_mounted_input_descriptors(tmp_path):
     assert "owner/checkpoint-slug" not in metadata["dataset_sources"]
 
 
-def test_kernel_references_prefer_sixteen_characters_and_keep_legacy(tmp_path):
+def test_kernel_reference_uses_sixteen_identity_characters(tmp_path):
     candidates = tmp_path / "candidates.jsonl"
     candidates.write_text(
         json.dumps(
@@ -104,14 +104,11 @@ def test_kernel_references_prefer_sixteen_characters_and_keep_legacy(tmp_path):
         service=UnusedKernelService(), owner="owner", source_root=Path("src")
     )
 
-    assert service.references(job) == (
-        f"owner/rerank-{job.identity.sha256[:16]}",
-        f"owner/rerank-{job.identity.sha256[:8]}",
-    )
-    assert service.reference(job) == service.references(job)[0]
+    assert service.reference(job) == f"owner/rerank-{job.identity.sha256[:16]}"
+    assert not hasattr(service, "references")
 
 
-def test_discover_falls_back_when_missing_preferred_slug_is_denied(tmp_path):
+def test_discover_reports_absent_when_the_kernel_is_confirmed_missing(tmp_path):
     candidates = tmp_path / "candidates.jsonl"
     candidates.write_text(
         json.dumps(
@@ -155,6 +152,6 @@ def test_discover_falls_back_when_missing_preferred_slug_is_denied(tmp_path):
 
     state = service.discover(job)
 
-    assert state.presence is KernelPresence.EXISTS
-    assert state.reference.endswith(job.identity.sha256[:8])
-    assert fake.checked == list(service.references(job))
+    assert state.presence is KernelPresence.ABSENT
+    assert state.reference == service.reference(job)
+    assert fake.checked == [service.reference(job)]

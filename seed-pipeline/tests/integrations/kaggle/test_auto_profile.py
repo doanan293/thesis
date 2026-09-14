@@ -195,6 +195,14 @@ def test_inference_cache_policy_change_invalidates_cached_profile(
     assert result.profile.identity.payload["inference_cache_policy_sha256"] == (
         original(require_model(MODEL)).sha256
     )
+    saved = list(profile_root.rglob("*.json"))
+    assert len(saved) == 1
+    assert (
+        json.loads(saved[0].read_text(encoding="utf-8"))["identity"][
+            "inference_cache_policy_sha256"
+        ]
+        == original(require_model(MODEL)).sha256
+    )
 
 
 def test_dry_run_cache_miss_does_not_benchmark_or_write(tmp_path):

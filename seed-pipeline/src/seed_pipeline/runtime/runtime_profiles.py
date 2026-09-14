@@ -275,7 +275,7 @@ class RuntimeProfileStore:
 
     def path(self, identity: RuntimeProfileIdentity, *, model_slug: str) -> Path:
         workload = str(identity.payload["workload"])
-        return self.root / workload / model_slug / f"{identity.sha256}.json"
+        return self.root / workload / f"{model_slug}.json"
 
     def load(
         self, identity: RuntimeProfileIdentity, *, model_slug: str

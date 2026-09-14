@@ -111,30 +111,22 @@ class PipelineKernelService:
                 archive.write(path, arcname=str(path.relative_to(self.source_root)))
         return base64.b64encode(buffer.getvalue()).decode("ascii")
 
-    def references(self, job: StageJob) -> tuple[str, ...]:
-        base = f"{self.owner}/{job.stage.value}-"
-        preferred = base + job.identity.sha256[:16]
-        legacy = base + job.identity.sha256[:8]
-        return (preferred, legacy) if preferred != legacy else (preferred,)
-
     def reference(self, job: StageJob) -> str:
-        return self.references(job)[0]
+        return f"{self.owner}/{job.stage.value}-{job.identity.sha256[:16]}"
 
     def discover(self, job: StageJob) -> KernelRemoteState:
-        for reference in self.references(job):
-            state = self.service.inspect_state(reference)
-            if state.presence is KernelPresence.UNKNOWN:
-                if (
-                    "kernels.get" in state.detail.casefold()
-                    and self.service.confirm_missing(reference)
-                ):
-                    continue
-                raise KaggleRemoteStateError(
-                    f"Cannot inspect Kaggle kernel {reference}: {state.detail}"
-                )
-            if state.presence is KernelPresence.EXISTS:
-                return state
-        return KernelRemoteState(self.reference(job), KernelPresence.ABSENT)
+        reference = self.reference(job)
+        state = self.service.inspect_state(reference)
+        if state.presence is KernelPresence.UNKNOWN:
+            if (
+                "kernels.get" in state.detail.casefold()
+                and self.service.confirm_missing(reference)
+            ):
+                return KernelRemoteState(reference, KernelPresence.ABSENT)
+            raise KaggleRemoteStateError(
+                f"Cannot inspect Kaggle kernel {reference}: {state.detail}"
+            )
+        return state
 
     def push(self, bundle: Path, *, timeout_seconds: int) -> None:
         self.service.push(bundle, timeout_seconds=timeout_seconds)
