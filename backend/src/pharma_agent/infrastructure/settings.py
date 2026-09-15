@@ -106,7 +106,7 @@ class RerankSettings(BaseModel):
     # A single query (candidate_k=30) is scored in full, like the evaluation.
     max_candidates: int = Field(default=40, ge=1)
     timeout_seconds: float = 120.0
-    # Match the server's parallel slots (llama-server --parallel / LLAMA_RERANKER_PARALLEL).
+    # Concurrent /v1/rerank requests; each carries a whole search round (compose sets 1).
     max_concurrent: int = Field(default=2, ge=1)
 
 

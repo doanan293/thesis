@@ -324,7 +324,7 @@ dưới 0,01 USD mỗi lượt với giá hiện tại của `gpt-5-nano` và `g
 | `retrieval.rerank.model` | `qwen3-reranker:4b-fp16` |
 | `retrieval.rerank.top_n` | 8 |
 | `retrieval.rerank.max_candidates` | 40 ứng viên được chấm mỗi vòng search |
-| `retrieval.rerank.max_concurrent` | 2, đặt bằng số slot `--parallel` của llama-server |
+| `retrieval.rerank.max_concurrent` / `timeout_seconds` | 2 / 120; compose đặt 1 request đồng thời (mỗi request chứa mọi ứng viên của vòng search) và timeout ít nhất gấp đôi p95 CPU đo được |
 | `retrieval.rerank.api_key` | trống; khi đặt thì gửi header `Authorization: Bearer` |
 | `retrieval.embedding.timeout_seconds` / `max_retries` | 60 / 2 |
 | `retrieval.hydrate.window` | 1 chunk mỗi bên cho `chunk_window` |

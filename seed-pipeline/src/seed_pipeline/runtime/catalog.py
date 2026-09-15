@@ -58,7 +58,6 @@ class ModelSpec:
     topology: ModelTopology
     kaggle_parallel: int
     kaggle_request_batch_size: int
-    local_parallel: int = 1
     local_request_batch_size: int = 1
     kaggle_context_per_slot: int = 2048
     kaggle_logical_batch_size: int = 2048

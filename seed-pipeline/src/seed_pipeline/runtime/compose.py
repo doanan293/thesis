@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from seed_pipeline.runtime.catalog import ModelKind, ModelSpec
 from seed_pipeline.runtime.client import LlamaCppClient
+from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
+
+_LLAMA_CPP_IMAGE = re.compile(
+    r"^\s*image:\s*(ghcr\.io/ggml-org/llama\.cpp:\S+)\s*$", re.MULTILINE
+)
 
 
 class ModelArtifactError(RuntimeError):
@@ -43,6 +50,33 @@ def verify_model_artifact(root: Path, spec: ModelSpec) -> Path:
     return model
 
 
+def compose_llama_cpp_image(compose_file: Path) -> str:
+    """The llama.cpp server image tag that compose.yaml pins."""
+    match = _LLAMA_CPP_IMAGE.search(Path(compose_file).read_text(encoding="utf-8"))
+    if match is None:
+        raise ValueError(f"{compose_file} declares no llama.cpp server image")
+    return match.group(1)
+
+
+def reranker_environment(runtime: RuntimeCandidate) -> dict[str, str]:
+    """Root .env variables that compose.yaml maps to llama-reranker's LLAMA_ARG_*."""
+    if not (
+        runtime.context_per_slot
+        == runtime.logical_batch_size
+        == runtime.physical_batch_size
+    ):
+        raise ValueError(
+            "reranker runtime must use one size for context, batch and ubatch"
+        )
+    environment = {
+        "LLAMA_RERANKER_PARALLEL": str(runtime.server_slots),
+        "LLAMA_RERANKER_UBATCH_SIZE": str(runtime.physical_batch_size),
+    }
+    if runtime.threads is not None:
+        environment["LLAMA_RERANKER_THREADS"] = str(runtime.threads)
+    return environment
+
+
 class SubprocessRunner:
     def run(self, args, env=None, capture_output=False):
         completed = subprocess.run(
@@ -73,20 +107,31 @@ class LlamaCppComposeManager:
         self.startup_timeout = float(startup_timeout)
         self.poll_interval = float(poll_interval)
 
-    def ensure(self, role: str, spec: ModelSpec, gguf_root: Path) -> str:
+    def ensure(
+        self,
+        role: str,
+        spec: ModelSpec,
+        gguf_root: Path,
+        runtime: RuntimeCandidate | None = None,
+    ) -> str:
         if role not in {"embedding", "reranker"}:
             raise ValueError(f"Unsupported llama.cpp service role: {role}")
         if role == "embedding" and spec.kind is not ModelKind.EMBEDDING:
             raise ValueError(f"Embedding service cannot load {spec.kind.value} model")
         if role == "reranker" and spec.kind is not ModelKind.RERANKER:
             raise ValueError(f"Reranker service cannot load {spec.kind.value} model")
+        if runtime is not None and role != "reranker":
+            raise ValueError(
+                "runtime settings apply to the llama-reranker service only"
+            )
         verify_model_artifact(gguf_root, spec)
         service = f"llama-{role}"
         prefix = f"LLAMA_{role.upper()}"
         environment = dict(self.environment)
         environment["GGUF_DIR"] = str(Path(gguf_root).resolve())
         environment[f"{prefix}_MODEL"] = spec.canonical_filename
-        environment[f"{prefix}_PARALLEL"] = str(spec.local_parallel)
+        if runtime is not None:
+            environment.update(reranker_environment(runtime))
         command = [
             "docker",
             "compose",
@@ -112,7 +157,19 @@ class LlamaCppComposeManager:
             except Exception as exc:
                 last_error = exc
                 time.sleep(self.poll_interval)
-        logs = self.runner.run(
+        logs = self.logs(role, environment=environment)
+        raise ComposeStartupError(
+            f"{service} did not become healthy: {last_error}\n{logs[-8000:]}"
+        )
+
+    def logs(
+        self,
+        role: str,
+        *,
+        tail: int = 80,
+        environment: Mapping[str, str] | None = None,
+    ) -> str:
+        return self.runner.run(
             [
                 "docker",
                 "compose",
@@ -120,14 +177,11 @@ class LlamaCppComposeManager:
                 str(self.compose_file),
                 "logs",
                 "--tail",
-                "80",
-                service,
+                str(tail),
+                f"llama-{role}",
             ],
-            env=environment,
+            env=dict(self.environment if environment is None else environment),
             capture_output=True,
-        )
-        raise ComposeStartupError(
-            f"{service} did not become healthy: {last_error}\n{logs[-8000:]}"
         )
 
 

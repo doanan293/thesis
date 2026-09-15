@@ -51,6 +51,9 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   `/health` báo `CORPUS_NOT_READY` nếu metadata collection không khớp. Reranker chỉ chạy qua
   `/v1/rerank`, nên file GGUF phải là bản convert classifier (có tensor `cls.output.weight`);
   đặt `LLAMA_RERANKER_PROTOCOL=none` để bỏ rerank.
+- Reranker trên CPU: `LLAMA_RERANKER_PARALLEL` (`-np`), `LLAMA_RERANKER_UBATCH_SIZE` (dùng chung cho `-c`,
+  `-b`, `-ub`, tối thiểu 2048) và `LLAMA_RERANKER_THREADS` trong `.env` ở root; `RERANK_TIMEOUT_SECONDS` là
+  timeout của backend cho một request rerank.
 - Dùng OpenAI cloud hoặc server OpenAI-compatible khác thay cho proxy: đặt `LLM_BASE_URL` trong
   `.env` ở root.
 - Lần đầu cần nạp corpus vào container: `docker compose cp seed-pipeline/data/corpus/formulary backend:/tmp/bundle` rồi
