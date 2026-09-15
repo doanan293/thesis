@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +34,8 @@ from seed_pipeline.integrations.kaggle.dependencies import (
 from seed_pipeline.integrations.kaggle.kernel_service import KernelService
 from seed_pipeline.integrations.kaggle.kernels import PipelineKernelService
 from seed_pipeline.integrations.kaggle.models import (
+    KernelPresence,
+    KernelStatus,
     PipelineResult,
     StageName,
     StageRequest,
@@ -47,6 +50,7 @@ from seed_pipeline.integrations.kaggle.workspace import unwind_on_sigterm
 from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate, canonical_sha256
 
 DEFAULT_ENV_PATH = PROJECT_ENV_FILE
+AUTO_ACCOUNT = "auto"
 
 
 @dataclass(frozen=True)
@@ -96,6 +100,70 @@ def resolve_profile_execution_contexts(
             )
         )
     return tuple(contexts)
+
+
+def resolve_session_contexts(
+    kaggle_account: str | None,
+    *,
+    env_file: Path = DEFAULT_ENV_PATH,
+) -> tuple[KaggleExecutionContext, ...]:
+    """Accounts a quota-aware session may use: every profile for `auto`, else one."""
+    if kaggle_account is not None and kaggle_account.strip().casefold() == AUTO_ACCOUNT:
+        contexts = resolve_profile_execution_contexts(env_file=env_file)
+    else:
+        contexts = (resolve_execution_context(kaggle_account, env_file=env_file),)
+    if not contexts or any(context.profile is None for context in contexts):
+        raise ValueError(
+            "Kaggle sessions need account profiles: set KAGGLE_ACCOUNT_DEFAULT, "
+            "KAGGLE_SHARED_OWNER and KAGGLE_ACC<N>_USERNAME/KAGGLE_ACC<N>_API_TOKEN "
+            "in seed-pipeline/.env"
+        )
+    return contexts
+
+
+def active_kernel_profile(
+    contexts: Sequence[KaggleExecutionContext],
+    *,
+    stage: StageName,
+    model: str,
+    input_path: Path,
+    output_dir: Path,
+    gguf_root: Path = GGUF_ROOT,
+    runtime_profile: RuntimeCandidate | None = None,
+) -> str | None:
+    """Profile whose account already queues or runs this job's kernel, if any.
+
+    A command restarted after a crash or reboot attaches to that kernel instead of
+    starting a duplicate on the account with the most quota.
+    """
+    profiled = [context for context in contexts if context.profile is not None]
+    if not profiled:
+        return None
+    job = get_stage_adapter(stage).build_job(
+        StageRequest(
+            stage,
+            model,
+            Path(input_path),
+            Path(output_dir),
+            Path(gguf_root),
+            profiled[0].owners,
+            runtime_profile=runtime_profile,
+        )
+    )
+    for context in profiled:
+        assert context.profile is not None
+        kernels = PipelineKernelService(
+            KernelService(context.runner, context.owners.execution),
+            owner=context.owners.execution,
+            source_root=PROJECT_ROOT / "src",
+        )
+        state = kernels.discover(job)
+        if state.presence is KernelPresence.EXISTS and state.status in {
+            KernelStatus.QUEUED,
+            KernelStatus.RUNNING,
+        }:
+            return context.profile.name
+    return None
 
 
 def owner_configuration(

@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -12,10 +13,18 @@ from seed_pipeline.integrations.kaggle.checkpoint_inheritance import (
 from seed_pipeline.integrations.kaggle.checkpoints import CheckpointState
 from seed_pipeline.integrations.kaggle.dataset_service import DatasetService
 from seed_pipeline.integrations.kaggle.dependencies import DependencyService
-from seed_pipeline.integrations.kaggle.models import CloudArtifact, StageJob, StageName
+from seed_pipeline.integrations.kaggle.models import (
+    CloudArtifact,
+    KernelPresence,
+    KernelRemoteState,
+    KernelStatus,
+    StageJob,
+    StageName,
+)
 from seed_pipeline.integrations.kaggle.service import (
     resolve_execution_context,
     resolve_profile_execution_contexts,
+    resolve_session_contexts,
 )
 
 MODEL = "qwen3-reranker:0.6b-fp16"
@@ -287,3 +296,84 @@ def test_make_orchestrator_wires_the_local_source_and_sink(tmp_path, monkeypatch
     assert isinstance(inheritance, CheckpointInheritanceService)
     assert inheritance.local is source
     assert orchestrator.artifact_sink is _ignore_artifact
+
+
+def test_session_contexts_for_auto_are_every_profile(tmp_path, monkeypatch):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+
+    contexts = resolve_session_contexts("auto", env_file=env_file)
+
+    assert [c.profile.name for c in contexts if c.profile] == ["acc1", "acc2"]
+
+
+@pytest.mark.parametrize(("account", "expected"), [("acc2", "acc2"), (None, "acc1")])
+def test_session_contexts_for_one_account(tmp_path, monkeypatch, account, expected):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+
+    contexts = resolve_session_contexts(account, env_file=env_file)
+
+    assert [c.profile.name for c in contexts if c.profile] == [expected]
+
+
+def test_session_contexts_require_account_profiles(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "KAGGLE_USERNAME=legacy-user\nKAGGLE_API_TOKEN=legacy-token\n",
+        encoding="utf-8",
+    )
+    _clear_kaggle_environment(monkeypatch)
+
+    with pytest.raises(ValueError, match="need account profiles"):
+        resolve_session_contexts(None, env_file=env_file)
+
+
+def test_active_kernel_profile_finds_the_account_running_the_job(tmp_path, monkeypatch):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+    contexts = resolve_profile_execution_contexts(env_file=env_file)
+    candidates = tmp_path / "candidates.jsonl"
+    candidates.write_text(
+        json.dumps(
+            {
+                "query_id": "q1",
+                "query": "query",
+                "candidates": [{"chunk_id": "c1", "document_text": "text"}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "manifest.json").write_text("{}\n", encoding="utf-8")
+    inspected: list[str] = []
+
+    class FakeKernelService:
+        def __init__(self, runner, owner):
+            self.owner = owner
+
+        def inspect_state(self, reference):
+            inspected.append(reference)
+            status = (
+                KernelStatus.RUNNING
+                if self.owner == "secondary-user"
+                else KernelStatus.COMPLETE
+            )
+            return KernelRemoteState(reference, KernelPresence.EXISTS, status)
+
+    monkeypatch.setattr(kaggle_service, "KernelService", FakeKernelService)
+
+    profile = kaggle_service.active_kernel_profile(
+        contexts,
+        stage=StageName.RERANK,
+        model=MODEL,
+        input_path=candidates,
+        output_dir=tmp_path / "output",
+        runtime_profile=rerank_runtime_profile(MODEL),
+    )
+
+    assert profile == "acc2"
+    assert [reference.split("/")[0] for reference in inspected] == [
+        "primary-user",
+        "secondary-user",
+    ]
