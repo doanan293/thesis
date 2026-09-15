@@ -1,22 +1,24 @@
 {
   "artifact_type": "retrieval_candidates",
-  "created_at": "2026-09-14T16:29:13.117992+00:00",
+  "created_at": "2026-09-15T17:27:19.241592+00:00",
   "data_filename": "candidates.jsonl",
-  "data_sha256": "aa6b398f051f6e9f46b373243f46d84b7958ce142a563c2c8c8677b3f73dc92f",
+  "data_sha256": "664b8318e4b22ed0872d3f8b2d42a986202be78be386b037b056a85bc0b9996b",
   "identity": {
     "candidate_k": 30,
     "chunker_version": "chunker-v1",
     "collection_name": "eval_qwen3_embedding_4b_fp16",
     "embedding_model": "qwen3-embedding:4b-fp16",
     "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
-    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "evaluation_sha256": "a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af",
     "limit": null,
     "pair_count": 300000,
     "prefetch_k": null,
-    "query_embeddings_sha256": "73306bfad48a3464bc209f5f3d3cf74e205055197522e43096fe11a2a6ad23c8",
-    "release_id": "46d4598d-f7f1-4b0f-b5c9-d41100356fdc",
+    "query_embeddings_sha256": "6ecef0709378dee1b29c12780ca227f377b530e0f80f06a05f87f0edd4089953",
+    "release_id": "f5d76763-b7fc-44b0-b6eb-55f5476b3290",
     "retriever": "dense",
-    "rrf_k": 2
+    "rrf_k": 2,
+    "sample": null,
+    "sample_seed": null
   },
   "record_count": 10000,
   "schema_version": 1

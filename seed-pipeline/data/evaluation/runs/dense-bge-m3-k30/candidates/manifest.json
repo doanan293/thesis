@@ -1,22 +1,24 @@
 {
   "artifact_type": "retrieval_candidates",
-  "created_at": "2026-09-14T15:40:15.776328+00:00",
+  "created_at": "2026-09-15T16:47:23.191213+00:00",
   "data_filename": "candidates.jsonl",
-  "data_sha256": "953c277a00262ba69a548aabb96d0d04ee317f157359656e28d47a29a90eef20",
+  "data_sha256": "f55f3a2f2fb53fd329ed2d0efb0c5efd653e3e01b045954d67aa0ae93e7eef81",
   "identity": {
     "candidate_k": 30,
     "chunker_version": "chunker-v1",
     "collection_name": "eval_bge_m3_567m_fp16",
     "embedding_model": "bge-m3:567m-fp16",
     "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
-    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "evaluation_sha256": "a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af",
     "limit": null,
     "pair_count": 300000,
     "prefetch_k": null,
-    "query_embeddings_sha256": "80cad8320fdea1919c87a22a553c515ed0f16b9399f2279b2804c3a9b450b1d2",
-    "release_id": "e20902d9-7b4f-4f2c-af2b-3ae7941769b3",
+    "query_embeddings_sha256": "5a8ee718e7eae643ef5baad257263721202b3747938592afb01a73325a0d84be",
+    "release_id": "78d59701-207a-48c1-b3be-6f365f035e8b",
     "retriever": "dense",
-    "rrf_k": 2
+    "rrf_k": 2,
+    "sample": null,
+    "sample_seed": null
   },
   "record_count": 10000,
   "schema_version": 1

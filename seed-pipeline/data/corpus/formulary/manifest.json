@@ -48,6 +48,14 @@
     "embeddings/qwen3_embedding_0_6b_fp16.jsonl": {
       "sha256": "cd77558bb9da6aeddf0d63386a1ce9e18d79cf49d616e4f0ae565d93c7bf1d6d",
       "bytes": 139223626
+    },
+    "embeddings/qwen3_embedding_4b_fp16.jsonl": {
+      "sha256": "e6a74aafb20f3891e43e848bc4035fbd19cdae2b2b54ceb987544bcaf0ddb0ca",
+      "bytes": 343581258
+    },
+    "embeddings/qwen3_embedding_8b_fp16.jsonl": {
+      "sha256": "7d85a7f6d6ed2081d87bb6ab38c6d4923b93f7fc9bde01c50072cdd532947006",
+      "bytes": 547938890
     }
   },
   "embeddings": [
@@ -65,6 +73,16 @@
       "model": "qwen3-embedding:0.6b-fp16",
       "dims": 1024,
       "file": "embeddings/qwen3_embedding_0_6b_fp16.jsonl"
+    },
+    {
+      "model": "qwen3-embedding:4b-fp16",
+      "dims": 2560,
+      "file": "embeddings/qwen3_embedding_4b_fp16.jsonl"
+    },
+    {
+      "model": "qwen3-embedding:8b-fp16",
+      "dims": 4096,
+      "file": "embeddings/qwen3_embedding_8b_fp16.jsonl"
     }
   ]
 }
