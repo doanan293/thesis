@@ -55,3 +55,23 @@ def test_metrics_identity_includes_parameters_and_rerank_variant():
     )
 
     assert len({baseline.sha256, reranked.sha256, changed_cutoff.sha256}) == 3
+
+
+def test_metrics_identity_changes_with_the_relevance_judgments():
+    first = MetricsArtifactIdentity.create(
+        evaluation_sha256="evaluation",
+        candidate_data_sha256="candidate",
+        top_k=30,
+        window_size=3,
+        judgments_sha256="judgments-v1",
+    )
+    second = MetricsArtifactIdentity.create(
+        evaluation_sha256="evaluation",
+        candidate_data_sha256="candidate",
+        top_k=30,
+        window_size=3,
+        judgments_sha256="judgments-v2",
+    )
+
+    assert first.payload["judgments_sha256"] == "judgments-v1"
+    assert first.sha256 != second.sha256

@@ -24,8 +24,10 @@ from seed_pipeline.evaluation.build_dataset import (
     EvaluationBuildRequest,
     build_evaluation_dataset,
 )
+from seed_pipeline.evaluation.relevance_judgments import build_evaluation_judgments
 
 evaluation_app = typer.Typer(no_args_is_help=True, add_completion=False)
+GOLD_EVALUATION_PATH = GOLD_DIR / "section_retrieval_eval.jsonl"
 
 
 def evaluation_build_command(
@@ -51,6 +53,7 @@ def evaluation_build_command(
             evaluation_row_count=evaluation_row_count,
         )
     )
+    judgments = build_evaluation_judgments(result.evaluation_path, bundle)
     return CommandResult(
         command="evaluation build",
         status=CommandStatus.COMPLETE,
@@ -60,6 +63,7 @@ def evaluation_build_command(
             "patient_queries": str(result.patient_queries_path),
             "patient_query_count": result.patient_query_count,
             "evaluation_row_count": result.evaluation_row_count,
+            "judgments": str(judgments),
         },
     )
 
@@ -88,4 +92,34 @@ def evaluation_build(
             patient_query_count=patient_query_count,
             evaluation_row_count=evaluation_row_count,
         ),
+    )
+
+
+def evaluation_judgments_command(
+    *, evaluation: Path = GOLD_EVALUATION_PATH, bundle: Path = BUNDLE_DIR
+) -> CommandResult:
+    try:
+        path = build_evaluation_judgments(evaluation, bundle)
+    except BundleValidationError as exc:
+        raise invalid_bundle(exc) from exc
+    return CommandResult(
+        command="evaluation judgments",
+        status=CommandStatus.COMPLETE,
+        artifact=path,
+        details={},
+    )
+
+
+@evaluation_app.command("judgments")
+def evaluation_judgments(
+    ctx: typer.Context,
+    evaluation: Annotated[
+        Path, typer.Option("--evaluation", dir_okay=False)
+    ] = GOLD_EVALUATION_PATH,
+    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False)] = BUNDLE_DIR,
+) -> None:
+    """Rebuild the relevance judgments of a gold file; runs keep their candidates."""
+    run_handler(
+        state_from_context(ctx),
+        lambda: evaluation_judgments_command(evaluation=evaluation, bundle=bundle),
     )

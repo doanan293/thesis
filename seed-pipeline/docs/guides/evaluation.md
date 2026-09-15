@@ -10,6 +10,15 @@ uv run seed data pull --kaggle-account acc1
 
 Lệnh tải bundle `data/corpus/formulary` (embedding của 5 model), bộ gold `data/evaluation/gold`, candidates và artifact rerank của các run, cache vector query và điểm rerank, rồi kiểm sha256 từng file. `run.json`, manifest và `report.md` của các run đã có trong Git.
 
+Metrics đọc thêm file nhãn `data/evaluation/gold/section_retrieval_eval.judgments.jsonl` (kèm `section_retrieval_eval.judgments.manifest.json` ghi sha256 của bộ gold và phiên bản luật). Với câu hỏi nhóm `formulary` và `multi_intent`, gold chỉ ghi section Dược thư; file nhãn chấp nhận thêm chunk của tờ hướng dẫn biệt dược có đúng các hoạt chất của chuyên luận đó và nằm trong mục trả lời cùng ý hỏi (chỉ định, liều dùng, chống chỉ định, tác dụng phụ, quá liều, thận trọng, dược lý, tương tác, thai kỳ và cho con bú). Hoạt chất đọc từ mục "Thành phần" của trang; thuốc phối hợp chỉ khớp chuyên luận phối hợp cùng thành phần. Mục của chunk lấy theo heading của trang, kể cả dòng tiêu đề mất dấu `#` như "- Thận trọng khi sử dụng". Đổi luật chỉ cần dựng lại file nhãn rồi chạy lại metrics; candidates, cache embedding và điểm rerank giữ nguyên:
+
+```bash
+uv run seed evaluation judgments
+uv run seed metrics --run hybrid-qwen4b-p50-k30-rrf2 --top-k 30 --force
+```
+
+Report ghi `judgments_sha256` trong identity, và `seed metrics compare` chỉ so hai report dùng cùng file nhãn.
+
 ## 2. Môi trường riêng cho đánh giá
 
 ```bash

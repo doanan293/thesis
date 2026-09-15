@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 DEFAULT_METRIC_KS = (3, 5, 10, 30)
 
@@ -22,7 +22,23 @@ def expected_chunk_ids(row: dict) -> list[str]:
     return values
 
 
-def is_hit(retrieved_payload: dict, expected: dict, window_size: int = 3) -> bool:
+def _chunk_id(payload: dict) -> str:
+    return str(payload.get("chunk_id") or payload.get("chunk_key") or "")
+
+
+def is_hit(
+    retrieved_payload: dict,
+    expected: dict,
+    window_size: int = 3,
+    accepted_chunk_ids: frozenset[str] = frozenset(),
+) -> bool:
+    """Whether a retrieved chunk answers the gold row.
+
+    `accepted_chunk_ids` are chunks outside the gold sections that relevance judgments
+    accept for this row (see evaluation/relevance_judgments.py).
+    """
+    if accepted_chunk_ids and _chunk_id(retrieved_payload) in accepted_chunk_ids:
+        return True
     granularity = expected.get("retrieval_granularity", "section")
     answer_mode = expected.get("answer_mode", "single")
     expected_section_id = expected.get("expected_section_id", "")
@@ -36,10 +52,7 @@ def is_hit(retrieved_payload: dict, expected: dict, window_size: int = 3) -> boo
         return retrieved_section_id in expected_sections
 
     if granularity == "chunk_exact":
-        retrieved_chunk_id = retrieved_payload.get("chunk_id") or str(
-            retrieved_payload.get("chunk_key") or ""
-        )
-        return retrieved_chunk_id in expected_chunk_ids(expected)
+        return _chunk_id(retrieved_payload) in expected_chunk_ids(expected)
 
     if retrieved_section_id != expected_section_id:
         return False
@@ -68,27 +81,39 @@ def score_ranked_payloads(
     top_k: int = 10,
     window_size: int = 3,
     metric_ks: Iterable[int] = DEFAULT_METRIC_KS,
+    judgments: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, float]:
+    """Hit@k, MRR and multi-section recall of one ranked candidate list.
+
+    `judgments` maps a gold section id to the extra chunk ids accepted for it.
+    """
+    judged = judgments or {}
+    accepted = frozenset().union(*judged.values()) if judged else frozenset()
     hits: dict[str, float] = {}
     expected_sections = expected_section_ids(query_row)
     retrieved_sections = [
         p.get("section_id") for p in retrieved_payloads if p.get("section_id")
     ]
+    retrieved_chunks = [_chunk_id(p) for p in retrieved_payloads]
 
     for k in metric_ks:
         if k > top_k:
             continue
         payloads_at_k = retrieved_payloads[:k]
         hits[f"hit@{k}"] = (
-            1 if any(is_hit(p, query_row, window_size) for p in payloads_at_k) else 0
+            1
+            if any(is_hit(p, query_row, window_size, accepted) for p in payloads_at_k)
+            else 0
         )
 
         if query_row.get("answer_mode") == "multi_required":
             retrieved_set_at_k = set(retrieved_sections[:k])
+            chunks_at_k = set(retrieved_chunks[:k])
             matched_count = sum(
                 1
                 for section_id in expected_sections
                 if section_id in retrieved_set_at_k
+                or chunks_at_k & judged.get(section_id, frozenset())
             )
             total = len(expected_sections) or 1
             hits[f"multi_section_recall@{k}"] = matched_count / total
@@ -100,7 +125,7 @@ def score_ranked_payloads(
 
     first_hit_rank = None
     for rank, payload in enumerate(retrieved_payloads, start=1):
-        if is_hit(payload, query_row, window_size):
+        if is_hit(payload, query_row, window_size, accepted):
             first_hit_rank = rank
             break
     hits["mrr"] = 1.0 / first_hit_rank if first_hit_rank else 0.0

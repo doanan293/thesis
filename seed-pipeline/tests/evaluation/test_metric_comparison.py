@@ -68,6 +68,7 @@ def _publish(
     mrr: dict[str, float],
     *,
     candidate_data_sha256: str = "c" * 64,
+    judgments_sha256: str = "j" * 64,
 ) -> None:
     rows = [
         {"query_id": query_id, "hit@10": 1, "mrr": value}
@@ -81,6 +82,7 @@ def _publish(
             top_k=30,
             window_size=3,
             rerank_variant_sha256=f"{model} variant",
+            judgments_sha256=judgments_sha256,
         ),
         {"count": len(rows), "mrr": sum(mrr.values())},
         {"eval_group": {}, "difficulty": {}},
@@ -127,6 +129,16 @@ def test_reports_over_different_candidates_are_not_compared(tmp_path: Path) -> N
     _publish(tmp_path, CANDIDATE, {"q1": 1.0}, candidate_data_sha256="d" * 64)
 
     with pytest.raises(ArtifactContractError, match="candidate_data_sha256"):
+        run_metric_comparison(_request(tmp_path))
+
+
+def test_reports_scored_with_different_judgments_are_not_compared(
+    tmp_path: Path,
+) -> None:
+    _publish(tmp_path, BASELINE, {"q1": 0.5})
+    _publish(tmp_path, CANDIDATE, {"q1": 1.0}, judgments_sha256="k" * 64)
+
+    with pytest.raises(ArtifactContractError, match="judgments_sha256"):
         run_metric_comparison(_request(tmp_path))
 
 

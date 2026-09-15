@@ -16,6 +16,7 @@ seed validate
 seed bundle export --output DIR
 seed bundle embed --bundle DIR --backend local|kaggle --model MODEL
 seed evaluation build [--bundle DIR]
+seed evaluation judgments [--evaluation FILE] [--bundle DIR]
 seed embed queries --backend local|kaggle
 seed retrieve --run NAME [--limit N | --sample N [--sample-seed S]]
 seed rerank --run NAME --backend local|kaggle --model MODEL [--kaggle-account accN|auto] [--max-runs N] [--recover-kernel OWNER/SLUG]

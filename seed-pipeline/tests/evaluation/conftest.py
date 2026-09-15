@@ -3,6 +3,10 @@ from pathlib import Path
 import pytest
 
 from seed_pipeline.evaluation.artifact_contracts import sha256_file
+from seed_pipeline.evaluation.relevance_judgments import (
+    judgments_path,
+    write_judgments,
+)
 from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
@@ -56,6 +60,9 @@ def _create_run(tmp_path: Path, retriever: object, candidate_k: int) -> Path:
     evaluation_path.write_text(
         '{"query_id":"query-1","query":"test query","relevant_section_ids":["section-1"]}\n',
         encoding="utf-8",
+    )
+    write_judgments(
+        [], evaluation_path=evaluation_path, output_path=judgments_path(evaluation_path)
     )
     identity = RunIdentity(
         evaluation_path=str(evaluation_path),

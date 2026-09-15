@@ -65,6 +65,7 @@ class MetricsArtifactIdentity:
         top_k: int,
         window_size: int,
         rerank_variant_sha256: str | None = None,
+        judgments_sha256: str | None = None,
     ) -> MetricsArtifactIdentity:
         payload: dict[str, Any] = {
             "contract_version": METRICS_CONTRACT_VERSION,
@@ -75,4 +76,6 @@ class MetricsArtifactIdentity:
         }
         if rerank_variant_sha256 is not None:
             payload["rerank_variant_sha256"] = rerank_variant_sha256
+        if judgments_sha256 is not None:
+            payload["judgments_sha256"] = judgments_sha256
         return cls(payload, canonical_sha256(payload))

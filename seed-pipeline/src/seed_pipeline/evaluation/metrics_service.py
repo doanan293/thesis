@@ -16,6 +16,11 @@ from seed_pipeline.evaluation.metrics_artifacts import (
     MetricsArtifactResult,
     publish_metrics_artifact,
 )
+from seed_pipeline.evaluation.relevance_judgments import (
+    LoadedJudgments,
+    judgments_path,
+    load_judgments,
+)
 from seed_pipeline.evaluation.rerank_artifacts import load_registered_rerank_bundle
 from seed_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
@@ -161,6 +166,7 @@ class MetricInputs:
     evaluation_sha256: str
     rerank_variants: tuple[RerankMetricInput, ...]
     run_root: Path
+    judgments: LoadedJudgments
 
 
 def select_rerank_variants(
@@ -193,6 +199,11 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
         raise ArtifactContractError(
             "Run evaluation input changed after retrieval; create a new --run"
         )
+    # Judgments change only what counts as a hit, so the run's candidates stay valid.
+    judgments = load_judgments(
+        judgments_path(evaluation),
+        evaluation_sha256=record.identity.evaluation_sha256,
+    )
     rows = {str(row["query_id"]): row for row in iter_jsonl_objects(evaluation)}
     rerank_inputs: list[RerankMetricInput] = []
     for variant in select_rerank_variants(
@@ -224,6 +235,7 @@ def load_and_validate_metric_inputs(request: MetricsRequest) -> MetricInputs:
         record.identity.evaluation_sha256,
         tuple(rerank_inputs),
         request.run_root,
+        judgments,
     )
 
 
@@ -265,7 +277,11 @@ def _records(
             ]
         payloads = [c.payload for c in candidates]
         hits = score_ranked_payloads(
-            payloads, row, top_k=top_k, window_size=window_size
+            payloads,
+            row,
+            top_k=top_k,
+            window_size=window_size,
+            judgments=inputs.judgments.for_query(str(record["query_id"])),
         )
         accumulate_metrics(metrics, hits, row)
         accumulate_breakdown_metrics(breakdowns, hits, row)
@@ -292,6 +308,7 @@ def run_metrics(request: MetricsRequest) -> MetricsResult:
         candidate_data_sha256=inputs.candidate_data_sha256,
         top_k=request.top_k,
         window_size=request.window_size,
+        judgments_sha256=inputs.judgments.sha256,
     )
     baseline_artifact = publish_metrics_artifact(
         inputs.run_root,
@@ -314,6 +331,7 @@ def run_metrics(request: MetricsRequest) -> MetricsResult:
             top_k=request.top_k,
             window_size=request.window_size,
             rerank_variant_sha256=rerank_input.variant_sha256,
+            judgments_sha256=inputs.judgments.sha256,
         )
         reranked_artifacts.append(
             publish_metrics_artifact(

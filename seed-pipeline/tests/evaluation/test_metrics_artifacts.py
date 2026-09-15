@@ -1,9 +1,14 @@
+import json
 import re
 from pathlib import Path
 
 import pytest
 
 from seed_pipeline.artifacts.bundle import ArtifactBundle
+from seed_pipeline.evaluation.artifact_contracts import (
+    ArtifactContractError,
+    sha256_file,
+)
 from seed_pipeline.evaluation.metrics_artifacts import (
     MetricsArtifactResult,
     publish_metrics_artifact,
@@ -13,6 +18,10 @@ from seed_pipeline.evaluation.metrics_service import (
     MetricsRequest,
     run_metrics,
     select_rerank_variants,
+)
+from seed_pipeline.evaluation.relevance_judgments import (
+    judgments_path,
+    write_judgments,
 )
 from seed_pipeline.evaluation.rerank_artifacts import finalize_run_rerank_bundle
 from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
@@ -151,3 +160,55 @@ def test_metrics_leave_reports_of_unregistered_rerankers_alone(complete_run: Pat
 
     assert result.reranked == ()
     assert report.read_text(encoding="utf-8") == "final Gemma numbers\n"
+
+
+def _evaluation_of(run: Path) -> Path:
+    return run.parent / "evaluation.jsonl"
+
+
+def _baseline_identity(run: Path) -> dict:
+    manifest = report_dir(run, top_k=1, window_size=3) / "manifest.json"
+    return json.loads(manifest.read_text(encoding="utf-8"))["identity"]
+
+
+def test_metrics_record_the_relevance_judgments_they_scored_with(
+    complete_run: Path,
+) -> None:
+    run_metrics(MetricsRequest(complete_run, top_k=1))
+
+    judgments = judgments_path(_evaluation_of(complete_run))
+    assert _baseline_identity(complete_run)["judgments_sha256"] == sha256_file(
+        judgments
+    )
+
+
+def test_metrics_score_an_accepted_chunk_as_a_hit(complete_run: Path) -> None:
+    evaluation = _evaluation_of(complete_run)
+    write_judgments(
+        [
+            {
+                "query_id": "query-1",
+                "intents": [
+                    {
+                        "section_id": "section-1",
+                        "intent": "dosage",
+                        "accepted_chunk_ids": ["chunk-1"],
+                    }
+                ],
+            }
+        ],
+        evaluation_path=evaluation,
+        output_path=judgments_path(evaluation),
+    )
+
+    result = run_metrics(MetricsRequest(complete_run, top_k=1, force=True))
+
+    rows = result.baseline.results_path.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(row)["mrr"] for row in rows] == [1.0]
+
+
+def test_metrics_refuse_a_run_without_relevance_judgments(complete_run: Path) -> None:
+    judgments_path(_evaluation_of(complete_run)).unlink()
+
+    with pytest.raises(ArtifactContractError, match="seed evaluation judgments"):
+        run_metrics(MetricsRequest(complete_run, top_k=1))

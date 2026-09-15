@@ -15,8 +15,13 @@ from seed_pipeline.config.defaults import DEFAULT_TOP_K
 from seed_pipeline.evaluation.artifact_contracts import ArtifactContractError
 from seed_pipeline.evaluation.metrics_artifacts import report_dir
 
-# Both reports must score the same evaluation rows over the same candidates.
-MATCHING_REPORT_FIELDS = ("evaluation_sha256", "candidate_data_sha256")
+# Both reports must score the same evaluation rows over the same candidates with the
+# same relevance judgments.
+MATCHING_REPORT_FIELDS = (
+    "evaluation_sha256",
+    "candidate_data_sha256",
+    "judgments_sha256",
+)
 
 
 @dataclass(frozen=True)
