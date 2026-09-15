@@ -10,6 +10,7 @@ from seed_pipeline.integrations.kaggle.checkpoint_inheritance import (
     CheckpointInheritanceService,
 )
 from seed_pipeline.integrations.kaggle.dataset_service import DatasetService
+from seed_pipeline.integrations.kaggle.dependencies import DependencyService
 from seed_pipeline.integrations.kaggle.models import StageName
 from seed_pipeline.integrations.kaggle.service import (
     resolve_execution_context,
@@ -191,3 +192,29 @@ def test_make_orchestrator_binds_each_checkpoint_service_to_its_profile_runner(
         assert not any(key.startswith("KAGGLE_ACC") for key in environment)
         token = "primary-token" if item.profile_name == "acc1" else "secondary-token"
         assert token not in runner.redact(token)
+
+
+def test_make_orchestrator_lets_every_profile_publish_its_own_datasets(
+    tmp_path, monkeypatch
+):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+    contexts = resolve_profile_execution_contexts(env_file=env_file)
+    target = contexts[1]
+
+    orchestrator = kaggle_service.make_orchestrator(
+        target.owners,
+        target.runner,
+        target_profile="acc2",
+        checkpoint_contexts=contexts,
+        temp_root=tmp_path / "tmp",
+    )
+
+    dependency_service = orchestrator.dependencies
+    assert isinstance(dependency_service, DependencyService)
+    assert sorted(dependency_service.publishers) == ["primary-user", "secondary-user"]
+    for owner, publisher in dependency_service.publishers.items():
+        runner = publisher.runner
+        assert isinstance(runner, KaggleCommandRunner)
+        assert runner.environment is not None
+        assert runner.environment["KAGGLE_USERNAME"].casefold() == owner

@@ -163,7 +163,13 @@ def make_orchestrator(
             temp_root=temp_root,
         )
     dependencies = DependencyService(
-        DatasetService(runner, owners.execution), default_desired_datasets
+        DatasetService(runner, owners.execution),
+        default_desired_datasets,
+        publishers=tuple(
+            DatasetService(context.runner, context.owners.execution)
+            for context in checkpoint_contexts
+            if context.profile is not None
+        ),
     )
     return KagglePipelineOrchestrator(
         get_stage_adapter,
