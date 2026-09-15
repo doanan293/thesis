@@ -21,6 +21,7 @@ seed retrieve --run NAME [--limit N | --sample N [--sample-seed S]]
 seed rerank --run NAME --backend local|kaggle --model MODEL [--kaggle-account accN|auto] [--max-runs N] [--recover-kernel OWNER/SLUG]
 seed rerank --run NAME --backend local --benchmark --model MODEL
 seed metrics --run NAME
+seed metrics compare --run NAME --baseline MODEL --candidate MODEL
 ```
 
 Global `--json` in envelope máy đọc được, `--debug` bật traceback. `uv run seed COMMAND --help` cho default thực tế.
@@ -99,6 +100,12 @@ uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --model qwen3-reran
 ```
 
 Report nằm ở `reports/baseline/top<K>-window<N>/` và `reports/rerank/<model>/top<K>-window<N>/`; chạy lại cùng cutoff với input khác thì lệnh dừng, `--force` thay report. Metrics gồm Hit@3/5/10/30, MRR, và với `answer_mode=multi_required`: Multi-section Recall@K, Multi-all-hit@K. `--top-k` không được lớn hơn `candidate-k`.
+
+`seed metrics compare` so sánh hai reranker đã có report cùng cutoff trên cùng run. Lệnh ghép từng câu hỏi trong `metrics.jsonl` của hai report, bootstrap theo cặp (lấy mẫu lại có hoàn lại các câu hỏi `--resamples` lần bằng `--seed`) cho hiệu trung bình `candidate − baseline` của `--metric` (mặc định `mrr`, tức MRR@K), rồi in trung bình của từng model, hiệu, khoảng tin cậy 95% (`ci95_low`, `ci95_high`, phân vị 2,5% và 97,5%) và `decision`. `decision` là `--candidate` khi `ci95_low > 0`, ngược lại là `--baseline`. Lệnh dừng nếu hai report khác evaluation, candidates hoặc tập câu hỏi.
+
+```bash
+uv run seed metrics compare --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --baseline qwen3-reranker:0.6b-fp16 --candidate qwen3-reranker:0.6b-fp16-vimed --metric mrr --top-k 30 --resamples 10000 --seed 0
+```
 
 `seed embed queries --backend local|kaggle --model MODEL` tạo cache vector query (`data/cache/query_embeddings/<model-slug>.jsonl`) mà `seed retrieve` dùng cho `dense` và `hybrid`; `--model` phải trùng model embedding của backend. Candidate `document_text` là `embedding_text` của hit, đúng văn bản reranker của benchmark cũ chấm.
 

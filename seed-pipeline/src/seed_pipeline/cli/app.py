@@ -8,7 +8,7 @@ from seed_pipeline.cli.commands.data import data_app
 from seed_pipeline.cli.commands.doctor import doctor
 from seed_pipeline.cli.commands.embed import embed_app
 from seed_pipeline.cli.commands.evaluation import evaluation_app
-from seed_pipeline.cli.commands.metrics import metrics
+from seed_pipeline.cli.commands.metrics import metrics_app
 from seed_pipeline.cli.commands.rerank import rerank
 from seed_pipeline.cli.commands.retrieve import retrieve
 from seed_pipeline.cli.commands.source import source_app
@@ -49,7 +49,7 @@ app.add_typer(bundle_app, name="bundle")
 app.add_typer(data_app, name="data")
 app.command("retrieve")(retrieve)
 app.command("rerank")(rerank)
-app.command("metrics")(metrics)
+app.add_typer(metrics_app, name="metrics")
 
 
 def main() -> None:

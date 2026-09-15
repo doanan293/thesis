@@ -7,6 +7,11 @@ from typer.testing import CliRunner
 import seed_pipeline.cli.commands.metrics as metrics_command
 from seed_pipeline.cli.app import app
 from seed_pipeline.config.paths import run_dir
+from seed_pipeline.evaluation.metric_comparison import (
+    BootstrapResult,
+    MetricComparison,
+    MetricComparisonRequest,
+)
 from seed_pipeline.evaluation.metrics_artifacts import MetricsArtifactResult
 from seed_pipeline.evaluation.metrics_service import MetricsRequest, MetricsResult
 
@@ -78,5 +83,77 @@ def test_metrics_force_is_forwarded(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_metrics_rejects_removed_options(option: list[str]) -> None:
     result = runner.invoke(app, ["metrics", "--run", "experiment", *option])
+
+    assert result.exit_code == 2
+
+
+def fake_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+    captured: dict[str, MetricComparisonRequest],
+    bootstrap: BootstrapResult,
+) -> None:
+    def fake_run(request: MetricComparisonRequest) -> MetricComparison:
+        captured["request"] = request
+        return MetricComparison("mrr", 1000, 0.8, 0.81, bootstrap)
+
+    monkeypatch.setattr(metrics_command, "run_metric_comparison", fake_run)
+
+
+COMPARE = [
+    "--json",
+    "metrics",
+    "compare",
+    "--run",
+    "sample",
+    "--baseline",
+    "qwen3-reranker:0.6b-fp16",
+    "--candidate",
+    "qwen3-reranker:4b-fp16",
+    "--top-k",
+    "30",
+]
+
+
+def test_metrics_compare_adopts_the_candidate_above_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, MetricComparisonRequest] = {}
+    fake_comparison(monkeypatch, captured, BootstrapResult(0.01, 0.002, 0.018, 10_000))
+
+    result = runner.invoke(app, COMPARE)
+
+    assert result.exit_code == 0, result.output
+    assert captured["request"] == MetricComparisonRequest(
+        run_dir("sample"),
+        "qwen3-reranker:0.6b-fp16",
+        "qwen3-reranker:4b-fp16",
+        "mrr",
+        30,
+        3,
+        10_000,
+        0,
+    )
+    details = json.loads(result.stdout)["details"]
+    assert details["decision"] == "qwen3-reranker:4b-fp16"
+    assert (details["ci95_low"], details["ci95_high"]) == (0.002, 0.018)
+    assert details["candidate"] == {"model": "qwen3-reranker:4b-fp16", "mean": 0.81}
+
+
+def test_metrics_compare_keeps_the_baseline_when_zero_is_inside(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, MetricComparisonRequest] = {}
+    fake_comparison(monkeypatch, captured, BootstrapResult(0.01, -0.001, 0.02, 10_000))
+
+    result = runner.invoke(app, COMPARE)
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["details"]["decision"] == (
+        "qwen3-reranker:0.6b-fp16"
+    )
+
+
+def test_metrics_without_run_or_subcommand_is_a_usage_error() -> None:
+    result = runner.invoke(app, ["metrics"])
 
     assert result.exit_code == 2
