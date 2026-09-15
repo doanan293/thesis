@@ -28,8 +28,30 @@ class OneCandidateRetriever:
         ]
 
 
-@pytest.fixture
-def complete_run(tmp_path: Path) -> Path:
+class TwoCandidateRetriever:
+    def search(self, query: str, *, limit: int):
+        del query, limit
+        return [
+            RetrievalCandidate(
+                chunk_id="chunk-1",
+                score=0.75,
+                rank=1,
+                source="test",
+                payload={"chunk_id": "chunk-1", "section_id": "section-1"},
+                document_text="candidate document",
+            ),
+            RetrievalCandidate(
+                chunk_id="chunk-2",
+                score=0.5,
+                rank=2,
+                source="test",
+                payload={"chunk_id": "chunk-2", "section_id": "section-2"},
+                document_text="second candidate document",
+            ),
+        ]
+
+
+def _create_run(tmp_path: Path, retriever: object, candidate_k: int) -> Path:
     evaluation_path = tmp_path / "evaluation.jsonl"
     evaluation_path.write_text(
         '{"query_id":"query-1","query":"test query","relevant_section_ids":["section-1"]}\n',
@@ -42,22 +64,32 @@ def complete_run(tmp_path: Path) -> Path:
         embedding_model="embeddinggemma:300m",
         query_embeddings_sha256="query-cache",
         retriever="hybrid",
-        candidate_k=1,
+        candidate_k=candidate_k,
         rrf_k=2,
         limit=None,
-        prefetch_k=1,
+        prefetch_k=candidate_k,
     )
     root = tmp_path / "run"
     workspace = RunWorkspace.open_or_create(root, identity)
     artifact = build_candidate_artifact(
         rows=[{"query_id": "query-1", "query": "test query"}],
-        retriever=OneCandidateRetriever(),
+        retriever=retriever,
         output_path=root / "candidates" / "candidates.jsonl",
         identity={"evaluation_sha256": identity.evaluation_sha256},
-        candidate_k=1,
+        candidate_k=candidate_k,
     )
     workspace.record_candidates(artifact)
     return root
+
+
+@pytest.fixture
+def complete_run(tmp_path: Path) -> Path:
+    return _create_run(tmp_path, OneCandidateRetriever(), 1)
+
+
+@pytest.fixture
+def two_candidate_run(tmp_path: Path) -> Path:
+    return _create_run(tmp_path, TwoCandidateRetriever(), 2)
 
 
 @pytest.fixture

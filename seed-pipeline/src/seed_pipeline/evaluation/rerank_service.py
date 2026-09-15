@@ -195,7 +195,7 @@ class LocalRerankBackend:
         if request.force:
             cache.replace_keys(expected)
         # A complete cache must not start a model server, so the reranker is created
-        # only when the first pair without a score is found.
+        # only when the first query with an unscored candidate is found.
         reranker: Reranker | None = None
         processed = 0
         for record in CandidateArtifactReader.from_data_path(
@@ -203,25 +203,25 @@ class LocalRerankBackend:
         ):
             row = {"query_id": record["query_id"], "query": record["query"]}
             candidates = [_candidate(item) for item in record["candidates"]]
-            for candidate in candidates:
-                if (
-                    cache.key_for(request.model, row, candidate) in cache.records
-                    and not request.force
-                ):
-                    continue
-                if reranker is None:
-                    reranker = self.reranker_factory(
-                        spec, request.request_timeout_seconds
-                    )
-                scored = reranker.rerank(row["query"], [candidate])[0]
+            unscored = [
+                candidate
+                for candidate in candidates
+                if cache.key_for(request.model, row, candidate) not in cache.records
+            ]
+            if not unscored:
+                continue
+            if reranker is None:
+                reranker = self.reranker_factory(spec, request.request_timeout_seconds)
+            # One /v1/rerank request per query, like the Kaggle worker and the backend.
+            for scored in reranker.rerank(row["query"], unscored):
                 cache.set(
                     request.model,
                     row,
-                    candidate,
+                    scored,
                     scored.rerank_score or 0.0,
                     protocol=spec.reranker_protocol,
                 )
-                processed += 1
+            processed += len(unscored)
         subset = cache.validate_subset(candidate_bundle.data_path, request.model)
         if not subset.is_complete:
             return RerankStageResult(

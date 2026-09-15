@@ -359,3 +359,27 @@ def test_local_rerank_from_a_complete_cache_starts_no_reranker(
 
     assert result.artifact_dir == complete_run / "rerank" / "qwen3_reranker_0_6b_fp16"
     assert "scored=0" in result.actions
+
+
+class RecordingReranker:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str]]] = []
+
+    def rerank(self, query, candidates):
+        self.calls.append((query, [candidate.chunk_id for candidate in candidates]))
+        return [
+            candidate.with_rerank_score(float(index), index)
+            for index, candidate in enumerate(candidates, start=1)
+        ]
+
+
+def test_local_rerank_scores_each_query_in_one_request(two_candidate_run):
+    reranker = RecordingReranker()
+
+    result = LocalRerankBackend(reranker_factory=lambda _spec, _timeout: reranker).run(
+        request(two_candidate_run, "qwen3-reranker:0.6b-fp16")
+    )
+
+    assert reranker.calls == [("test query", ["chunk-1", "chunk-2"])]
+    assert "scored=2" in result.actions
+    assert result.artifact_dir is not None
