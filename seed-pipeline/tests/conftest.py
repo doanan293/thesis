@@ -9,18 +9,36 @@ from pathlib import Path
 
 import pytest
 
-from seed_pipeline.config import environment
+from seed_pipeline.config import environment, paths
 from seed_pipeline.integrations.kaggle import job_lock
 
 KAGGLE_ENVIRONMENT_PREFIX = "KAGGLE_"
 
 
 @pytest.fixture(autouse=True)
-def isolated_lock_dir(tmp_path_factory, monkeypatch) -> Path:
+def isolated_lock_dir(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
     """Locks taken by tests never land in the real data/work/locks."""
     root = tmp_path_factory.mktemp("locks")
     monkeypatch.setattr(job_lock, "LOCK_DIR", root)
     return root
+
+
+@dataclass(frozen=True)
+class IsolatedLogs:
+    root: Path
+    original: Path
+
+
+@pytest.fixture(autouse=True)
+def isolated_logs_dir(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> IsolatedLogs:
+    """Command logs written by tests never land in the real data/work/logs."""
+    logs = IsolatedLogs(tmp_path_factory.mktemp("logs"), paths.LOGS_DIR)
+    monkeypatch.setattr(paths, "LOGS_DIR", logs.root)
+    return logs
 
 
 @dataclass

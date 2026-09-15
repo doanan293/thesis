@@ -63,6 +63,7 @@ LOCAL_PROFILE_DIR = CACHE_DIR / "local_profiles"
 WORK_DIR = DATA_DIR / "work"
 BUILD_WORK_DIR = WORK_DIR / "build"
 LOCK_DIR = WORK_DIR / "locks"
+LOGS_DIR = WORK_DIR / "logs"
 TEXT_INTERIM_DIR = BUILD_WORK_DIR / "text"
 RAG_INTERIM_DIR = BUILD_WORK_DIR / "rag"
 DOCLING_INTERIM_DIR = BUILD_WORK_DIR / "docling"
@@ -90,3 +91,7 @@ def text_embedding_cache_path(model: str) -> Path:
 
 def rerank_score_cache_path(model: str) -> Path:
     return RERANK_SCORE_CACHE_DIR / f"{require_model(model).slug}.jsonl"
+
+
+def rerank_log_path(model: str) -> Path:
+    return LOGS_DIR / "rerank" / f"{require_model(model).slug}.log"

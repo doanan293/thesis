@@ -32,3 +32,11 @@ def test_build_inputs_live_in_sources() -> None:
     assert paths.LEAFLETS_DIR == paths.SOURCES_DIR / "leaflets"
     assert paths.LEAFLETS_MANIFEST_PATH == paths.LEAFLETS_DIR / "manifest.json"
     assert paths.SOURCES_CURATION_DIR == paths.SOURCES_DIR / "curation"
+
+
+def test_rerank_logs_live_under_work(isolated_logs_dir) -> None:
+    # tests/conftest.py redirects LOGS_DIR for every test; the original is the real value.
+    assert isolated_logs_dir.original == paths.WORK_DIR / "logs"
+    assert paths.rerank_log_path("qwen3-reranker:0.6b-fp16") == (
+        isolated_logs_dir.root / "rerank" / "qwen3_reranker_0_6b_fp16.log"
+    )

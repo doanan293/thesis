@@ -12,7 +12,8 @@ data/
 ├── cache/        text_embeddings/<model>.jsonl, query_embeddings/<model>.jsonl,
 │                 rerank_scores/<model>.jsonl, kaggle_profiles/<workload>/<model>.json
 │                 local_profiles/<workload>/<model>.json
-└── work/         scratch space: build workspace, locks, bundle-embed input, archive staging
+└── work/         scratch space: build workspace, locks, bundle-embed input, archive staging,
+                  logs/rerank/<model>.log (appended by every `seed rerank`)
 ```
 
 `<model>` is the model slug from the catalog, for example `qwen3_embedding_4b_fp16`. File and folder names never contain hashes; digests and identities live inside `manifest.json` files and cache records.
@@ -33,6 +34,8 @@ uv run seed data pull --kaggle-account acc1
 ```
 
 The first push after a fresh setup needs the owner's confirmation; pull refuses to overwrite files that differ from the archive unless `--force` is given.
+
+`work/` is never archived. `work/logs/rerank/<model>.log` records, with timestamps, the account and GPU quota of every Kaggle session, the kernel, progress and errors of each `seed rerank` run; it stays on the machine that ran the command and survives restarts.
 
 ## Leaflet source
 
