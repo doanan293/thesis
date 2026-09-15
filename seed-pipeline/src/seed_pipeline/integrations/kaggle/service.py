@@ -12,6 +12,7 @@ from seed_pipeline.integrations.kaggle.api import (
 )
 from seed_pipeline.integrations.kaggle.checkpoint_inheritance import (
     CheckpointInheritanceService,
+    LocalCheckpointSource,
     ProfileCheckpointService,
 )
 from seed_pipeline.integrations.kaggle.checkpoints import CheckpointService
@@ -36,7 +37,10 @@ from seed_pipeline.integrations.kaggle.models import (
     StageName,
     StageRequest,
 )
-from seed_pipeline.integrations.kaggle.orchestrator import KagglePipelineOrchestrator
+from seed_pipeline.integrations.kaggle.orchestrator import (
+    ArtifactSink,
+    KagglePipelineOrchestrator,
+)
 from seed_pipeline.integrations.kaggle.parsers import parse_kaggle_username
 from seed_pipeline.integrations.kaggle.stages import get_stage_adapter
 from seed_pipeline.integrations.kaggle.workspace import unwind_on_sigterm
@@ -130,6 +134,8 @@ def make_orchestrator(
     target_profile: str | None = None,
     checkpoint_contexts: tuple[KaggleExecutionContext, ...] = (),
     temp_root: Path = Path("/tmp"),
+    local_checkpoint: LocalCheckpointSource | None = None,
+    artifact_sink: ArtifactSink | None = None,
 ) -> KagglePipelineOrchestrator:
     datasets = DatasetService(runner, owners.checkpoint)
     kernels = PipelineKernelService(
@@ -161,6 +167,7 @@ def make_orchestrator(
             target=target_checkpoint,
             candidates=tuple(candidates),
             temp_root=temp_root,
+            local=local_checkpoint,
         )
     dependencies = DependencyService(
         DatasetService(runner, owners.execution),
@@ -178,6 +185,7 @@ def make_orchestrator(
         kernels,
         temp_root=temp_root,
         checkpoint_inheritance=inheritance,
+        artifact_sink=artifact_sink,
     )
 
 
@@ -220,8 +228,13 @@ def run_kaggle_stage(
     runtime_profile: RuntimeCandidate | None = None,
     env_file: Path = DEFAULT_ENV_PATH,
     kaggle_account: str | None = None,
+    resume_remote: bool = True,
+    artifact_sink: ArtifactSink | None = None,
+    local_checkpoint: LocalCheckpointSource | None = None,
 ) -> PipelineResult:
     context = resolve_execution_context(kaggle_account, env_file=env_file)
+    if local_checkpoint is not None and context.profile is None:
+        raise ValueError("a local checkpoint source needs a Kaggle account profile")
     runner = context.runner
     owners = context.owners
     request = StageRequest(
@@ -237,6 +250,7 @@ def run_kaggle_stage(
         budget_seconds,
         benchmark_items,
         runtime_profile,
+        resume_remote,
     )
     contexts = (
         resolve_profile_execution_contexts(env_file=env_file)
@@ -249,4 +263,6 @@ def run_kaggle_stage(
             runner,
             target_profile=context.profile.name if context.profile else None,
             checkpoint_contexts=contexts,
+            local_checkpoint=local_checkpoint,
+            artifact_sink=artifact_sink,
         ).run(request)

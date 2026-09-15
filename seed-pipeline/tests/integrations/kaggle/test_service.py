@@ -9,9 +9,10 @@ from seed_pipeline.integrations.kaggle.api import KaggleCommandRunner
 from seed_pipeline.integrations.kaggle.checkpoint_inheritance import (
     CheckpointInheritanceService,
 )
+from seed_pipeline.integrations.kaggle.checkpoints import CheckpointState
 from seed_pipeline.integrations.kaggle.dataset_service import DatasetService
 from seed_pipeline.integrations.kaggle.dependencies import DependencyService
-from seed_pipeline.integrations.kaggle.models import StageName
+from seed_pipeline.integrations.kaggle.models import CloudArtifact, StageJob, StageName
 from seed_pipeline.integrations.kaggle.service import (
     resolve_execution_context,
     resolve_profile_execution_contexts,
@@ -218,3 +219,71 @@ def test_make_orchestrator_lets_every_profile_publish_its_own_datasets(
         assert isinstance(runner, KaggleCommandRunner)
         assert runner.environment is not None
         assert runner.environment["KAGGLE_USERNAME"].casefold() == owner
+
+
+class EmptyLocalSource:
+    def inspect(self, job: StageJob, *, download_root: Path) -> CheckpointState:
+        raise AssertionError("not used by this test")
+
+
+def _ignore_artifact(job: StageJob, artifact: CloudArtifact) -> None:
+    del job, artifact
+
+
+def test_run_stage_passes_session_hooks_to_the_orchestrator(tmp_path, monkeypatch):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+    captured = {}
+    source = EmptyLocalSource()
+
+    class FakeOrchestrator:
+        def run(self, request):
+            captured["request"] = request
+            return "result"
+
+    def fake_make_orchestrator(owners, runner, **kwargs):
+        captured["kwargs"] = kwargs
+        return FakeOrchestrator()
+
+    monkeypatch.setattr(kaggle_service, "make_orchestrator", fake_make_orchestrator)
+
+    kaggle_service.run_kaggle_stage(
+        stage=StageName.RERANK,
+        model=MODEL,
+        input_path=tmp_path / "candidates.jsonl",
+        output_dir=tmp_path / "output",
+        runtime_profile=rerank_runtime_profile(MODEL),
+        kaggle_account="acc2",
+        env_file=env_file,
+        max_runs=1,
+        resume_remote=False,
+        artifact_sink=_ignore_artifact,
+        local_checkpoint=source,
+    )
+
+    assert captured["request"].max_runs == 1
+    assert captured["request"].resume_remote is False
+    assert captured["kwargs"]["artifact_sink"] is _ignore_artifact
+    assert captured["kwargs"]["local_checkpoint"] is source
+
+
+def test_make_orchestrator_wires_the_local_source_and_sink(tmp_path, monkeypatch):
+    env_file = _write_profiles(tmp_path)
+    _clear_kaggle_environment(monkeypatch)
+    contexts = resolve_profile_execution_contexts(env_file=env_file)
+    source = EmptyLocalSource()
+
+    orchestrator = kaggle_service.make_orchestrator(
+        contexts[0].owners,
+        contexts[0].runner,
+        target_profile="acc1",
+        checkpoint_contexts=contexts,
+        temp_root=tmp_path / "tmp",
+        local_checkpoint=source,
+        artifact_sink=_ignore_artifact,
+    )
+
+    inheritance = orchestrator.checkpoint_inheritance
+    assert isinstance(inheritance, CheckpointInheritanceService)
+    assert inheritance.local is source
+    assert orchestrator.artifact_sink is _ignore_artifact

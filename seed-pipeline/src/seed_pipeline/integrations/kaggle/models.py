@@ -233,6 +233,9 @@ class StageRequest:
     total_budget_seconds: int = 21_600
     benchmark_items: int | None = None
     runtime_profile: RuntimeCandidate | None = None
+    # False: ignore account checkpoints and existing kernels (a forced command's
+    # later sessions) without republishing dependencies.
+    resume_remote: bool = True
 
 
 @dataclass(frozen=True)

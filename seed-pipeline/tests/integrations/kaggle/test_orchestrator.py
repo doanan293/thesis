@@ -40,18 +40,21 @@ class FakeDependencies:
     def __init__(self):
         self.required = 0
         self.reconciles = 0
+        self.forced: list[bool] = []
 
     def require_ready(self, _reference):
         self.required += 1
 
-    def reconcile(self, *_args, **_kwargs):
+    def reconcile(self, *_args, **kwargs):
         self.reconciles += 1
+        self.forced.append(kwargs["force"])
         return []
 
 
 class FakeCheckpoints:
-    def __init__(self, total):
+    def __init__(self, total, state=None):
         self.empty_state = CheckpointState(None, None, Completion(total, 0, total))
+        self.current = state or self.empty_state
         self.inspected = []
         self.emptied = []
         self.published = []
@@ -62,9 +65,11 @@ class FakeCheckpoints:
 
     def inspect(self, job):
         self.inspected.append(job)
-        return self.empty_state
+        return self.current
 
     def publish_if_better(self, _job, artifact, current):
+        if artifact.completion.complete <= current.completion.complete:
+            return current
         self.published.append(artifact.completion)
         return CheckpointState("owner/checkpoint", artifact, artifact.completion)
 
@@ -92,9 +97,14 @@ class FakeInheritance:
         self.calls = []
 
     def resolve(
-        self, job: StageJob, state: CheckpointState, *, check_only: bool
+        self,
+        job: StageJob,
+        state: CheckpointState,
+        *,
+        check_only: bool,
+        include_profiles: bool = True,
     ) -> CheckpointInheritanceResult:
-        self.calls.append((job, state, check_only))
+        self.calls.append((job, state, check_only, include_profiles))
         return CheckpointInheritanceResult(self.state, self.actions)
 
 
@@ -138,14 +148,17 @@ class FakeReconciler:
         return self.submission_resolution
 
 
-def _request(tmp_path):
-    candidates = tmp_path / "candidates.jsonl"
-    candidates.write_text(
+def _request(tmp_path, *, candidates: int = 1):
+    candidates_path = tmp_path / "candidates.jsonl"
+    candidates_path.write_text(
         json.dumps(
             {
                 "query_id": "q1",
                 "query": "query",
-                "candidates": [{"chunk_id": "c1", "document_text": "text"}],
+                "candidates": [
+                    {"chunk_id": f"c{index}", "document_text": "text"}
+                    for index in range(1, candidates + 1)
+                ],
             }
         )
         + "\n",
@@ -155,7 +168,7 @@ def _request(tmp_path):
     return stage_request(
         StageName.RERANK,
         "qwen3-reranker:0.6b-fp16",
-        candidates,
+        candidates_path,
         output_dir=tmp_path / "remote",
         owner_configuration=owners(),
         max_runs=1,
@@ -364,7 +377,12 @@ def test_inheritance_failure_prevents_kernel_submission(tmp_path):
 
     class BrokenInheritance:
         def resolve(
-            self, job: StageJob, target_state: CheckpointState, *, check_only: bool
+            self,
+            job: StageJob,
+            target_state: CheckpointState,
+            *,
+            check_only: bool,
+            include_profiles: bool = True,
         ) -> CheckpointInheritanceResult:
             raise RuntimeError("inheritance failed")
 
@@ -407,3 +425,158 @@ def test_inherited_target_checkpoint_is_mounted_before_submit(tmp_path):
     orchestrator.run(request)
 
     assert kernels.checkpoint_references == ["secondary-user/checkpoint"]
+
+
+def _artifact(tmp_path, job, *, complete, total, name="output"):
+    data = tmp_path / name / "rerank_scores.jsonl"
+    data.parent.mkdir(parents=True)
+    data.write_text(
+        "".join(json.dumps({"pair": index}) + "\n" for index in range(complete)),
+        encoding="utf-8",
+    )
+    return artifact_from_output(
+        data,
+        artifact_type="rerank_scores",
+        identity=job.identity,
+        total=total,
+        complete=complete,
+    )
+
+
+def _detached_submission():
+    queued = KernelRemoteState(
+        "owner/kernel", KernelPresence.EXISTS, KernelStatus.QUEUED
+    )
+    return KernelResolution(queued, None, (), submitted=True)
+
+
+def test_reattached_output_without_new_pairs_does_not_fail(tmp_path, monkeypatch):
+    request = _request(tmp_path, candidates=2)
+    job = RerankStage().build_job(request)
+    artifact = _artifact(tmp_path, job, complete=1, total=2)
+    checkpoints = FakeCheckpoints(
+        2, state=CheckpointState("owner/checkpoint", artifact, Completion(2, 1, 1))
+    )
+    finished = KernelRemoteState(
+        "owner/kernel", KernelPresence.EXISTS, KernelStatus.COMPLETE
+    )
+    reconciler = FakeReconciler(
+        KernelResolution(finished, artifact.data_path.parent, ()),
+        _detached_submission(),
+    )
+    delivered = []
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        checkpoints,
+        FakeKernels(),
+        reconciler=reconciler,
+        artifact_sink=lambda _job, item: delivered.append(item.completion),
+    )
+    monkeypatch.setattr(
+        orchestrator, "_load_downloaded_artifact", lambda root, job: artifact
+    )
+
+    result = orchestrator.run(request)
+
+    assert checkpoints.published == []
+    assert delivered == [Completion(2, 1, 1)]
+    assert len(reconciler.submissions) == 1
+    assert result.completion == Completion(2, 1, 1)
+
+
+def test_session_output_reaches_the_sink_before_checkpoint_publication(
+    tmp_path, monkeypatch
+):
+    request = _request(tmp_path, candidates=2)
+    job = RerankStage().build_job(request)
+    artifact = _artifact(tmp_path, job, complete=1, total=2)
+    events: list[str] = []
+
+    class OrderedCheckpoints(FakeCheckpoints):
+        def publish_if_better(self, _job, artifact, current):
+            events.append("publish")
+            return super().publish_if_better(_job, artifact, current)
+
+    absent = KernelRemoteState("owner/kernel", KernelPresence.ABSENT)
+    done = KernelRemoteState(
+        "owner/kernel", KernelPresence.EXISTS, KernelStatus.COMPLETE
+    )
+    reconciler = FakeReconciler(
+        KernelResolution(absent, None, ()),
+        KernelResolution(done, artifact.data_path.parent, (), submitted=True),
+    )
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        FakeDependencies(),
+        OrderedCheckpoints(2),
+        FakeKernels(),
+        reconciler=reconciler,
+        artifact_sink=lambda _job, _artifact: events.append("sink"),
+    )
+    monkeypatch.setattr(
+        orchestrator, "_load_downloaded_artifact", lambda root, job: artifact
+    )
+
+    result = orchestrator.run(request)
+
+    assert events == ["sink", "publish"]
+    assert result.completion == Completion(2, 1, 1)
+
+
+def test_attaching_a_running_kernel_uses_up_a_one_run_request(tmp_path, monkeypatch):
+    request = _request(tmp_path, candidates=2)
+    job = RerankStage().build_job(request)
+    artifact = _artifact(tmp_path, job, complete=1, total=2)
+    running = KernelRemoteState(
+        "owner/kernel", KernelPresence.EXISTS, KernelStatus.RUNNING
+    )
+    reconciler = FakeReconciler(
+        KernelResolution(running, artifact.data_path.parent, ()),
+        _detached_submission(),
+    )
+    checkpoints = FakeCheckpoints(2)
+    dependencies = FakeDependencies()
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(), dependencies, checkpoints, FakeKernels(), reconciler=reconciler
+    )
+    monkeypatch.setattr(
+        orchestrator, "_load_downloaded_artifact", lambda root, job: artifact
+    )
+
+    result = orchestrator.run(request)
+
+    assert reconciler.submissions == []
+    assert dependencies.reconciles == 0
+    assert checkpoints.published == [Completion(2, 1, 1)]
+    assert result.run_count == 1
+    assert result.completion == Completion(2, 1, 1)
+
+
+def test_run_without_remote_resume_ignores_account_state(tmp_path):
+    request = replace(_request(tmp_path), resume_remote=False)
+    checkpoints = FakeCheckpoints(1)
+    inheritance = FakeInheritance(CheckpointState(None, None, Completion(1, 0, 1)))
+    finished = KernelRemoteState(
+        "owner/kernel", KernelPresence.EXISTS, KernelStatus.COMPLETE
+    )
+    reconciler = FakeReconciler(
+        KernelResolution(finished, None, ()), _detached_submission()
+    )
+    dependencies = FakeDependencies()
+    orchestrator = KagglePipelineOrchestrator(
+        RerankStage(),
+        dependencies,
+        checkpoints,
+        FakeKernels(),
+        reconciler=reconciler,
+        checkpoint_inheritance=inheritance,
+    )
+
+    orchestrator.run(request)
+
+    assert checkpoints.inspected == []
+    assert inheritance.calls[0][3] is False
+    assert reconciler.attached == []
+    assert len(reconciler.submissions) == 1
+    assert dependencies.forced == [False]
