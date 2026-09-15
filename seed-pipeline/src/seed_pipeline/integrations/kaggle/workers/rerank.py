@@ -4,7 +4,7 @@ import asyncio
 import json
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from seed_pipeline.evaluation.query_hash import query_hash
 from seed_pipeline.evaluation.rerank_contract import (
     document_hash,
 )
-from seed_pipeline.integrations.kaggle.models import CloudArtifact
+from seed_pipeline.integrations.kaggle.models import CloudArtifact, JobIdentity
 from seed_pipeline.integrations.kaggle.parsers import format_elapsed
 from seed_pipeline.integrations.kaggle.workers.checkpointing import (
     AppendOnlyJournal,
@@ -52,6 +52,42 @@ def _pair_fingerprint(record: dict) -> str:
             str(record.get("query_hash", "")),
             str(record.get("document_hash", "")),
         )
+    )
+
+
+def _journal_identity(identity: JobIdentity) -> dict[str, str]:
+    return {"reuse_sha256": identity.reuse_sha256}
+
+
+def write_rerank_checkpoint(
+    records: Sequence[dict],
+    *,
+    identity: JobIdentity,
+    total: int,
+    output_dir: Path,
+) -> CloudArtifact:
+    """Seal already-scored pairs as a partial artifact a worker resumes from.
+
+    The journal uses the worker's key, fingerprint and identity, so a kernel that
+    mounts this checkpoint reuses every record whose query and document still match.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data_path = output_dir / "rerank_scores.jsonl"
+    journal_path = output_dir / "rerank_scores.journal.jsonl"
+    journal_path.unlink(missing_ok=True)
+    journal = AppendOnlyJournal.open(
+        journal_path, _journal_identity(identity), _pair_key, _pair_fingerprint
+    )
+    journal.append_batch(records)
+    complete = journal.compact(records, data_path)
+    return artifact_from_output(
+        data_path,
+        artifact_type="rerank_scores",
+        identity=identity,
+        total=total,
+        complete=complete,
+        checkpoint_path=journal_path,
     )
 
 
@@ -183,7 +219,7 @@ def run_rerank_worker(
     seed_path = resolve_optional_input_file(config, "checkpoint_filename")
     journal = AppendOnlyJournal.open(
         journal_path,
-        {"reuse_sha256": identity.reuse_sha256},
+        _journal_identity(identity),
         _pair_key,
         _pair_fingerprint,
         seed_path=seed_path,

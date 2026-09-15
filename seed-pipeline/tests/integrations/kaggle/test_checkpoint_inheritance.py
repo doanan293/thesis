@@ -41,7 +41,7 @@ class FakeCheckpointService:
         return self.reference_value
 
 
-def _service(target, sources, tmp_path):
+def _service(target, sources, tmp_path, local=None):
     return CheckpointInheritanceService(
         target_profile="acc3",
         target=target,
@@ -49,6 +49,7 @@ def _service(target, sources, tmp_path):
             ProfileCheckpointService(name, service) for name, service in sources
         ),
         temp_root=tmp_path,
+        local=local,
     )
 
 
@@ -184,3 +185,84 @@ def test_resolve_rejects_invalid_candidate_configuration(candidates, tmp_path):
     services = tuple((name, FakeCheckpointService(_state(10, 0))) for name in names)
     with pytest.raises(ValueError):
         _service(FakeCheckpointService(_state(10, 0)), services, tmp_path)
+
+
+class FakeLocalSource:
+    def __init__(self, state):
+        self.state = state
+        self.roots = []
+
+    def inspect(self, job, *, download_root):
+        self.roots.append(download_root)
+        return self.state
+
+
+def test_resolve_publishes_the_local_cache_when_it_has_the_most_pairs(tmp_path):
+    target = FakeCheckpointService(
+        _state(10, 3, "acc3/checkpoint"),
+        reference="acc3/checkpoint",
+        revalidated=_state(10, 7, "acc3/checkpoint"),
+    )
+    acc1 = FakeCheckpointService(_state(10, 5, "acc1/checkpoint"))
+    local = FakeLocalSource(_state(10, 7))
+
+    result = _service(
+        target, (("acc1", acc1), ("acc3", target)), tmp_path, local=local
+    ).resolve(stage_job(tmp_path), target.state, check_only=False)
+
+    assert target.published[0][0] is local.state.artifact
+    assert "local -> acc3" in result.actions[0].reason
+    assert "7/10" in result.actions[0].reason
+    assert result.state.completion.complete == 7
+
+
+def test_resolve_prefers_an_account_checkpoint_with_more_pairs_than_local(tmp_path):
+    target = FakeCheckpointService(
+        _state(10, 0), revalidated=_state(10, 6, "acc3/checkpoint")
+    )
+    acc1 = FakeCheckpointService(_state(10, 6, "acc1/checkpoint"))
+    local = FakeLocalSource(_state(10, 4))
+
+    result = _service(
+        target, (("acc1", acc1), ("acc3", target)), tmp_path, local=local
+    ).resolve(stage_job(tmp_path), target.state, check_only=False)
+
+    assert target.published[0][0] is acc1.state.artifact
+    assert "acc1 -> acc3" in result.actions[0].reason
+
+
+def test_resolve_never_replaces_the_target_with_fewer_pairs(tmp_path):
+    target = FakeCheckpointService(_state(10, 8, "acc3/checkpoint"))
+    acc1 = FakeCheckpointService(_state(10, 6, "acc1/checkpoint"))
+    local = FakeLocalSource(_state(10, 5))
+
+    result = _service(
+        target, (("acc1", acc1), ("acc3", target)), tmp_path, local=local
+    ).resolve(stage_job(tmp_path), target.state, check_only=False)
+
+    assert target.published == []
+    assert result.state is target.state
+    assert result.actions == ()
+
+
+def test_resolve_without_profiles_reads_only_the_local_cache(tmp_path):
+    class Untouchable(FakeCheckpointService):
+        def inspect(self, job, *, download_root=None):
+            raise AssertionError("account checkpoints must not be read")
+
+    target = FakeCheckpointService(
+        _state(10, 0), revalidated=_state(10, 2, "acc3/checkpoint")
+    )
+    local = FakeLocalSource(_state(10, 2))
+
+    result = _service(
+        target,
+        (("acc1", Untouchable(_state(10, 9))), ("acc3", target)),
+        tmp_path,
+        local=local,
+    ).resolve(
+        stage_job(tmp_path), target.state, check_only=False, include_profiles=False
+    )
+
+    assert target.published[0][0] is local.state.artifact
+    assert result.state.completion.complete == 2

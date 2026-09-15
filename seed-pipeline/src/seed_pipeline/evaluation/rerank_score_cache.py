@@ -198,11 +198,7 @@ class RerankScoreCache:
         self, candidate_data_path: Path, reranker: str
     ) -> ValidatedSubset:
         expected = self.expected_keys_from_candidates(candidate_data_path, reranker)
-        found = [
-            self.record_metadata[key]
-            for key in sorted(expected)
-            if key in self.record_metadata
-        ]
+        found = self._stored(expected)
         missing = len(expected) - len(found)
         return ValidatedSubset(
             total=len(expected),
@@ -210,6 +206,21 @@ class RerankScoreCache:
             missing=missing,
             sha256=record_subset_sha256(found) if not missing else None,
         )
+
+    def available_records(
+        self, candidate_data_path: Path, reranker: str
+    ) -> list[dict[str, Any]]:
+        """Stored records of the candidate pairs that already have a score."""
+        return self._stored(
+            self.expected_keys_from_candidates(candidate_data_path, reranker)
+        )
+
+    def _stored(self, expected: builtins.set[RerankKey]) -> list[dict[str, Any]]:
+        return [
+            self.record_metadata[key]
+            for key in sorted(expected)
+            if key in self.record_metadata
+        ]
 
     def subset_records(
         self, candidate_data_path: Path, reranker: str

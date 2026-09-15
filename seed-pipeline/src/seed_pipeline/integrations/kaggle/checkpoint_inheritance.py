@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import re
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+from typing import Protocol
 
 from seed_pipeline.integrations.kaggle.checkpoints import (
     CheckpointService,
@@ -14,6 +17,14 @@ from seed_pipeline.integrations.kaggle.models import (
     ReconcileAction,
     StageJob,
 )
+
+LOCAL_SOURCE = "local"
+
+
+class LocalCheckpointSource(Protocol):
+    """Progress kept on this machine, offered as a checkpoint without a dataset."""
+
+    def inspect(self, job: StageJob, /, *, download_root: Path) -> CheckpointState: ...
 
 
 @dataclass(frozen=True)
@@ -36,11 +47,13 @@ class CheckpointInheritanceService:
         target: CheckpointService,
         candidates: tuple[ProfileCheckpointService, ...],
         temp_root: Path,
+        local: LocalCheckpointSource | None = None,
     ):
         self.target_profile = target_profile
         self.target = target
         self.candidates = candidates
         self.temp_root = Path(temp_root)
+        self.local = local
         names = tuple(candidate.profile_name for candidate in candidates)
         if names != tuple(sorted(names, key=self._profile_number)):
             raise ValueError("checkpoint profiles must be in numeric order")
@@ -62,28 +75,49 @@ class CheckpointInheritanceService:
         target_state: CheckpointState,
         *,
         check_only: bool,
+        include_profiles: bool = True,
     ) -> CheckpointInheritanceResult:
         best = target_state
-        best_profile = self.target_profile
+        best_source = self.target_profile
         with tempfile.TemporaryDirectory(
             prefix="checkpoint-inheritance-", dir=str(self.temp_root)
         ) as raw:
             root = Path(raw)
-            for candidate in self.candidates:
-                if candidate.profile_name == self.target_profile:
-                    continue
-                state = candidate.checkpoints.inspect(
-                    job, download_root=root / candidate.profile_name
+            # The local source is read first, so it wins ties against accounts.
+            sources: list[tuple[str, Callable[[], CheckpointState]]] = []
+            if self.local is not None:
+                sources.append(
+                    (
+                        LOCAL_SOURCE,
+                        partial(
+                            self.local.inspect, job, download_root=root / LOCAL_SOURCE
+                        ),
+                    )
                 )
+            if include_profiles:
+                sources.extend(
+                    (
+                        candidate.profile_name,
+                        partial(
+                            candidate.checkpoints.inspect,
+                            job,
+                            download_root=root / candidate.profile_name,
+                        ),
+                    )
+                    for candidate in self.candidates
+                    if candidate.profile_name != self.target_profile
+                )
+            for name, inspect in sources:
+                state = inspect()
                 if state.completion.complete > best.completion.complete:
                     if state.artifact is None:
                         raise RuntimeError(
-                            f"checkpoint candidate {candidate.profile_name} has progress without artifact"
+                            f"checkpoint candidate {name} has progress without artifact"
                         )
                     best = state
-                    best_profile = candidate.profile_name
+                    best_source = name
 
-            if best_profile == self.target_profile:
+            if best_source == self.target_profile:
                 return CheckpointInheritanceResult(target_state, ())
             if check_only:
                 return CheckpointInheritanceResult(
@@ -93,7 +127,7 @@ class CheckpointInheritanceService:
                             "checkpoint",
                             self.target.reference(job),
                             ActionVerb.SYNC,
-                            f"would inherit {best_profile} -> {self.target_profile}: "
+                            f"would inherit {best_source} -> {self.target_profile}: "
                             f"{best.completion.complete}/{best.completion.total} pairs",
                         ),
                     ),
@@ -110,7 +144,7 @@ class CheckpointInheritanceService:
                         "checkpoint",
                         verified.reference or self.target.reference(job),
                         ActionVerb.SYNC,
-                        f"checkpoint inherited {best_profile} -> {self.target_profile}: "
+                        f"checkpoint inherited {best_source} -> {self.target_profile}: "
                         f"{best.completion.complete}/{best.completion.total} pairs",
                     ),
                 ),
