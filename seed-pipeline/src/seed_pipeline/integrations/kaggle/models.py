@@ -157,6 +157,25 @@ class ActionVerb(StrEnum):
     SYNC = "sync"
 
 
+def reuse_payload_of(payload: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
+    """Identity fields that decide whether checkpointed records can be reused.
+
+    Inputs are matched record by record and a runtime profile changes only speed, so
+    neither belongs to the reuse identity.
+    """
+    reuse: dict[str, JSONValue] = {
+        key: value for key, value in payload.items() if key != "input_sha256"
+    }
+    runtime_parameters = reuse.get("runtime_parameters")
+    if isinstance(runtime_parameters, Mapping):
+        reuse["runtime_parameters"] = {
+            key: value
+            for key, value in runtime_parameters.items()
+            if key != "runtime_profile"
+        }
+    return reuse
+
+
 @dataclass(frozen=True)
 class JobIdentity:
     payload: dict[str, JSONValue]
@@ -185,9 +204,7 @@ class JobIdentity:
 
     @property
     def reuse_payload(self) -> dict[str, JSONValue]:
-        return {
-            key: value for key, value in self.payload.items() if key != "input_sha256"
-        }
+        return reuse_payload_of(self.payload)
 
     @property
     def reuse_sha256(self) -> str:

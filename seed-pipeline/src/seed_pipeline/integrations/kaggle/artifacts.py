@@ -14,6 +14,7 @@ from seed_pipeline.integrations.kaggle.models import (
     CloudArtifact,
     Completion,
     JobIdentity,
+    reuse_payload_of,
 )
 from seed_pipeline.runtime.runtime_profiles import canonical_sha256
 
@@ -171,13 +172,7 @@ def load_cloud_artifact(
     manifest_job_sha256 = str(identity_payload.pop("job_sha256", ""))
     if identity_payload:
         derived_job_sha256 = canonical_sha256(identity_payload)
-        derived_reuse_sha256 = canonical_sha256(
-            {
-                key: value
-                for key, value in identity_payload.items()
-                if key != "input_sha256"
-            }
-        )
+        derived_reuse_sha256 = canonical_sha256(reuse_payload_of(identity_payload))
         if manifest_job_sha256 != derived_job_sha256:
             raise ArtifactContractError("Cloud artifact identity hash mismatch")
         if (
