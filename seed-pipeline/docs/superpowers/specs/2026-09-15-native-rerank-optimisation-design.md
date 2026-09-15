@@ -155,10 +155,12 @@ Giá trị cố định và giá trị được quét:
 ### 4.7 Đo instruction trên tập con
 
 1. **Tập con.** `seed retrieve --sample 1000 --sample-seed 0` lấy phân tầng 10% mỗi `eval_group`: 500 `formulary`, 250 `leaflet`, 100 `chunk_risk`, 50 `patient_natural`, 50 `noisy_confuser`, 50 `multi_intent`. Mẫu được ghi vào identity của run. Run tạo ra là `hybrid-qwen4b-p50-k30-rrf2-sample1000`. `--limit` giữ nguyên nghĩa là N dòng đầu.
-2. **File tiếng Việt y tế.** Tạo `qwen3-reranker-0.6b-f16-vi-medical.gguf` từ file gốc bằng `gguf-new-metadata` (gói `gguf` 0.19.0).
+2. **File tiếng Việt y tế.** Tạo `qwen3-reranker-0.6b-f16-vimed.gguf` từ file gốc bằng `gguf-new-metadata` (gói `gguf` 0.19.0).
    - `--chat-template` nhận danh sách JSON gồm template `default` chép từ file gốc, và template `rerank` giống hệt bản gốc trừ dòng `<Instruct>: Given a Vietnamese medical retrieval query, retrieve relevant passages that answer the query`.
    - Lệnh đầy đủ và sha256 của file tạo ra ghi trong `docs/guides/evaluation.md`.
-   - Catalog thêm model thử nghiệm `qwen3-reranker:0.6b-fp16-vi-medical`.
+   - Catalog thêm model thử nghiệm `qwen3-reranker:0.6b-fp16-vimed`.
+   - Hậu tố `-vimed` giữ slug dataset Kaggle của file trong giới hạn 50 ký tự (`-vi-medical` cho bản 0.6b dài 52 ký tự).
+   - Số cũ của 0.6b và 4b (MRR 0,7823 và 0,8060) được chấm bằng `completion_logprobs` với instruction tiếng Việt y tế, còn template `rerank` của GGUF dùng instruction mặc định, nên phép đo này cũng cho biết instruction có giải thích được chênh lệch đó hay không.
 3. **Chấm.** Chấm cả hai model 0.6b trên 30.000 cặp của tập con với profile Kaggle mới, rồi chạy `seed metrics`.
 4. **Quy tắc quyết định.** Bootstrap theo cặp trên 1.000 câu hỏi (10.000 lần lấy mẫu lại, seed 0) cho hiệu MRR@30 giữa bản tiếng Việt và bản gốc.
    - Cận dưới khoảng tin cậy 95% lớn hơn 0: dùng instruction tiếng Việt.
