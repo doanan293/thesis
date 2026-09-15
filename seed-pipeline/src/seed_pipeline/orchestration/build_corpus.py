@@ -5,6 +5,7 @@ import json
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,9 @@ from seed_pipeline.corpus.validation.validate_final_rag import (
     validate_final_rag,
 )
 
+# Part of the build id, so a release whose code changes the output rebuilds the corpus.
+PIPELINE_VERSION = version("seed-pipeline")
+
 
 @dataclass(frozen=True)
 class BuildConfig:
@@ -80,6 +84,7 @@ def _digest_payload(config: BuildConfig) -> dict[str, Any]:
         "glossary": sha256_file(config.glossary_path),
         "valid_syllables": sha256_file(SOURCES_DIR / "vietnamese_valid_syllables.json"),
         "max_chars": config.max_chars,
+        "pipeline_version": PIPELINE_VERSION,
         "schema_version": "rag-final-v3",
     }
 

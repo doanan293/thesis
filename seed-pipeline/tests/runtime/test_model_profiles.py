@@ -10,6 +10,7 @@ from seed_pipeline.runtime.model_profiles import (
     RerankContract,
     RerankRuntimeProfile,
     build_qwen3_yes_no_prompt,
+    qwen3_rerank_contract,
 )
 
 
@@ -24,8 +25,7 @@ def test_qwen_prompt_contains_canonical_instruction_and_turns():
 
 
 def test_qwen_contract_hash_changes_for_semantic_fields():
-    spec = require_model("qwen3-reranker:0.6b-fp16")
-    contract = spec.rerank_contract
+    contract = qwen3_rerank_contract()
 
     assert isinstance(contract, RerankContract)
     assert contract.scoring is not None

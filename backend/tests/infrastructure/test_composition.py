@@ -15,7 +15,7 @@ from pharma_agent.infrastructure.observability.langfuse_retrieval import (
 )
 from pharma_agent.infrastructure.persistence.postgres.database import Database
 from pharma_agent.infrastructure.retrieval.llama_cpp_reranker import (
-    LlamaCppCompletionReranker,
+    NativeReranker,
     NoopReranker,
 )
 from pharma_agent.infrastructure.retrieval.postgres_corpus import PostgresCorpusReader
@@ -34,7 +34,7 @@ async def test_build_application_wires_real_adapters(
     assert isinstance(app.runner, ChatTurnRunner)
     assert isinstance(app.deps.llm, OpenAiLlmAdapter)
     assert isinstance(app.retrieval.retriever, QdrantHybridRetriever)
-    assert isinstance(app.retrieval.reranker, LlamaCppCompletionReranker)
+    assert isinstance(app.retrieval.reranker, NativeReranker)
     await app.aclose()
 
 

@@ -144,8 +144,8 @@ def test_build_server_command_enforces_stateless_prompt_cache(model):
     assert "--no-cache-idle-slots" in command
 
 
-def test_qwen_completion_policy_preserves_slot_prompt_reuse():
-    policy = inference_cache_policy(require_model("qwen3-reranker:4b-fp16"))
+def test_completion_policy_preserves_slot_prompt_reuse():
+    policy = inference_cache_policy(require_model("bge-reranker-v2-gemma:f16"))
 
     assert policy.host_cache_ram_mib == 0
     assert policy.cache_idle_slots is False
@@ -154,8 +154,9 @@ def test_qwen_completion_policy_preserves_slot_prompt_reuse():
     assert policy.workload_locality == "query-adjacent-v1"
 
 
-def test_native_rerank_policy_has_no_completion_request_setting():
-    policy = inference_cache_policy(require_model("bge-reranker-v2-m3:f16"))
+@pytest.mark.parametrize("model", ("bge-reranker-v2-m3:f16", "qwen3-reranker:4b-fp16"))
+def test_native_rerank_policy_has_no_completion_request_setting(model):
+    policy = inference_cache_policy(require_model(model))
 
     assert policy.completion_cache_prompt is None
     assert policy.slot_prompt_similarity is None

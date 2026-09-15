@@ -6,11 +6,11 @@ from seed_pipeline.runtime.client import (
     LlamaCppClient,
     LlamaCppRequestError,
 )
+from seed_pipeline.runtime.model_profiles import qwen3_rerank_contract
 
 
 def test_completion_payload_can_include_model_name():
-    contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
-    assert contract is not None
+    contract = qwen3_rerank_contract()
 
     payload = LlamaCppClient.completion_payload(
         "prompt",
@@ -24,8 +24,7 @@ def test_completion_payload_can_include_model_name():
 
 
 def test_completion_payload_explicitly_enables_slot_prompt_cache():
-    contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
-    assert contract is not None
+    contract = qwen3_rerank_contract()
 
     payload = LlamaCppClient.completion_payload(
         "prompt", contract, model="qwen", yes_id=1, no_id=2
@@ -135,7 +134,7 @@ async def test_async_completion_retries_retryable_http_status(monkeypatch):
     monkeypatch.setattr(
         client, "_single_token_id", lambda text, _model: 10 if text == "yes" else 11
     )
-    contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
+    contract = qwen3_rerank_contract()
 
     result = await client.rerank_completions_async(
         ["prompt"], "model", contract=contract
@@ -172,7 +171,7 @@ async def test_async_completion_does_not_retry_non_retryable_status(monkeypatch)
     monkeypatch.setattr(
         client, "_single_token_id", lambda text, _model: 10 if text == "yes" else 11
     )
-    contract = require_model("qwen3-reranker:0.6b-fp16").rerank_contract
+    contract = qwen3_rerank_contract()
 
     with pytest.raises(LlamaCppRequestError):
         await client.rerank_completions_async(["prompt"], "model", contract=contract)

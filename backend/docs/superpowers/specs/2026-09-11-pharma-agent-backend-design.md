@@ -320,7 +320,7 @@ dưới 0,01 USD mỗi lượt với giá hiện tại của `gpt-5-nano` và `g
 | `retrieval.embedding.base_url` | llama.cpp embedding server (`/v1/embeddings`, gọi bằng OpenAI SDK, không prefix) |
 | `retrieval.mode` | `hybrid` (`dense` cũng hỗ trợ) |
 | `retrieval.prefetch_k` / `rrf_k` / `candidate_k` | 50 / 2 / 30 |
-| `retrieval.rerank.protocol` | `completion_logprobs` (`native_rerank`, `none` cũng hỗ trợ) |
+| `retrieval.rerank.protocol` | `native_rerank` (`completion_logprobs`, `none` cũng hỗ trợ) |
 | `retrieval.rerank.model` | `qwen3-reranker:4b-fp16` |
 | `retrieval.rerank.top_n` | 8 |
 | `retrieval.rerank.max_candidates` | 40 ứng viên được chấm mỗi vòng search |
@@ -533,8 +533,10 @@ production, frontend, ingest corpus (thuộc corpus-pipeline).
    function calling 2 tool (`search`, `finish`) nếu sau này dùng model mạnh hơn.
 3. Lần retrieve đầu tự động, hydrate tự động: giảm quyết định cho model yếu.
 4. Chat Completions thay vì Responses API: tương thích self-host.
-5. Reranker mặc định qwen3-4b vì eval tốt nhất, chấp nhận chậm hơn trên CPU;
-   `native_rerank` giữ làm lựa chọn nhanh.
+5. Reranker mặc định qwen3-4b vì eval tốt nhất, chấp nhận chậm hơn trên CPU. Gọi qua
+   `native_rerank` (`/v1/rerank`, GGUF convert classifier) vì llama.cpp, vLLM, TEI và các
+   nhà host đều có endpoint rerank; `completion_logprobs` chỉ để dự phòng cho GGUF không có
+   classifier head.
 6. fastapi-users thay vì better-auth-server (mới 1 tuần tuổi) hay Authlib tự viết.
 7. Langfuse thay vì tracing tự viết.
 8. Không disclaimer y tế trong mọi prompt và template.

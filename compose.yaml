@@ -53,7 +53,7 @@ x-backend: &backend
     PHARMA_RETRIEVAL__EMBEDDING__MODEL: "${LLAMA_EMBEDDING_MODEL_NAME:-qwen3-embedding:4b-fp16}"
     PHARMA_RETRIEVAL__RERANK__BASE_URL: "http://llama-reranker:8080"
     PHARMA_RETRIEVAL__RERANK__MODEL: "${LLAMA_RERANKER_MODEL_NAME:-qwen3-reranker:4b-fp16}"
-    PHARMA_RETRIEVAL__RERANK__PROTOCOL: "${LLAMA_RERANKER_PROTOCOL:-completion_logprobs}"
+    PHARMA_RETRIEVAL__RERANK__PROTOCOL: "${LLAMA_RERANKER_PROTOCOL:-native_rerank}"
     # One request per reranker slot; more concurrent requests only queue on the server.
     PHARMA_RETRIEVAL__RERANK__MAX_CONCURRENT: "${LLAMA_RERANKER_PARALLEL:-1}"
     # CPU profile: rerank only the best RRF candidates (RRF alone puts 95.7% of answers in top 10).
@@ -84,8 +84,8 @@ services:
     environment:
       <<: *llama-env
       LLAMA_ARG_MODEL: "/models/${LLAMA_RERANKER_MODEL:-qwen3-reranker-4b-f16.gguf}"
-      # true serves /v1/rerank for native_rerank models; completion_logprobs models keep false.
-      LLAMA_ARG_RERANKING: "${LLAMA_RERANKER_RERANKING:-false}"
+      # true serves /v1/rerank (native_rerank, classifier GGUF); set false only for completion_logprobs.
+      LLAMA_ARG_RERANKING: "${LLAMA_RERANKER_RERANKING:-true}"
       # One slot keeps the shared system/instruction/query prefix cached between candidates.
       LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-1}"
       LLAMA_ARG_KV_UNIFIED_PER_SLOT: "${LLAMA_RERANKER_CONTEXT_PER_SLOT:-4096}"

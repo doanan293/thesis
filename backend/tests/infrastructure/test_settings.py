@@ -17,7 +17,7 @@ def test_defaults_match_spec(monkeypatch: pytest.MonkeyPatch) -> None:
         settings.retrieval.rrf_k,
         settings.retrieval.candidate_k,
     ) == (50, 2, 30)
-    assert settings.retrieval.rerank.protocol == "completion_logprobs"
+    assert settings.retrieval.rerank.protocol == "native_rerank"
     assert settings.retrieval.rerank.model == "qwen3-reranker:4b-fp16"
     assert (
         settings.budget.max_llm_calls == 10 and settings.budget.deadline_seconds == 90
@@ -35,7 +35,7 @@ def test_role_override_and_nested_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("PHARMA_LLM__ROLES__ANSWER__API_KEY", "local")
     monkeypatch.setenv("PHARMA_LLM__ROLES__ANSWER__MODEL", "qwen3-8b")
-    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "native_rerank")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "completion_logprobs")
     monkeypatch.setenv("PHARMA_QDRANT__URL", "http://qdrant:6333")
     monkeypatch.setenv("PHARMA_RETRIEVAL__COLLECTIONS", '["formulary", "leaflets"]')
     monkeypatch.setenv("PHARMA_RETRIEVAL__MODE", "bm25")
@@ -52,7 +52,7 @@ def test_role_override_and_nested_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "sk-cloud",
         "gpt-5-mini",
     )
-    assert settings.retrieval.rerank.protocol == "native_rerank"
+    assert settings.retrieval.rerank.protocol == "completion_logprobs"
     assert settings.qdrant.url == "http://qdrant:6333"
     assert settings.retrieval.collections == ["formulary", "leaflets"]
     assert settings.retrieval.mode == "bm25"

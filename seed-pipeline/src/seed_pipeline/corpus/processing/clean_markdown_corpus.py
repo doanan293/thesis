@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 
 from seed_pipeline.config.paths import SOURCES_DIR, TEXT_INTERIM_DIR
@@ -90,6 +91,10 @@ ALLOWED_ACRONYMS = {
     "iv",
     "im",
 }
+
+
+def starts_with_consonant(word: str) -> bool:
+    return unicodedata.normalize("NFD", word[:1]).lower()[:1] not in set("aeiouy")
 
 
 def is_valid_word(word: str) -> bool:
@@ -565,6 +570,9 @@ def repair_split_syllables(text: str) -> str:
         ("c", "ho"),
         ("c", "hủ"),
         ("v", "y"),
+        ("thú", "y"),
+        ("c", "uống"),
+        ("d", "uống"),
         ("pha", "i"),
         ("pha", "ii"),
         ("pha", "iii"),
@@ -577,33 +585,27 @@ def repair_split_syllables(text: str) -> str:
         ("pha", "v."),
     }
 
-    # Match all words, spaces, or single characters
-    token_pat = re.compile(
-        r"([a-zA-ZàáảãạăắằẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]+)|(\s+)|(.)"
-    )
+    # Words are runs of any Unicode letters, so "Ít" or "NGƯỜI" stay whole.
+    token_pat = re.compile(r"([^\W\d_]+)|(\s+)|(.)")
     tokens = [m.group(0) for m in token_pat.finditer(text)]
 
-    # We define helper checks for string types
-    word_pat = re.compile(
-        r"^[a-zA-ZàáảãạăắằẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]+$"
-    )
+    word_pat = re.compile(r"^[^\W\d_]+$")
     space_pat = re.compile(r"^\s+$")
 
     # Run two passes to catch nested cases (still O(N))
     for _ in range(2):
-        stack = []
-        for tok in tokens:
+        stack: list[str] = []
+        for index, tok in enumerate(tokens):
             if (
-                stack
-                and len(stack) >= 2
+                len(stack) >= 2
                 and word_pat.match(tok)
                 and space_pat.match(stack[-1])
                 and word_pat.match(stack[-2])
             ):
                 w1 = stack[-2]
-                stack[-1]
                 w2 = tok
                 w1_low, w2_low = w1.lower(), w2.lower()
+                following = tokens[index + 1 : index + 3]
 
                 is_valid_merge = False
                 if len(w2) != 1 or not w2.isupper():
@@ -624,6 +626,38 @@ def repair_split_syllables(text: str) -> str:
                             or w2_low in SUFFIXES
                         ):
                             is_valid_merge = True
+
+                # w2 starts a unit, symbol or gene name: m2, t1/2, c-Kit.
+                if (
+                    is_valid_merge
+                    and following
+                    and (following[0][0].isdigit() or following[0] == "-")
+                ):
+                    is_valid_merge = False
+                # A lone capital inside a sentence names a protein, cell or wave:
+                # "protein C hay", "lympho bào T hoạt hóa", "sóng R, T hạ".
+                if (
+                    is_valid_merge
+                    and len(w1) == 1
+                    and w1.isupper()
+                    and starts_with_consonant(w2)
+                    and is_valid_word(w2)
+                    and len(stack) >= 4
+                    and re.fullmatch(r"[ \t]+", stack[-3])
+                    and (word_pat.match(stack[-4]) or stack[-4] == ",")
+                ):
+                    is_valid_merge = False
+                # w2 is the onset of the next split word: "và ng ười" joins to "người".
+                if (
+                    is_valid_merge
+                    and len(following) == 2
+                    and space_pat.match(following[0])
+                    and word_pat.match(following[1])
+                    and not is_valid_word(w2)
+                    and _normalize_tone(w2_low + following[1].lower())
+                    in NORM_SYLLABLES_DB
+                ):
+                    is_valid_merge = False
 
                 if is_valid_merge:
                     stack.pop()  # remove space

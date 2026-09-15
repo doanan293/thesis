@@ -50,7 +50,7 @@ def _config(
     _write_candidates(candidates, query_count, candidates_per_query, candidate_counts)
     manifest.write_text("{}\n", encoding="utf-8")
     return {
-        "model": "qwen3-reranker:0.6b-fp16",
+        "model": "bge-reranker-v2-gemma:f16",
         "protocol": "completion_logprobs",
         "output_dir": str(tmp_path / "output"),
         "batch_size": 32,
@@ -245,7 +245,7 @@ def test_rerank_worker_keeps_response_errors_fatal(tmp_path):
     assert not (Path(config["output_dir"]) / "manifest.json").exists()
 
 
-class _QwenCacheAwareClient:
+class _CompletionCacheAwareClient:
     def __init__(self):
         self.calls: list[tuple[str, bool]] = []
 
@@ -274,7 +274,7 @@ def test_completion_worker_enables_slot_prompt_cache_and_records_timings(tmp_pat
         "logical_batch_size": 4096,
         "physical_batch_size": 2048,
     }
-    client = _QwenCacheAwareClient()
+    client = _CompletionCacheAwareClient()
 
     artifact = run_rerank_worker(
         config,

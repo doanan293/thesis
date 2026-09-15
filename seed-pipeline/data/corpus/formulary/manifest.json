@@ -6,8 +6,8 @@
   },
   "generator": {
     "name": "seed-pipeline",
-    "version": "0.1.0",
-    "build_id": "2821afc13cb9686f"
+    "version": "0.2.0",
+    "build_id": "d817f083f3eeb458"
   },
   "source_digests": {
     "source_pdf_sha256": "2aa81c846a5e760f82658c46816ab63174204a7d95b3e2755b6565288e53d0d1",
@@ -22,12 +22,12 @@
   "section_count": 12326,
   "files": {
     "documents.jsonl": {
-      "sha256": "db4d8e8fb177700b5cf4b08fc12f5ab115153443bf29774bd4ac74bf2603d22c",
-      "bytes": 778276
+      "sha256": "27565698b3d4852c243583752b3e6d91cccda2a33d102fbcf6bffe4c517c20a2",
+      "bytes": 778280
     },
     "sections.jsonl": {
-      "sha256": "7785eff4f0ce24e44476759febb942c0837ee9144e9cce9b3d6b39821a004bd4",
-      "bytes": 59150162
+      "sha256": "729b5904136d114970b07c4c56b136e0b7201eca65d8c31ea63d3f9130558207",
+      "bytes": 59150228
     },
     "glossary.json": {
       "sha256": "bcedbf996455ddde29070de1b4151d911c452a8d2a12309e056f31d0636091f6",
@@ -38,24 +38,16 @@
       "bytes": 764594
     },
     "embeddings/bge_m3_567m_fp16.jsonl": {
-      "sha256": "5ca47a50b7a696d44a633c31bbdb71238a288abfaf43ecf7561a353c244ee58c",
+      "sha256": "8a0f4ed2c6b90f572f5dec36b8e0e7264e9d989f9201993cff48250d7d708171",
       "bytes": 139223626
     },
     "embeddings/embeddinggemma_300m.jsonl": {
-      "sha256": "9f775714e6625a60a58f049d3a373464841b7c9f055822cc93889da9e7b2222c",
+      "sha256": "ea4d0257380c2c4463644942895ff61275cd3231282bc373a82e0e3654fff29c",
       "bytes": 105072552
     },
     "embeddings/qwen3_embedding_0_6b_fp16.jsonl": {
-      "sha256": "4b24fbda182cfb6b49720fb8b4d5ce9bf72f51276daefb3db0b42f0615bac134",
+      "sha256": "cd77558bb9da6aeddf0d63386a1ce9e18d79cf49d616e4f0ae565d93c7bf1d6d",
       "bytes": 139223626
-    },
-    "embeddings/qwen3_embedding_4b_fp16.jsonl": {
-      "sha256": "1a121ee1bedf6fd9c5d532f1ccf9cca19c26c1da62c36457830ccf10df111cb4",
-      "bytes": 343581258
-    },
-    "embeddings/qwen3_embedding_8b_fp16.jsonl": {
-      "sha256": "545f4704466448b524e5836d805f2f731a3011ecc7fba5943e0772f6e1f5ee99",
-      "bytes": 547938890
     }
   },
   "embeddings": [
@@ -73,16 +65,6 @@
       "model": "qwen3-embedding:0.6b-fp16",
       "dims": 1024,
       "file": "embeddings/qwen3_embedding_0_6b_fp16.jsonl"
-    },
-    {
-      "model": "qwen3-embedding:4b-fp16",
-      "dims": 2560,
-      "file": "embeddings/qwen3_embedding_4b_fp16.jsonl"
-    },
-    {
-      "model": "qwen3-embedding:8b-fp16",
-      "dims": 4096,
-      "file": "embeddings/qwen3_embedding_8b_fp16.jsonl"
     }
   ]
 }

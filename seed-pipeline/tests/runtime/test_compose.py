@@ -26,7 +26,11 @@ class HealthyClient:
 
 @pytest.mark.parametrize(
     ("model", "reranking"),
-    [("bge-reranker-v2-m3:f16", "true"), ("qwen3-reranker:0.6b-fp16", "false")],
+    [
+        ("bge-reranker-v2-m3:f16", "true"),
+        ("qwen3-reranker:4b-fp16", "true"),
+        ("bge-reranker-v2-gemma:f16", "false"),
+    ],
 )
 def test_reranker_service_serves_rerank_endpoint_only_for_native_protocol(
     tmp_path: Path, model: str, reranking: str
