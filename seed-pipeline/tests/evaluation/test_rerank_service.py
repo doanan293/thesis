@@ -1,4 +1,6 @@
+import shutil
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
@@ -22,7 +24,7 @@ from seed_pipeline.evaluation.rerank_service import (
     _cleanup_completed_stage_artifact,
 )
 from seed_pipeline.evaluation.run_workspace import load_run_record
-from seed_pipeline.integrations.kaggle import auto_profile, sessions
+from seed_pipeline.integrations.kaggle import auto_profile, kernel_service, sessions
 from seed_pipeline.integrations.kaggle import service as kaggle_service
 from seed_pipeline.integrations.kaggle.api import KaggleCommandRunner
 from seed_pipeline.integrations.kaggle.config import (
@@ -32,10 +34,14 @@ from seed_pipeline.integrations.kaggle.config import (
 from seed_pipeline.integrations.kaggle.models import (
     ActionVerb,
     CloudArtifact,
+    KernelPresence,
+    KernelRemoteState,
+    KernelStatus,
     ReconcileAction,
 )
 from seed_pipeline.integrations.kaggle.quota import AccountQuota
 from seed_pipeline.integrations.kaggle.service import KaggleExecutionContext
+from seed_pipeline.integrations.kaggle.workers.runtime import write_artifact_manifest
 from seed_pipeline.runtime.benchmarking import BenchmarkMeasurement
 from seed_pipeline.runtime.catalog import LOCAL_RERANK_SEARCH_SPACE, require_model
 from seed_pipeline.runtime.runtime_profiles import (
@@ -671,3 +677,127 @@ def test_kaggle_rerank_finalizes_a_complete_local_cache_without_kaggle(
 
     assert result.artifact_dir == complete_run / "rerank" / "qwen3_reranker_0_6b_fp16"
     assert "reuse=local score cache" in result.actions
+
+
+KERNEL = "user-acc2/rerank-5f22fcadeede1072"
+
+
+def _fake_kernel_service(
+    status: KernelStatus,
+    write_output: Callable[[Path], None],
+    seen: list[tuple[str, str]],
+):
+    class FakeKernelService:
+        def __init__(self, runner, owner):
+            self.owner = owner
+
+        def inspect_state(self, reference):
+            seen.append(("inspect", reference))
+            return KernelRemoteState(reference, KernelPresence.EXISTS, status)
+
+        def download_output(self, reference, destination):
+            seen.append(("download", self.owner))
+            write_output(Path(destination))
+
+    return FakeKernelService
+
+
+def _kernel_output(cache: RerankScoreCache, *, model: str = MODEL):
+    def write_output(destination: Path) -> None:
+        artifact_dir = destination / "artifact"
+        artifact_dir.mkdir(parents=True)
+        data = artifact_dir / "rerank_scores.jsonl"
+        shutil.copy2(cache.path, data)
+        write_artifact_manifest(
+            data,
+            artifact_type="rerank_scores",
+            identity=job_identity(model=model),
+            completion=Completion(300_000, 1, 299_999),
+        )
+
+    return write_output
+
+
+@pytest.fixture
+def recovery_accounts(monkeypatch, tmp_path):
+    monkeypatch.setattr(rerank_service, "WORK_DIR", tmp_path / "work")
+    monkeypatch.setattr(
+        kaggle_service,
+        "resolve_profile_execution_contexts",
+        lambda: _session_contexts("acc1", "acc2"),
+    )
+
+
+def test_recover_kernel_merges_its_scores_and_registers_a_complete_variant(
+    complete_run, complete_rerank_cache, recovery_accounts, monkeypatch
+):
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        kernel_service,
+        "KernelService",
+        _fake_kernel_service(
+            KernelStatus.ERROR, _kernel_output(complete_rerank_cache), seen
+        ),
+    )
+
+    result = KaggleRerankBackend().run(
+        replace(request(complete_run, MODEL), recover_kernel=KERNEL)
+    )
+
+    assert seen == [("inspect", KERNEL), ("download", "user-acc2")]
+    assert "recovered_pairs=1" in result.actions
+    assert "missing_pairs=0" in result.actions
+    assert result.artifact_dir == complete_run / "rerank" / "qwen3_reranker_0_6b_fp16"
+
+
+def test_recover_kernel_refuses_a_running_kernel(
+    complete_run, complete_rerank_cache, recovery_accounts, monkeypatch
+):
+    monkeypatch.setattr(
+        kernel_service,
+        "KernelService",
+        _fake_kernel_service(
+            KernelStatus.RUNNING, _kernel_output(complete_rerank_cache), []
+        ),
+    )
+
+    with pytest.raises(ValueError, match="no finished output"):
+        KaggleRerankBackend().run(
+            replace(request(complete_run, MODEL), recover_kernel=KERNEL)
+        )
+
+
+def test_recover_kernel_rejects_scores_of_another_model(
+    complete_run, complete_rerank_cache, recovery_accounts, monkeypatch
+):
+    monkeypatch.setattr(
+        kernel_service,
+        "KernelService",
+        _fake_kernel_service(
+            KernelStatus.COMPLETE,
+            _kernel_output(complete_rerank_cache, model="bge-reranker-v2-m3:f16"),
+            [],
+        ),
+    )
+
+    with pytest.raises(ValueError, match="another model"):
+        KaggleRerankBackend().run(
+            replace(request(complete_run, MODEL), recover_kernel=KERNEL)
+        )
+    assert load_run_record(complete_run / "run.json").rerank_variants == {}
+
+
+def test_recover_kernel_needs_a_profile_for_the_kernel_owner(
+    complete_run, recovery_accounts
+):
+    with pytest.raises(ValueError, match="has username stranger"):
+        KaggleRerankBackend().run(
+            replace(request(complete_run, MODEL), recover_kernel="stranger/rerank-1")
+        )
+
+
+def test_local_backend_rejects_kernel_recovery(complete_run):
+    with pytest.raises(ValueError, match="requires --backend kaggle"):
+        fake_local_backend().run(
+            replace(request(complete_run, MODEL), recover_kernel=KERNEL)
+        )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ from seed_pipeline.evaluation.run_workspace import (
     load_run_record,
 )
 from seed_pipeline.evaluation.variant_identity import RerankVariantIdentity
+from seed_pipeline.integrations.kaggle.artifacts import sha256_file
 from seed_pipeline.integrations.kaggle.job_lock import (
     kaggle_cache_lock,
     kaggle_job_lock,
@@ -61,6 +63,7 @@ class RerankRequest:
     benchmark: bool = False
     kaggle_account: str | None = None
     max_runs: int | None = None
+    recover_kernel: str | None = None
 
 
 @dataclass(frozen=True)
@@ -176,6 +179,40 @@ def _finalize_variant(
     return RerankStageResult(bundle.root, identity.sha256, subset.sha256, actions)
 
 
+def _recovered_scores(root: Path, model: str) -> Path:
+    """The verified rerank score file inside a downloaded kernel output."""
+    manifests = [
+        path
+        for path in Path(root).rglob("manifest.json")
+        if (path.parent / "rerank_scores.jsonl").is_file()
+    ]
+    if len(manifests) != 1:
+        raise ValueError(
+            "Expected one rerank_scores.jsonl with a manifest.json in the kernel "
+            f"output, found {len(manifests)}"
+        )
+    manifest_path = manifests[0]
+    data_path = manifest_path.parent / "rerank_scores.jsonl"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if (
+        manifest.get("artifact_type") != "rerank_scores"
+        or manifest.get("data_filename") != data_path.name
+    ):
+        raise ValueError(
+            f"Kernel output is not a rerank score artifact: {manifest_path}"
+        )
+    identity = manifest.get("identity")
+    if not isinstance(identity, dict) or identity.get("model") != model:
+        raise ValueError(
+            f"Kernel output holds scores of another model than {model}: {manifest_path}"
+        )
+    if manifest.get("data_sha256") != sha256_file(data_path):
+        raise ValueError(
+            f"Kernel output checksum does not match its manifest: {data_path}"
+        )
+    return data_path
+
+
 class LocalRerankBackend:
     def __init__(
         self,
@@ -243,6 +280,8 @@ class LocalRerankBackend:
         )
 
     def run(self, request: RerankRequest) -> RerankStageResult:
+        if request.recover_kernel is not None:
+            raise ValueError("--recover-kernel requires --backend kaggle")
         spec = require_model(request.model)
         if spec.kind is not ModelKind.RERANKER:
             raise ValueError("--model must select a reranker model")
@@ -380,7 +419,118 @@ class KaggleRerankBackend:
         # for different models to proceed concurrently.
         lock_target = WORK_DIR / "kaggle-rerank-jobs" / spec.slug
         with kaggle_job_lock(lock_target):
+            if request.recover_kernel is not None:
+                return KaggleRerankBackend._recover_kernel(request)
             return KaggleRerankBackend._run_kaggle_unlocked(request)
+
+    @staticmethod
+    def _recover_kernel(request: RerankRequest) -> RerankStageResult:
+        """Merge the scores a finished kernel left in its output into the local cache.
+
+        Works across job identities: every record carries the model and request
+        contract digests and the query and document hashes, and the local cache
+        rejects records that do not match the current catalog entry.
+        """
+        from seed_pipeline.integrations.kaggle.kernel_service import KernelService
+        from seed_pipeline.integrations.kaggle.models import (
+            KernelPresence,
+            KernelStatus,
+        )
+        from seed_pipeline.integrations.kaggle.service import (
+            resolve_profile_execution_contexts,
+        )
+        from seed_pipeline.integrations.kaggle.workspace import (
+            managed_staging_directory,
+        )
+
+        reference = str(request.recover_kernel)
+        owner, separator, slug = reference.partition("/")
+        if not separator or not owner or not slug:
+            raise ValueError("--recover-kernel must be OWNER/KERNEL-SLUG")
+        spec = require_model(request.model)
+        if spec.kind is not ModelKind.RERANKER:
+            raise ValueError("--model must select a reranker model")
+        if spec.rerank_contract is None:
+            raise ValueError(f"Reranker {request.model} has no scoring contract")
+        contract = spec.rerank_contract.sha256
+        workspace = _workspace(request)
+        candidate_bundle = load_bundle(
+            workspace.candidates_dir,
+            expected_type="retrieval_candidates",
+            require_complete=True,
+        )
+        identity = RerankVariantIdentity.create(
+            candidate_bundle.manifest.data_sha256, request.model
+        )
+        context = next(
+            (
+                item
+                for item in resolve_profile_execution_contexts()
+                if item.profile is not None
+                and item.profile.username.casefold() == owner.casefold()
+            ),
+            None,
+        )
+        if context is None:
+            raise ValueError(
+                f"No Kaggle account profile in seed-pipeline/.env has username {owner}"
+            )
+        kernels = KernelService(context.runner, context.owners.execution)
+        remote = kernels.inspect_state(reference)
+        if remote.presence is not KernelPresence.EXISTS or remote.status not in {
+            KernelStatus.COMPLETE,
+            KernelStatus.ERROR,
+        }:
+            raise ValueError(
+                f"Kernel {reference} has no finished output to recover "
+                f"(presence={remote.presence.value}, status={remote.status})"
+            )
+        log = open_rerank_log(request.model, echo=True)
+        cache_path = rerank_score_cache_path(request.model)
+        with managed_staging_directory(
+            WORK_DIR / "kaggle-rerank-recovery", prefix=f"{spec.slug}-"
+        ) as staging:
+            kernels.download_output(reference, staging)
+            remote_scores = RerankScoreCache(
+                _recovered_scores(staging, request.model),
+                model_sha256=spec.sha256,
+                request_contract_sha256=contract,
+            )
+            with kaggle_cache_lock(cache_path):
+                _merge_remote_rerank_scores(
+                    cache_path,
+                    remote_scores,
+                    model_sha256=spec.sha256,
+                    request_contract_sha256=contract,
+                )
+        subset = _local_subset(
+            cache_path,
+            candidate_bundle.data_path,
+            request.model,
+            model_sha256=spec.sha256,
+            request_contract_sha256=contract,
+        )
+        recovered = f"recovered_pairs={len(remote_scores.records)}"
+        log(
+            f"recovered kernel={reference} {recovered} "
+            f"local cache pairs={subset.complete}/{subset.total}"
+        )
+        actions = (f"kernel={reference}", recovered, f"missing_pairs={subset.missing}")
+        if not subset.is_complete:
+            return RerankStageResult(
+                None, identity.sha256, None, actions, incomplete=True
+            )
+        existing = _existing_variant(
+            workspace, spec.slug, identity.sha256, force=request.force
+        )
+        if existing is not None:
+            bundle = load_registered_rerank_bundle(workspace, existing)
+            return RerankStageResult(
+                bundle.root, identity.sha256, bundle.manifest.data_sha256, actions
+            )
+        return _finalize_variant(
+            request, workspace, candidate_bundle, cache_path, identity, subset, actions
+        )
 
     @staticmethod
     def _run_kaggle_unlocked(request: RerankRequest) -> RerankStageResult:

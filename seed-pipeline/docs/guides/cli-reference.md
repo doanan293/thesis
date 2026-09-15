@@ -18,7 +18,7 @@ seed bundle embed --bundle DIR --backend local|kaggle --model MODEL
 seed evaluation build [--bundle DIR]
 seed embed queries --backend local|kaggle
 seed retrieve --run NAME
-seed rerank --run NAME --backend local|kaggle --model MODEL [--kaggle-account accN|auto] [--max-runs N]
+seed rerank --run NAME --backend local|kaggle --model MODEL [--kaggle-account accN|auto] [--max-runs N] [--recover-kernel OWNER/SLUG]
 seed rerank --run NAME --backend local --benchmark --model MODEL
 seed metrics --run NAME
 ```
@@ -75,6 +75,8 @@ Candidate `chunk_id` là nhãn vị trí `<section_key>:chunk-<ordinal:03d>`, `d
 `seed rerank` chỉ đọc candidates của run; với Kaggle, stage chỉ load reranker và chấm candidate pairs. Mỗi reranker có đúng một biến thể dưới `rerank/<model>/` của run. `--dry-run` in `target=` và `missing_pairs=N`, số cặp query–chunk chưa có điểm trong `data/cache/rerank_scores/<model>.jsonl`; khi cache đã đủ, rerank không khởi động model.
 
 Với `--backend kaggle`, job chạy thành nhiều phiên GPU. `--kaggle-account auto` đọc `kaggle quota -v` của mọi profile trước mỗi phiên và chọn tài khoản còn nhiều giờ nhất (bằng nhau thì `accN` nhỏ hơn) mà không bị lệnh khác khoá; `--kaggle-account accN` giữ một tài khoản. Ngân sách phiên = min(`--budget-seconds`, quota còn lại − 0,5 giờ), tối thiểu 1 giờ nên `--budget-seconds` phải ≥ 3600. Lệnh dừng khi đủ cặp (`stop=complete`), hết quota (`stop=quota-exhausted`, exit 3, in bảng quota với `refresh_at`), một phiên không thêm cặp (`stop=no-progress`) hoặc đạt `--max-runs N` (`stop=max-runs`). Điểm của mọi phiên được gộp vào cache ở máy trước khi publish checkpoint, và cache đủ cặp thì lệnh ghi biến thể mà không gọi Kaggle. `--force` chấm lại từ đầu: xoá các cặp của run khỏi cache ở máy, phiên đầu bỏ qua checkpoint, kernel cũ và publish lại dataset, các phiên sau chỉ tiếp tục từ điểm của lần chạy này. Mỗi lệnh ghi log có timestamp vào `data/work/logs/rerank/<model>.log`.
+
+`--recover-kernel OWNER/SLUG` (chỉ với `--backend kaggle`) tải output của một kernel đã kết thúc bằng profile có username `OWNER`, kiểm manifest (`rerank_scores`, đúng `--model`, đúng sha256) rồi gộp điểm vào `data/cache/rerank_scores/<model>.jsonl`, không nộp kernel mới. Điểm được khớp theo model, request contract, query và tài liệu, nên cách này dùng được cả khi job identity đã đổi. Khi cache đủ cặp của run, lệnh ghi luôn biến thể.
 
 Rerank chỉ gọi `POST /v1/rerank` với file GGUF bản convert classifier; mỗi request là một câu hỏi cùng các ứng viên chưa có điểm, ở local lẫn Kaggle. `--backend local` dùng service `llama-reranker` của `../compose.yaml`: nếu `data/cache/local_profiles/rerank/<model>.json` khớp model, CPU (`/proc/cpuinfo`) và image llama.cpp của compose thì service được dựng theo profile, không thì theo mặc định của compose.
 

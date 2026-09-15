@@ -173,3 +173,26 @@ def test_rerank_logs_a_failed_command(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 1
     log = rerank_log_path("qwen3-reranker:0.6b-fp16").read_text(encoding="utf-8")
     assert "command error=RuntimeError: boom" in log
+
+
+def test_rerank_passes_the_kernel_to_recover(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+    monkeypatch.setattr(
+        rerank_command, "KaggleRerankBackend", fake_backend(captured, incomplete=True)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "rerank",
+            "--run",
+            "experiment",
+            "--backend",
+            "kaggle",
+            "--recover-kernel",
+            "doanvanan0209/rerank-5f22fcadeede1072",
+        ],
+    )
+
+    assert result.exit_code == 3
+    assert captured["request"].recover_kernel == "doanvanan0209/rerank-5f22fcadeede1072"

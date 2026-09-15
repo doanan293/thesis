@@ -66,6 +66,14 @@ def rerank(
             "or out of quota).",
         ),
     ] = None,
+    recover_kernel: Annotated[
+        str | None,
+        typer.Option(
+            "--recover-kernel",
+            help="OWNER/KERNEL-SLUG of a finished Kaggle kernel whose scores are "
+            "merged into the local score cache (kaggle backend).",
+        ),
+    ] = None,
 ) -> None:
     adapter = (
         LocalRerankBackend() if backend is Backend.LOCAL else KaggleRerankBackend()
@@ -80,6 +88,7 @@ def rerank(
         benchmark=benchmark,
         kaggle_account=kaggle_account,
         max_runs=max_runs,
+        recover_kernel=recover_kernel,
     )
     run_handler(state_from_context(ctx), lambda: _logged(backend, request, adapter.run))
 

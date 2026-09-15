@@ -114,5 +114,9 @@ Kaggle không truy cập Postgres/Qdrant và không tính metrics; rerank chỉ 
 - `pinned to release`: release hiện hành đổi giữa chừng; dùng tên run mới.
 - `Query embedding cache ... is missing`: chạy lại `seed embed queries --backend kaggle` với đúng file evaluation và model embedding của backend.
 - `--top-k` lớn hơn `candidate-k`: retrieve lại với candidate depth đủ lớn.
+- `stop=quota-exhausted`: xem bảng quota và chạy lại sau `refresh_at`.
+- `stop=no-progress`: phiên vừa rồi không thêm cặp nào (kernel lỗi không có output hoặc llama-server không lên sau 3 lần khởi động lại); đọc `data/work/logs/rerank/<model>.log` và `server-*.log` trong output kernel.
+- Máy hoặc WSL khởi động lại khi kernel đang chạy: mở lại tmux và chạy lại đúng lệnh; lệnh nối vào kernel đang chạy trên tài khoản đó thay vì nộp kernel mới.
+- Kernel đã kết thúc nhưng điểm chưa về máy và lệnh không còn nối được vào nó (ví dụ cấu hình runtime đã đổi nên job identity khác): `uv run seed rerank --run RUN --backend kaggle --model MODEL --recover-kernel OWNER/SLUG`, rồi chạy lại lệnh rerank thường để chấm phần còn thiếu.
 
 Chi tiết lệnh: [CLI reference](cli-reference.md). Chính sách bàn giao: [Downstream](downstream.md).
