@@ -1,15 +1,19 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.integrations.kaggle.factories import job_identity, stage_job
 
 from seed_pipeline.artifacts.manifest import Completion
 from seed_pipeline.cache.jsonl_records import append_record
+from seed_pipeline.config.paths import rerank_log_path
 from seed_pipeline.evaluation import rerank_service
 from seed_pipeline.evaluation.local_rerank_benchmark import LocalRerankBenchmarkResult
+from seed_pipeline.evaluation.rerank_cache_checkpoint import RerankCacheCheckpoint
 from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.rerank_service import (
     KaggleRerankBackend,
@@ -18,9 +22,20 @@ from seed_pipeline.evaluation.rerank_service import (
     _cleanup_completed_stage_artifact,
 )
 from seed_pipeline.evaluation.run_workspace import load_run_record
-from seed_pipeline.integrations.kaggle import auto_profile
+from seed_pipeline.integrations.kaggle import auto_profile, sessions
 from seed_pipeline.integrations.kaggle import service as kaggle_service
-from seed_pipeline.integrations.kaggle.models import ActionVerb, ReconcileAction
+from seed_pipeline.integrations.kaggle.api import KaggleCommandRunner
+from seed_pipeline.integrations.kaggle.config import (
+    KaggleAccountProfile,
+    OwnerConfiguration,
+)
+from seed_pipeline.integrations.kaggle.models import (
+    ActionVerb,
+    CloudArtifact,
+    ReconcileAction,
+)
+from seed_pipeline.integrations.kaggle.quota import AccountQuota
+from seed_pipeline.integrations.kaggle.service import KaggleExecutionContext
 from seed_pipeline.runtime.benchmarking import BenchmarkMeasurement
 from seed_pipeline.runtime.catalog import LOCAL_RERANK_SEARCH_SPACE, require_model
 from seed_pipeline.runtime.runtime_profiles import (
@@ -58,6 +73,72 @@ def request(run_root, model, *, force=False, dry_run=False):
 
 def fake_local_backend():
     return LocalRerankBackend(reranker_factory=lambda _spec, _timeout: FakeReranker())
+
+
+MODEL = "qwen3-reranker:0.6b-fp16"
+
+
+def _session_contexts(*names: str) -> tuple[KaggleExecutionContext, ...]:
+    return tuple(
+        KaggleExecutionContext(
+            KaggleAccountProfile(name, f"user-{name}", f"token-{name}"),
+            OwnerConfiguration(
+                f"user-{name}", "user-acc1", "user-acc1", f"user-{name}"
+            ),
+            KaggleCommandRunner(environment={}),
+        )
+        for name in names
+    )
+
+
+def _scores_artifact(cache: RerankScoreCache) -> CloudArtifact:
+    return CloudArtifact(
+        cache.path,
+        cache.path.with_name("manifest.json"),
+        job_identity(),
+        Completion(1, 1, 0),
+    )
+
+
+@pytest.fixture
+def kaggle_sessions(monkeypatch, tmp_path) -> dict[str, float]:
+    """Fake Kaggle: GPU hours left per profile and a reusable runtime profile."""
+    spec = require_model(MODEL)
+    assert spec.rerank_search_space is not None
+    selected = spec.rerank_search_space.candidates[0]
+    quotas = {"acc1": 27.58, "acc2": 29.61}
+
+    def read_quota(context: KaggleExecutionContext) -> AccountQuota:
+        assert context.profile is not None
+        return AccountQuota(
+            context.profile.name,
+            context.profile.username,
+            quotas[context.profile.name],
+            30.0,
+            datetime(2026, 9, 19),
+        )
+
+    monkeypatch.setattr(rerank_service, "WORK_DIR", tmp_path / "work")
+    monkeypatch.setattr(
+        kaggle_service,
+        "resolve_session_contexts",
+        lambda _account: _session_contexts(*quotas),
+    )
+    monkeypatch.setattr(
+        kaggle_service, "runtime_manifest_sha256", lambda *_args, **_kwargs: "c" * 64
+    )
+    monkeypatch.setattr(
+        kaggle_service, "active_kernel_profile", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        auto_profile,
+        "ensure_runtime_profile",
+        lambda **_kwargs: SimpleNamespace(
+            profile=SimpleNamespace(selected=selected), action="reuse"
+        ),
+    )
+    monkeypatch.setattr(sessions, "read_account_quota", read_quota)
+    return quotas
 
 
 def _score_record(*, query_id: str, score: float) -> dict[str, object]:
@@ -165,6 +246,11 @@ def test_kaggle_dry_run_formats_resource_identity_and_does_not_register(
     complete_run, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(kaggle_service, "run_kaggle_stage", fake_kaggle_dry_run)
+    monkeypatch.setattr(
+        kaggle_service,
+        "resolve_session_contexts",
+        lambda _account: _session_contexts("acc1"),
+    )
     original_ensure_profile = auto_profile.ensure_runtime_profile
 
     def isolated_profile(**kwargs):
@@ -182,45 +268,6 @@ def test_kaggle_dry_run_formats_resource_identity_and_does_not_register(
     assert result.incomplete
     assert "profile=benchmark-required" in result.actions
     assert load_run_record(complete_run / "run.json").rerank_variants == {}
-
-
-def test_kaggle_rerank_propagates_selected_account(complete_run, monkeypatch):
-    seen = []
-    spec = require_model("qwen3-reranker:0.6b-fp16")
-    assert spec.rerank_search_space is not None
-    selected = spec.rerank_search_space.candidates[0]
-    monkeypatch.setattr(
-        auto_profile,
-        "ensure_runtime_profile",
-        lambda **kwargs: (
-            seen.append(("profile", kwargs["kaggle_account"]))
-            or SimpleNamespace(
-                profile=SimpleNamespace(selected=selected), action="reuse"
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        kaggle_service,
-        "run_kaggle_stage",
-        lambda **kwargs: (
-            seen.append(("stage", kwargs["kaggle_account"]))
-            or SimpleNamespace(
-                artifact_path=None,
-                completion=Completion(1, 0, 1),
-                actions=(),
-            )
-        ),
-    )
-
-    result = KaggleRerankBackend().run(
-        replace(
-            request(complete_run, "qwen3-reranker:0.6b-fp16"),
-            kaggle_account="acc2",
-        )
-    )
-
-    assert result.incomplete
-    assert seen == [("profile", "acc2"), ("stage", "acc2")]
 
 
 def test_kaggle_rerank_allows_different_models_in_the_same_run(
@@ -478,3 +525,149 @@ def test_kaggle_backend_leaves_benchmarks_to_the_runtime_profile(complete_run):
         KaggleRerankBackend().run(
             replace(request(complete_run, "qwen3-reranker:0.6b-fp16"), benchmark=True)
         )
+
+
+def test_kaggle_rerank_merges_session_scores_and_registers_the_variant(
+    complete_run, complete_rerank_cache, kaggle_sessions, monkeypatch, tmp_path
+):
+    calls: list[dict] = []
+
+    def fake_stage(**kwargs):
+        calls.append(kwargs)
+        kwargs["artifact_sink"](
+            stage_job(tmp_path / "job"), _scores_artifact(complete_rerank_cache)
+        )
+        return SimpleNamespace(
+            completion=Completion(1, 1, 0), actions=(), artifact_path=None
+        )
+
+    monkeypatch.setattr(kaggle_service, "run_kaggle_stage", fake_stage)
+
+    result = KaggleRerankBackend().run(
+        replace(
+            request(complete_run, MODEL), kaggle_account="auto", budget_seconds=21_600
+        )
+    )
+
+    assert not result.incomplete
+    assert result.artifact_dir == complete_run / "rerank" / "qwen3_reranker_0_6b_fp16"
+    assert [
+        (
+            call["kaggle_account"],
+            call["budget_seconds"],
+            call["max_runs"],
+            call["force"],
+            call["resume_remote"],
+        )
+        for call in calls
+    ] == [("acc2", 21_600, 1, False, True)]
+    assert isinstance(calls[0]["local_checkpoint"], RerankCacheCheckpoint)
+    assert "stop=complete" in result.actions
+    log = rerank_log_path(MODEL).read_text(encoding="utf-8")
+    assert "quota account=acc1 remaining=27.58h" in log
+    assert "session=1 start account=acc2" in log
+    assert "merged artifact pairs=1/1" in log
+
+
+def test_kaggle_rerank_stops_with_a_quota_table_when_no_account_has_an_hour(
+    complete_run, kaggle_sessions, monkeypatch
+):
+    kaggle_sessions.update(acc1=1.2, acc2=0.4)
+
+    def no_session(**_kwargs):
+        raise AssertionError("no Kaggle session may start without quota")
+
+    monkeypatch.setattr(kaggle_service, "run_kaggle_stage", no_session)
+
+    result = KaggleRerankBackend().run(
+        replace(
+            request(complete_run, MODEL), kaggle_account="auto", budget_seconds=21_600
+        )
+    )
+
+    assert result.incomplete
+    assert "stop=quota-exhausted" in result.actions
+    assert "missing_pairs=1" in result.actions
+    assert len(result.quota) == 3
+    assert "2026-09-19T00:00:00" in result.quota[1]
+    assert load_run_record(complete_run / "run.json").rerank_variants == {}
+
+
+def test_kaggle_rerank_attaches_to_the_account_already_running_the_kernel(
+    complete_run, complete_rerank_cache, kaggle_sessions, monkeypatch, tmp_path
+):
+    accounts: list[str] = []
+
+    def fake_stage(**kwargs):
+        accounts.append(kwargs["kaggle_account"])
+        kwargs["artifact_sink"](
+            stage_job(tmp_path / "job"), _scores_artifact(complete_rerank_cache)
+        )
+        return SimpleNamespace(
+            completion=Completion(1, 1, 0), actions=(), artifact_path=None
+        )
+
+    monkeypatch.setattr(
+        kaggle_service, "active_kernel_profile", lambda *_args, **_kwargs: "acc1"
+    )
+    monkeypatch.setattr(kaggle_service, "run_kaggle_stage", fake_stage)
+
+    KaggleRerankBackend().run(
+        replace(
+            request(complete_run, MODEL), kaggle_account="auto", budget_seconds=21_600
+        )
+    )
+
+    assert accounts == ["acc1"]
+
+
+def test_forced_kaggle_rerank_forces_only_the_first_session(
+    complete_run, complete_rerank_cache, kaggle_sessions, monkeypatch, tmp_path
+):
+    calls: list[tuple[bool, bool]] = []
+
+    def fake_stage(**kwargs):
+        calls.append((kwargs["force"], kwargs["resume_remote"]))
+        if len(calls) == 1:
+            return SimpleNamespace(
+                completion=Completion(1, 0, 1), actions=(), artifact_path=None
+            )
+        kwargs["artifact_sink"](
+            stage_job(tmp_path / "job"), _scores_artifact(complete_rerank_cache)
+        )
+        return SimpleNamespace(
+            completion=Completion(1, 1, 0), actions=(), artifact_path=None
+        )
+
+    monkeypatch.setattr(kaggle_service, "run_kaggle_stage", fake_stage)
+
+    result = KaggleRerankBackend().run(
+        replace(
+            request(complete_run, MODEL, force=True),
+            kaggle_account="auto",
+            budget_seconds=21_600,
+        )
+    )
+
+    assert calls == [(True, False), (False, False)]
+    assert not result.incomplete
+
+
+def test_kaggle_rerank_finalizes_a_complete_local_cache_without_kaggle(
+    complete_run, complete_rerank_cache, monkeypatch, tmp_path
+):
+    def no_accounts(_account):
+        raise AssertionError("a complete local cache needs no Kaggle account")
+
+    monkeypatch.setattr(rerank_service, "WORK_DIR", tmp_path / "work")
+    monkeypatch.setattr(
+        rerank_service,
+        "rerank_score_cache_path",
+        lambda _model: complete_rerank_cache.path,
+    )
+    monkeypatch.setattr(kaggle_service, "resolve_session_contexts", no_accounts)
+
+    result = KaggleRerankBackend().run(request(complete_run, MODEL))
+
+    assert result.artifact_dir == complete_run / "rerank" / "qwen3_reranker_0_6b_fp16"
+    assert "reuse=local score cache" in result.actions

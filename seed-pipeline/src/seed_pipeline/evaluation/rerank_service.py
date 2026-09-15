@@ -4,9 +4,10 @@ import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-from seed_pipeline.artifacts.bundle import load_bundle
-from seed_pipeline.cache.jsonl_records import merge_records
+from seed_pipeline.artifacts.bundle import ArtifactBundle, load_bundle
+from seed_pipeline.cache.jsonl_records import ValidatedSubset, merge_records
 from seed_pipeline.config.paths import (
     COMPOSE_FILE,
     GGUF_ROOT,
@@ -23,6 +24,8 @@ from seed_pipeline.evaluation.rerank_artifacts import (
     finalize_run_rerank_bundle,
     load_registered_rerank_bundle,
 )
+from seed_pipeline.evaluation.rerank_cache_checkpoint import RerankCacheCheckpoint
+from seed_pipeline.evaluation.rerank_log import open_rerank_log
 from seed_pipeline.evaluation.rerank_score_cache import (
     RerankScoreCache,
 )
@@ -57,6 +60,7 @@ class RerankRequest:
     request_timeout_seconds: float
     benchmark: bool = False
     kaggle_account: str | None = None
+    max_runs: int | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ class RerankStageResult:
     incomplete: bool = False
     benchmark_report: Path | None = None
     benchmark_levels: int = 0
+    quota: tuple[str, ...] = ()
 
 
 def _cleanup_completed_stage_artifact(artifact_path: Path, staging_root: Path) -> None:
@@ -132,6 +137,43 @@ def _existing_variant(
             "different inputs; use --force"
         )
     return existing
+
+
+def _local_subset(
+    cache_path: Path,
+    candidates: Path,
+    model: str,
+    *,
+    model_sha256: str,
+    request_contract_sha256: str,
+) -> ValidatedSubset:
+    with kaggle_cache_lock(cache_path):
+        return RerankScoreCache(
+            cache_path,
+            model_sha256=model_sha256,
+            request_contract_sha256=request_contract_sha256,
+        ).validate_subset(candidates, model)
+
+
+def _finalize_variant(
+    request: RerankRequest,
+    workspace: RunWorkspace,
+    candidate_bundle: ArtifactBundle,
+    cache_path: Path,
+    identity: RerankVariantIdentity,
+    subset: ValidatedSubset,
+    actions: tuple[str, ...],
+) -> RerankStageResult:
+    # Different model jobs may finish concurrently; serialize the run registry update.
+    with kaggle_cache_lock(request.run_root / "run.json"):
+        bundle = finalize_run_rerank_bundle(
+            workspace=workspace,
+            candidate_bundle=candidate_bundle,
+            cache_path=cache_path,
+            identity=identity,
+            force=request.force,
+        )
+    return RerankStageResult(bundle.root, identity.sha256, subset.sha256, actions)
 
 
 class LocalRerankBackend:
@@ -293,20 +335,13 @@ class LocalRerankBackend:
                 (f"scored={processed}",),
                 incomplete=True,
             )
-        # Different model jobs may finish concurrently; serialize the
-        # read-modify-write of the shared run registry while publishing.
-        with kaggle_cache_lock(request.run_root / "run.json"):
-            bundle = finalize_run_rerank_bundle(
-                workspace=workspace,
-                candidate_bundle=candidate_bundle,
-                cache_path=cache_path,
-                identity=identity,
-                force=request.force,
-            )
-        return RerankStageResult(
-            bundle.root,
-            identity.sha256,
-            subset.sha256,
+        return _finalize_variant(
+            request,
+            workspace,
+            candidate_bundle,
+            cache_path,
+            identity,
+            subset,
             (f"scored={processed}",),
         )
 
@@ -349,8 +384,27 @@ class KaggleRerankBackend:
 
     @staticmethod
     def _run_kaggle_unlocked(request: RerankRequest) -> RerankStageResult:
-        from seed_pipeline.integrations.kaggle.models import StageName
-        from seed_pipeline.integrations.kaggle.service import run_kaggle_stage
+        from seed_pipeline.integrations.kaggle.auto_profile import (
+            ensure_runtime_profile,
+        )
+        from seed_pipeline.integrations.kaggle.models import (
+            CloudArtifact,
+            PipelineResult,
+            StageJob,
+            StageName,
+        )
+        from seed_pipeline.integrations.kaggle.service import (
+            active_kernel_profile,
+            resolve_session_contexts,
+            run_kaggle_stage,
+            runtime_manifest_sha256,
+        )
+        from seed_pipeline.integrations.kaggle.sessions import (
+            QuotaExhausted,
+            ReservedAccount,
+            reserve_session_account,
+            run_account_sessions,
+        )
 
         spec = require_model(request.model)
         if spec.kind is not ModelKind.RERANKER:
@@ -379,29 +433,93 @@ class KaggleRerankBackend:
             raise ValueError(f"Reranker {request.model} has no scoring contract")
         contract = spec.rerank_contract.sha256
         cache_path = rerank_score_cache_path(request.model)
-        missing = (
-            RerankScoreCache(
-                cache_path, model_sha256=spec.sha256, request_contract_sha256=contract
-            )
-            .validate_subset(candidate_bundle.data_path, request.model)
-            .missing
-        )
-        missing_pairs = f"missing_pairs={missing}"
-        from seed_pipeline.integrations.kaggle.auto_profile import (
-            ensure_runtime_profile,
-        )
+        candidates = candidate_bundle.data_path
+        log = open_rerank_log(request.model, echo=True)
 
-        resolution = ensure_runtime_profile(
-            workload="rerank",
-            benchmark_stage=StageName.RERANK_BENCHMARK.value,
-            model=request.model,
-            input_path=candidate_bundle.data_path,
-            gguf_root=GGUF_ROOT,
-            budget_seconds=request.budget_seconds,
-            dry_run=request.dry_run,
-            force=request.force,
-            kaggle_account=request.kaggle_account,
+        def local_subset() -> ValidatedSubset:
+            return _local_subset(
+                cache_path,
+                candidates,
+                request.model,
+                model_sha256=spec.sha256,
+                request_contract_sha256=contract,
+            )
+
+        if request.force and not request.dry_run:
+            with kaggle_cache_lock(cache_path):
+                cache = RerankScoreCache(
+                    cache_path,
+                    model_sha256=spec.sha256,
+                    request_contract_sha256=contract,
+                )
+                cache.replace_keys(
+                    cache.expected_keys_from_candidates(candidates, request.model)
+                )
+            log("force: removed this run's pairs from the local score cache")
+        subset = local_subset()
+        missing_pairs = f"missing_pairs={subset.missing}"
+        target = f"target={workspace.rerank_dir(spec.slug)}"
+        log(
+            f"kaggle start run={request.run_root.name} "
+            f"account={request.kaggle_account or 'default'} {missing_pairs}"
         )
+        if subset.is_complete and not request.dry_run:
+            log("local score cache is complete; no Kaggle session needed")
+            return _finalize_variant(
+                request,
+                workspace,
+                candidate_bundle,
+                cache_path,
+                identity,
+                subset,
+                (missing_pairs, "reuse=local score cache"),
+            )
+
+        contexts = resolve_session_contexts(request.kaggle_account)
+        first = contexts[0]
+
+        def benchmark_runner(**benchmark_arguments: Any) -> PipelineResult:
+            with reserve_session_account(
+                contexts, requested_budget_seconds=request.budget_seconds, log=log
+            ) as reserved:
+                return run_kaggle_stage(
+                    stage=StageName.RERANK_BENCHMARK,
+                    model=request.model,
+                    output_dir=WORK_DIR / "kaggle-runtime-benchmarks" / spec.slug,
+                    budget_seconds=reserved.budget_seconds,
+                    kaggle_account=reserved.profile,
+                    **benchmark_arguments,
+                )
+
+        try:
+            resolution = ensure_runtime_profile(
+                workload="rerank",
+                benchmark_stage=StageName.RERANK_BENCHMARK.value,
+                model=request.model,
+                input_path=candidates,
+                gguf_root=GGUF_ROOT,
+                budget_seconds=request.budget_seconds,
+                dry_run=request.dry_run,
+                force=request.force,
+                kaggle_account=first.profile.name if first.profile else None,
+                runtime_sha256=(
+                    None
+                    if request.dry_run
+                    else runtime_manifest_sha256(first.runner, first.owners)
+                ),
+                benchmark_runner=benchmark_runner,
+            )
+        except QuotaExhausted as exhausted:
+            for row in exhausted.table:
+                log(row)
+            return RerankStageResult(
+                None,
+                identity.sha256,
+                None,
+                (missing_pairs, target, "stop=quota-exhausted"),
+                incomplete=True,
+                quota=exhausted.table,
+            )
         if resolution.profile is None:
             return RerankStageResult(
                 None,
@@ -410,69 +528,96 @@ class KaggleRerankBackend:
                 (missing_pairs, f"profile={resolution.action}"),
                 incomplete=True,
             )
+        runtime_profile = resolution.profile.selected
         remote_dir = WORK_DIR / "kaggle-rerank-scores" / spec.slug
-        result = run_kaggle_stage(
-            stage=StageName.RERANK,
-            model=request.model,
-            input_path=candidate_bundle.data_path,
-            output_dir=remote_dir,
-            gguf_root=GGUF_ROOT,
-            force=request.force,
+
+        def merge_artifact(_job: StageJob, artifact: CloudArtifact) -> None:
+            remote = RerankScoreCache(
+                artifact.data_path,
+                model_sha256=spec.sha256,
+                request_contract_sha256=contract,
+            )
+            with kaggle_cache_lock(cache_path):
+                _merge_remote_rerank_scores(
+                    cache_path,
+                    remote,
+                    model_sha256=spec.sha256,
+                    request_contract_sha256=contract,
+                )
+            merged = local_subset()
+            log(
+                f"merged artifact pairs={artifact.completion.complete}/"
+                f"{artifact.completion.total}; local cache pairs="
+                f"{merged.complete}/{merged.total}"
+            )
+
+        checkpoint_source = RerankCacheCheckpoint(cache_path)
+
+        def run_session(reserved: ReservedAccount, index: int) -> PipelineResult:
+            return run_kaggle_stage(
+                stage=StageName.RERANK,
+                model=request.model,
+                input_path=candidates,
+                output_dir=remote_dir,
+                gguf_root=GGUF_ROOT,
+                force=request.force and index == 1,
+                resume_remote=not request.force,
+                check_only=request.dry_run,
+                max_runs=1,
+                budget_seconds=reserved.budget_seconds,
+                runtime_profile=runtime_profile,
+                kaggle_account=reserved.profile,
+                artifact_sink=merge_artifact,
+                local_checkpoint=checkpoint_source,
+            )
+
+        preferred = (
+            None
+            if request.dry_run or request.force
+            else active_kernel_profile(
+                contexts,
+                stage=StageName.RERANK,
+                model=request.model,
+                input_path=candidates,
+                output_dir=remote_dir,
+                gguf_root=GGUF_ROOT,
+                runtime_profile=runtime_profile,
+            )
+        )
+        outcome = run_account_sessions(
+            contexts,
+            run_session,
+            requested_budget_seconds=request.budget_seconds,
+            max_sessions=request.max_runs,
             check_only=request.dry_run,
-            budget_seconds=request.budget_seconds,
-            runtime_profile=resolution.profile.selected,
-            kaggle_account=request.kaggle_account,
+            log=log,
+            preferred_profile=preferred,
         )
-        actions = tuple(
-            f"{action.verb.value} {action.resource_kind} {action.reference}: {action.reason}"
-            for action in result.actions
+        subset = local_subset()
+        actions = (
+            f"missing_pairs={subset.missing}",
+            target,
+            f"sessions={outcome.sessions}",
+            f"stop={outcome.stop_reason.value}",
+            *(
+                f"{action.verb.value} {action.resource_kind} "
+                f"{action.reference}: {action.reason}"
+                for action in (outcome.result.actions if outcome.result else ())
+            ),
         )
-        if result.artifact_path is None:
-            return RerankStageResult(
-                None,
-                identity.sha256,
-                None,
-                (missing_pairs, f"target={workspace.rerank_dir(spec.slug)}", *actions),
-                incomplete=not result.completion.is_complete,
-            )
-        remote = RerankScoreCache(
-            result.artifact_path,
-            model_sha256=spec.sha256,
-            request_contract_sha256=contract,
-        )
-        with kaggle_cache_lock(cache_path):
-            _merge_remote_rerank_scores(
-                cache_path,
-                remote,
-                model_sha256=spec.sha256,
-                request_contract_sha256=contract,
-            )
-            local = RerankScoreCache(
-                cache_path,
-                model_sha256=spec.sha256,
-                request_contract_sha256=contract,
-            )
-            subset = local.validate_subset(candidate_bundle.data_path, request.model)
-        if not subset.is_complete:
+        if request.dry_run or not subset.is_complete:
             return RerankStageResult(
                 None,
                 identity.sha256,
                 None,
                 actions,
                 incomplete=True,
+                quota=outcome.quota_table,
             )
-        with kaggle_cache_lock(request.run_root / "run.json"):
-            bundle = finalize_run_rerank_bundle(
-                workspace=workspace,
-                candidate_bundle=candidate_bundle,
-                cache_path=cache_path,
-                identity=identity,
-                force=request.force,
-            )
-        _cleanup_completed_stage_artifact(result.artifact_path, remote_dir)
-        return RerankStageResult(
-            bundle.root,
-            identity.sha256,
-            subset.sha256,
-            actions,
+        result = _finalize_variant(
+            request, workspace, candidate_bundle, cache_path, identity, subset, actions
         )
+        if outcome.result is not None and outcome.result.artifact_path is not None:
+            _cleanup_completed_stage_artifact(outcome.result.artifact_path, remote_dir)
+        log(f"kaggle complete variant={result.artifact_dir}")
+        return result

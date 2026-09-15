@@ -50,6 +50,8 @@ uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --top-k 30
 
 Mỗi baseline cần ít nhất 30 candidates/query để tính Hit@30. Thêm `--limit 50` với tên run riêng để smoke test; bỏ `--limit` làm đổi run identity.
 
+Rerank trên CPU có thể chạy nhiều giờ: chạy lệnh trong một cửa sổ tmux riêng (`tmux new-session -s rerank`). Mỗi lệnh `seed rerank` ghi dòng bắt đầu, kết quả và lỗi vào `data/work/logs/rerank/<model>.log`; file này còn sau khi máy khởi động lại.
+
 ## Troubleshooting
 
 - `Expected hits from exactly one published release`: import và publish bundle trước.

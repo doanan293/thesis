@@ -6,7 +6,7 @@ from typer.testing import CliRunner
 
 import seed_pipeline.cli.commands.rerank as rerank_command
 from seed_pipeline.cli.app import app
-from seed_pipeline.config.paths import run_dir
+from seed_pipeline.config.paths import rerank_log_path, run_dir
 
 runner = CliRunner()
 
@@ -23,6 +23,7 @@ def fake_backend(captured: dict, *, incomplete: bool):
                 incomplete=incomplete,
                 benchmark_report=None,
                 benchmark_levels=0,
+                quota=(),
             )
 
     return FakeBackend
@@ -102,3 +103,73 @@ def test_rerank_passes_kaggle_account_to_request(
 
     assert result.exit_code == 3
     assert captured["request"].kaggle_account == "acc2"
+
+
+def test_rerank_passes_auto_account_and_max_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+    monkeypatch.setattr(
+        rerank_command, "KaggleRerankBackend", fake_backend(captured, incomplete=True)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "rerank",
+            "--run",
+            "experiment",
+            "--backend",
+            "kaggle",
+            "--kaggle-account",
+            "auto",
+            "--max-runs",
+            "4",
+        ],
+    )
+
+    assert result.exit_code == 3
+    assert captured["request"].kaggle_account == "auto"
+    assert captured["request"].max_runs == 4
+
+
+def test_rerank_rejects_zero_max_runs() -> None:
+    result = runner.invoke(
+        app, ["rerank", "--run", "experiment", "--backend", "kaggle", "--max-runs", "0"]
+    )
+
+    assert result.exit_code == 2
+
+
+def test_rerank_appends_command_lines_to_the_model_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+    monkeypatch.setattr(
+        rerank_command, "LocalRerankBackend", fake_backend(captured, incomplete=False)
+    )
+
+    result = runner.invoke(
+        app, ["rerank", "--run", "experiment", "--model", "qwen3-reranker:0.6b-fp16"]
+    )
+
+    assert result.exit_code == 0, result.output
+    log = rerank_log_path("qwen3-reranker:0.6b-fp16").read_text(encoding="utf-8")
+    assert "command backend=local run=experiment" in log
+    assert "command status=complete actions=missing_pairs=0" in log
+
+
+def test_rerank_logs_a_failed_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingBackend:
+        def run(self, request):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(rerank_command, "LocalRerankBackend", FailingBackend)
+
+    result = runner.invoke(
+        app, ["rerank", "--run", "experiment", "--model", "qwen3-reranker:0.6b-fp16"]
+    )
+
+    assert result.exit_code == 1
+    log = rerank_log_path("qwen3-reranker:0.6b-fp16").read_text(encoding="utf-8")
+    assert "command error=RuntimeError: boom" in log
