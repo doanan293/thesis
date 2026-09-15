@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from seed_pipeline.runtime.model_profiles import (
@@ -287,6 +287,16 @@ RERANKER_MODELS = {
         ubatch_sizes=(8192, 16384, 32768),
     ),
 }
+
+# Instruction experiment (docs/guides/evaluation.md): the 0.6b weights with the rerank
+# chat template changed to a Vietnamese medical instruction by gguf-new-metadata.
+RERANKER_MODELS["qwen3-reranker:0.6b-fp16-vimed"] = replace(
+    RERANKER_MODELS["qwen3-reranker:0.6b-fp16"],
+    name="qwen3-reranker:0.6b-fp16-vimed",
+    canonical_filename="qwen3-reranker-0.6b-f16-vimed.gguf",
+    byte_size=1_197_634_336,
+    sha256="fa17b7c742ffeeb6f80529e50c9c35a8179c4369baa4a039ef94381c0665f851",
+)
 
 MODEL_CATALOG = {**EMBEDDING_MODELS, **RERANKER_MODELS}
 

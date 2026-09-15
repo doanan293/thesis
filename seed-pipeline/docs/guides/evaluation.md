@@ -65,7 +65,7 @@ uv run seed metrics --run hybrid-qwen4b-p50-k30-rrf2 --model qwen3-reranker:4b-f
 
 `--dry-run` in `missing_pairs=N`. Candidates của `hybrid-qwen4b-p50-k30-rrf2` trong archive là đúng các cặp query–chunk đã có điểm trong `data/cache/rerank_scores/`, nên `N` bằng 0 và rerank chỉ đọc cache, không khởi động model.
 
-Mọi reranker được gọi qua `/v1/rerank`. Kết quả `bge-reranker-v2-gemma:f16` ở mục 6 là kết quả cuối cùng: model đã bỏ khỏi catalog, report của nó vẫn nằm ở `reports/rerank/bge_reranker_v2_gemma_f16/`.
+Mọi reranker được gọi qua `/v1/rerank`. Kết quả `bge-reranker-v2-gemma:f16` ở mục 7 là kết quả cuối cùng: model đã bỏ khỏi catalog, report của nó vẫn nằm ở `reports/rerank/bge_reranker_v2_gemma_f16/`.
 
 Cấu hình `llama-reranker` cho backend trên CPU được chọn bằng benchmark đầu-cuối trên máy production (chạy trong tmux: mỗi mức nạp lại model 4B trên CPU):
 
@@ -77,11 +77,88 @@ Lệnh lưu `data/cache/local_profiles/rerank/<model>.json` và in các biến `
 
 Qdrant tìm dense bằng HNSW (gần đúng), nên retrieve lại trên index dựng mới có thể chọn khác vài chunk có điểm sát nhau ở cuối top 30. Lần dựng lại tháng 9/2026 lệch 4.678 trên 300.000 cặp, gần hết ở hạng 21–30. Khi đó `N` lớn hơn 0 và cần chạy reranker (CPU hoặc Kaggle) cho các cặp còn thiếu.
 
-## 5. Run `dense-text-embedding-3-large-k30`
+## 5. Đo instruction trên tập con
+
+Qwen3-Reranker đọc instruction từ template `rerank` trong file GGUF. Template gốc dùng `<Instruct>: Given a web search query, retrieve relevant passages that answer the query`. Phép đo so bản gốc với bản chỉ đổi dòng đó thành `<Instruct>: Given a Vietnamese medical retrieval query, retrieve relevant passages that answer the query`.
+
+Quy tắc quyết định được chốt trước khi đo: bootstrap theo cặp trên 1.000 câu hỏi của tập con, 10.000 lần lấy mẫu lại, seed 0, cho hiệu MRR@30 (bản tiếng Việt − bản gốc). Cận dưới khoảng tin cậy 95% lớn hơn 0 thì cả ba model `qwen3-reranker` dùng instruction tiếng Việt; ngược lại giữ template gốc.
+
+### Tập con
+
+Dùng stack của mục 2 và biến môi trường của mục 3, rồi trong `seed-pipeline/`:
+
+```bash
+uv run seed retrieve --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --retriever hybrid --prefetch-k 50 --candidate-k 30 --rrf-k 2 --sample 1000 --sample-seed 0
+```
+
+Mẫu gồm 10% mỗi `eval_group`: 500 `formulary`, 250 `leaflet`, 100 `chunk_risk`, 50 `patient_natural`, 50 `noisy_confuser`, 50 `multi_intent`, tổng 30.000 cặp.
+
+### File GGUF tiếng Việt y tế
+
+Chạy ở thư mục gốc repo. `gguf` 0.19.0 chỉ chạy tạm qua `uv run --no-project --with`, không phải dependency của project. `gguf-new-metadata --chat-template` thay mọi khoá `tokenizer.chat_template*`, nên bước đầu ghi danh sách JSON gồm template `default` chép từ file gốc và template `rerank` đã đổi instruction.
+
+```bash
+SIZE=0.6b
+mkdir -p seed-pipeline/data/work/vimed
+uv run --no-project --with gguf==0.19.0 python - \
+  ai-models/gguf/qwen3-reranker-${SIZE}-f16.gguf \
+  seed-pipeline/data/work/vimed/qwen3-reranker-${SIZE}-f16.chat-templates.json <<'EOF'
+import json
+import sys
+
+from gguf import GGUFReader
+
+ORIGINAL = (
+    "<|im_start|>system\nJudge whether the Document meets the requirements based on "
+    'the Query and the Instruct provided. Note that the answer can only be "yes" or '
+    '"no".<|im_end|>\n<|im_start|>user\n<Instruct>: Given a web search query, retrieve '
+    "relevant passages that answer the query\n<Query>: {query}\n<Document>: {document}"
+    "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+)
+OLD_LINE = "<Instruct>: Given a web search query, retrieve relevant passages that answer the query\n"
+NEW_LINE = "<Instruct>: Given a Vietnamese medical retrieval query, retrieve relevant passages that answer the query\n"
+
+source, output = sys.argv[1], sys.argv[2]
+fields = GGUFReader(source).fields
+if fields["tokenizer.chat_template.rerank"].contents() != ORIGINAL:
+    raise SystemExit(f"STOP: {source} does not carry the original rerank template")
+templates = [
+    {"name": "default", "template": fields["tokenizer.chat_template"].contents()},
+    {"name": "rerank", "template": ORIGINAL.replace(OLD_LINE, NEW_LINE)},
+]
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(templates, handle, ensure_ascii=False)
+print(f"wrote {output}")
+EOF
+uv run --no-project --with gguf==0.19.0 gguf-new-metadata \
+  --chat-template "$(cat seed-pipeline/data/work/vimed/qwen3-reranker-${SIZE}-f16.chat-templates.json)" \
+  ai-models/gguf/qwen3-reranker-${SIZE}-f16.gguf \
+  ai-models/gguf/qwen3-reranker-${SIZE}-f16-vimed.gguf
+sha256sum ai-models/gguf/qwen3-reranker-${SIZE}-f16-vimed.gguf
+```
+
+Lệnh cho kết quả tất định. So với file gốc, mọi tensor giống từng byte và chỉ khoá `tokenizer.chat_template.rerank` khác.
+
+| File | Kích thước (byte) | sha256 |
+| --- | ---: | --- |
+| `qwen3-reranker-0.6b-f16-vimed.gguf` | 1.197.634.336 | `fa17b7c742ffeeb6f80529e50c9c35a8179c4369baa4a039ef94381c0665f851` |
+
+Catalog gọi file này là `qwen3-reranker:0.6b-fp16-vimed`.
+
+### Chấm và so sánh
+
+```bash
+uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --backend kaggle --model qwen3-reranker:0.6b-fp16 --kaggle-account auto
+uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --backend kaggle --model qwen3-reranker:0.6b-fp16-vimed --kaggle-account auto
+uv run seed metrics --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --top-k 30
+uv run seed metrics compare --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --baseline qwen3-reranker:0.6b-fp16 --candidate qwen3-reranker:0.6b-fp16-vimed --metric mrr --top-k 30 --resamples 10000 --seed 0
+```
+
+## 6. Run `dense-text-embedding-3-large-k30`
 
 Run này dùng embedding API trả phí nên không chạy lại. Candidates được nhập từ lần chạy gốc (`origin: imported` trong `run.json`) và chỉ tính lại metrics.
 
-## 6. Kết quả tham chiếu
+## 7. Kết quả tham chiếu
 
 | Run / biến thể | Hit@10 | MRR |
 | --- | ---: | ---: |
