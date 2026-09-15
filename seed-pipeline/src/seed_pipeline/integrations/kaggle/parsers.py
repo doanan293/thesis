@@ -7,13 +7,6 @@ import json
 from seed_pipeline.integrations.kaggle.models import KernelStatus
 
 
-def parse_gpu_quota_hours(csv_text: str) -> float:
-    for row in csv.DictReader(io.StringIO(csv_text)):
-        if str(row.get("resource", "")).strip().upper() == "GPU":
-            return max(0.0, float(str(row["remaining"]).strip().removesuffix("h")))
-    raise RuntimeError("Kaggle quota output did not contain a GPU row")
-
-
 def parse_kernel_status(output: str) -> KernelStatus:
     value = output.casefold()
     if any(
