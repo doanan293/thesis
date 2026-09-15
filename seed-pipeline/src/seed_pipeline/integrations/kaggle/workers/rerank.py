@@ -261,13 +261,19 @@ def run_rerank_worker(
                 clients = [client_factory(server.base_url) for server in servers]
                 resources = list(enumerate(clients))
                 per_client = max(1, int(runtime_overrides["concurrency"]))
+                request_batch_size = max(
+                    1, int(runtime_overrides["request_batch_size"])
+                )
                 grouped: dict[tuple[str, str], list[Pair]] = {}
                 for pair in missing:
                     query, _text = details[_pair_key(pair)]
                     grouped.setdefault((pair["query_id"], query), []).append(pair)
+                # One /v1/rerank request per query; llama-server packs the documents of
+                # all busy slots into shared physical batches.
                 groups = [
-                    (query_id, query, group)
+                    (query_id, query, group[start : start + request_batch_size])
                     for (query_id, query), group in grouped.items()
+                    for start in range(0, len(group), request_batch_size)
                 ]
 
                 async def native_operation(resource, _index, item):

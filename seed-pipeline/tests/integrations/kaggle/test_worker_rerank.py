@@ -4,7 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.integrations.kaggle.factories import rerank_runtime_profile
 
+import seed_pipeline.integrations.kaggle.workers.rerank as rerank_worker
 from seed_pipeline.integrations.kaggle.artifacts import sha256_file
 from seed_pipeline.integrations.kaggle.workers.rerank import run_rerank_worker
 from seed_pipeline.runtime.client import LlamaCppRequestError, LlamaCppResponseError
@@ -246,3 +248,77 @@ def test_rerank_worker_rejects_non_native_protocol(tmp_path):
 
     with pytest.raises(ValueError, match="unsupported rerank protocol"):
         run_rerank_worker(config, score_pair=lambda _q, _d, _m: 0.5)
+
+
+@contextmanager
+def _two_server_manager(_config, **_kwargs):
+    yield [
+        SimpleNamespace(base_url="http://127.0.0.1:11434"),
+        SimpleNamespace(base_url="http://127.0.0.1:11435"),
+    ]
+
+
+class _RecordingClient:
+    def __init__(self):
+        self.calls: list[tuple[str, list[str]]] = []
+
+    def rerank_native(self, query, documents, _model):
+        self.calls.append((query, list(documents)))
+        return [0.5 for _document in documents]
+
+
+def test_rerank_worker_sends_one_request_per_query_with_derived_concurrency(
+    tmp_path, monkeypatch
+):
+    config = _config(tmp_path, query_count=3, candidates_per_query=30)
+    config["runtime_overrides"] = rerank_runtime_profile(
+        "qwen3-reranker:0.6b-fp16"
+    ).to_dict()
+    client = _RecordingClient()
+    captured = {}
+    real_scheduler = rerank_worker.stream_map_ordered
+
+    async def recording_scheduler(items, resources, concurrency, *args, **kwargs):
+        captured["concurrency"] = concurrency
+        captured["servers"] = len(resources)
+        return await real_scheduler(items, resources, concurrency, *args, **kwargs)
+
+    monkeypatch.setattr(rerank_worker, "stream_map_ordered", recording_scheduler)
+
+    artifact = run_rerank_worker(
+        config,
+        server_manager=_two_server_manager,
+        client_factory=lambda _url: client,
+        emit=lambda _message: None,
+        clock=lambda: 0.0,
+    )
+
+    assert artifact.completion.complete == 90
+    assert sorted(query for query, _documents in client.calls) == [
+        "query 0",
+        "query 1",
+        "query 2",
+    ]
+    assert all(len(documents) == 30 for _query, documents in client.calls)
+    # ceil(64 slots / 30 documents) + 1 requests per server keep every slot busy.
+    assert captured == {"concurrency": 4, "servers": 2}
+
+
+def test_rerank_worker_splits_a_query_larger_than_the_request_batch(tmp_path):
+    config = _config(tmp_path, query_count=1, candidates_per_query=5)
+    config["runtime_overrides"] = {
+        **rerank_runtime_profile("qwen3-reranker:0.6b-fp16").to_dict(),
+        "request_batch_size": 2,
+    }
+    client = _RecordingClient()
+
+    artifact = run_rerank_worker(
+        config,
+        server_manager=_fake_server_manager,
+        client_factory=lambda _url: client,
+        emit=lambda _message: None,
+        clock=lambda: 0.0,
+    )
+
+    assert artifact.completion.complete == 5
+    assert sorted(len(documents) for _query, documents in client.calls) == [1, 2, 2]
