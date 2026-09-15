@@ -225,5 +225,20 @@ class RunWorkspace:
             )
         )
 
+    def unregister_rerank_variant(self, model_slug: str) -> RerankVariantRecord:
+        current = self.read_record()
+        if model_slug not in current.rerank_variants:
+            raise RunConflictError(
+                f"Run {self.root} has no rerank variant {model_slug}"
+            )
+        variants = dict(current.rerank_variants)
+        removed = variants.pop(model_slug)
+        self.write_record(
+            RunRecord(
+                current.identity, current.origin, current.candidates_dir, variants
+            )
+        )
+        return removed
+
     def variant_records(self) -> dict[str, RerankVariantRecord]:
         return dict(self.read_record().rerank_variants)

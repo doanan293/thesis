@@ -133,3 +133,21 @@ def test_select_variants_returns_all_or_the_named_model() -> None:
     assert select_rerank_variants(variants, model=MODEL) == {SLUG: qwen}
     with pytest.raises(ValueError, match="available: qwen3-reranker"):
         select_rerank_variants({SLUG: qwen}, model="bge-reranker-v2-m3:f16")
+
+
+def test_metrics_leave_reports_of_unregistered_rerankers_alone(complete_run: Path):
+    report = (
+        complete_run
+        / "reports"
+        / "rerank"
+        / "bge_reranker_v2_gemma_f16"
+        / "top1-window3"
+        / "report.md"
+    )
+    report.parent.mkdir(parents=True)
+    report.write_text("final Gemma numbers\n", encoding="utf-8")
+
+    result = run_metrics(MetricsRequest(complete_run, top_k=1))
+
+    assert result.reranked == ()
+    assert report.read_text(encoding="utf-8") == "final Gemma numbers\n"

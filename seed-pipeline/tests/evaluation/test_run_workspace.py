@@ -112,3 +112,16 @@ def test_evaluation_paths_inside_data_are_stored_relative(tmp_path: Path) -> Non
         resolve_evaluation_reference(evaluation_reference(outside, data), data)
         == outside.resolve()
     )
+
+
+def test_unregister_rerank_variant_keeps_the_other_variants(tmp_path: Path) -> None:
+    workspace = RunWorkspace.open_or_create(tmp_path / "run", identity())
+    kept = RerankVariantRecord("model-a", "a" * 64, "rerank/model_a")
+    removed = RerankVariantRecord("model-b", "b" * 64, "rerank/model_b")
+    workspace.register_rerank_variant("model_a", kept)
+    workspace.register_rerank_variant("model_b", removed)
+
+    assert workspace.unregister_rerank_variant("model_b") == removed
+    assert workspace.variant_records() == {"model_a": kept}
+    with pytest.raises(RunConflictError, match="model_b"):
+        workspace.unregister_rerank_variant("model_b")

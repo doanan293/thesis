@@ -16,11 +16,6 @@
   },
   "origin": "imported",
   "rerank_variants": {
-    "bge_reranker_v2_gemma_f16": {
-      "artifact_dir": "rerank/bge_reranker_v2_gemma_f16",
-      "model": "bge-reranker-v2-gemma:f16",
-      "variant_sha256": "5a5333bb21ae331d59a83978023549e21e9f5e661514846c3771a407da1d4459"
-    },
     "bge_reranker_v2_m3_f16": {
       "artifact_dir": "rerank/bge_reranker_v2_m3_f16",
       "model": "bge-reranker-v2-m3:f16",
