@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from seed_pipeline.artifacts.contract import validate_contract_directory
+from seed_pipeline.integrations.kaggle import job_lock
 
 
 class PublishError(RuntimeError):
@@ -49,7 +50,8 @@ def publish_contract(
     candidate_dir = Path(candidate_dir)
     final, next_dir, previous = _paths(final_dir)
     final.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = final.parent / f".{final.name}.publish.lock"
+    lock_path = job_lock.LOCK_DIR / job_lock.lock_file_name(final, "publish")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w", encoding="utf-8") as lock_handle:
         fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
         recover_publish(final)

@@ -8,7 +8,7 @@ from typing import Literal
 
 from seed_pipeline.config.paths import DATA_DIR, LOCK_DIR
 
-LockKind = Literal["job", "cache"]
+LockKind = Literal["job", "cache", "publish"]
 MAX_LOCK_FILE_NAME_BYTES = 255
 
 
