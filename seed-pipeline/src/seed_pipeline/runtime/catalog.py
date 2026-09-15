@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 
 from seed_pipeline.runtime.model_profiles import (
@@ -255,27 +255,29 @@ EMBEDDING_MODELS = {
 
 
 RERANKER_MODELS = {
+    # The Qwen3 files carry the Vietnamese medical rerank instruction; the instruction
+    # decision and the derivation are in docs/guides/evaluation.md.
     "qwen3-reranker:0.6b-fp16": _reranker(
         "qwen3-reranker:0.6b-fp16",
-        "qwen3-reranker-0.6b-f16.gguf",
-        1_197_634_304,
-        "fa726a72c1afafe42ae6ca6059c9a78a43f18db7389a8fa04f88bb7f37d0a8aa",
+        "qwen3-reranker-0.6b-f16-vimed.gguf",
+        1_197_634_336,
+        "fa17b7c742ffeeb6f80529e50c9c35a8179c4369baa4a039ef94381c0665f851",
         ModelTopology.REPLICATED_2X1,
         levels=SMALL_MODEL_KAGGLE_RERANK_LEVELS,
     ),
     "qwen3-reranker:4b-fp16": _reranker(
         "qwen3-reranker:4b-fp16",
-        "qwen3-reranker-4b-f16.gguf",
+        "qwen3-reranker-4b-f16-vimed.gguf",
         8_049_922_912,
-        "c4de2e3e4179d5bca95a2e960e07d225a565018e3bbb5e073f1777809091f117",
+        "4b428e981efc9a209c674a0af9f1ec527b5570896e0bcc431382c16f1e839c7a",
         ModelTopology.REPLICATED_2X1,
         levels=SMALL_RERANK_LEVELS,
     ),
     "qwen3-reranker:8b-fp16": _reranker(
         "qwen3-reranker:8b-fp16",
-        "qwen3-reranker-8b-f16.gguf",
-        15_141_207_744,
-        "a53322f7936010458424a12f0f6d22291547e42fa85c16dd4730244d659cea96",
+        "qwen3-reranker-8b-f16-vimed.gguf",
+        15_141_207_776,
+        "c6516333e32d4f1d8aad8325d5d5bdb8165f9778e892eed4ca8b0eaf3339a810",
         ModelTopology.SHARDED_1X2,
         levels=SMALL_RERANK_LEVELS,
     ),
@@ -290,16 +292,6 @@ RERANKER_MODELS = {
         levels=SMALL_MODEL_KAGGLE_RERANK_LEVELS,
     ),
 }
-
-# Instruction experiment (docs/guides/evaluation.md): the 0.6b weights with the rerank
-# chat template changed to a Vietnamese medical instruction by gguf-new-metadata.
-RERANKER_MODELS["qwen3-reranker:0.6b-fp16-vimed"] = replace(
-    RERANKER_MODELS["qwen3-reranker:0.6b-fp16"],
-    name="qwen3-reranker:0.6b-fp16-vimed",
-    canonical_filename="qwen3-reranker-0.6b-f16-vimed.gguf",
-    byte_size=1_197_634_336,
-    sha256="fa17b7c742ffeeb6f80529e50c9c35a8179c4369baa4a039ef94381c0665f851",
-)
 
 MODEL_CATALOG = {**EMBEDDING_MODELS, **RERANKER_MODELS}
 

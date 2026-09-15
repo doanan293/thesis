@@ -151,8 +151,16 @@ Lệnh cho kết quả tất định. So với file gốc, mọi tensor giống 
 | File | Kích thước (byte) | sha256 |
 | --- | ---: | --- |
 | `qwen3-reranker-0.6b-f16-vimed.gguf` | 1.197.634.336 | `fa17b7c742ffeeb6f80529e50c9c35a8179c4369baa4a039ef94381c0665f851` |
+| `qwen3-reranker-4b-f16-vimed.gguf` | 8.049.922.912 | `4b428e981efc9a209c674a0af9f1ec527b5570896e0bcc431382c16f1e839c7a` |
+| `qwen3-reranker-8b-f16-vimed.gguf` | 15.141.207.776 | `c6516333e32d4f1d8aad8325d5d5bdb8165f9778e892eed4ca8b0eaf3339a810` |
 
-Catalog gọi file này là `qwen3-reranker:0.6b-fp16-vimed`.
+Instruction tiếng Việt thắng (mục Kết quả), nên `qwen3-reranker:0.6b-fp16`, `qwen3-reranker:4b-fp16` và `qwen3-reranker:8b-fp16` trỏ tới ba file trên (lệnh trên với `SIZE=4b` và `SIZE=8b`); model thử nghiệm `qwen3-reranker:0.6b-fp16-vimed` đã bỏ. File gốc đã xoá; khi cần dựng lại, tải từ nguồn sau rồi kiểm sha256 trước khi chạy lệnh:
+
+| File gốc | Nguồn | sha256 |
+| --- | --- | --- |
+| `qwen3-reranker-0.6b-f16.gguf` | `Voodisss/Qwen3-Reranker-0.6B-GGUF-llama_cpp` | `fa726a72c1afafe42ae6ca6059c9a78a43f18db7389a8fa04f88bb7f37d0a8aa` |
+| `qwen3-reranker-4b-f16.gguf` | `Voodisss/Qwen3-Reranker-4B-GGUF-llama_cpp` | `c4de2e3e4179d5bca95a2e960e07d225a565018e3bbb5e073f1777809091f117` |
+| `qwen3-reranker-8b-f16.gguf` | `sinjab/Qwen3-Reranker-8B-F16-GGUF` | `a53322f7936010458424a12f0f6d22291547e42fa85c16dd4730244d659cea96` |
 
 ### Chấm và so sánh
 
@@ -162,6 +170,15 @@ uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --backend kaggle 
 uv run seed metrics --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --top-k 30
 uv run seed metrics compare --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --baseline qwen3-reranker:0.6b-fp16 --candidate qwen3-reranker:0.6b-fp16-vimed --metric mrr --top-k 30 --resamples 10000 --seed 0
 ```
+
+### Kết quả
+
+| Biến thể | Hit@10 | MRR@30 |
+| --- | ---: | ---: |
+| Template gốc (`qwen3-reranker:0.6b-fp16`) | 95,60% | 0,7633 |
+| Tiếng Việt y tế (`qwen3-reranker:0.6b-fp16-vimed`) | 96,20% | 0,8078 |
+
+Hiệu MRR@30 (tiếng Việt − gốc) là 0,0445, khoảng tin cậy 95% [0,0306; 0,0585] (1.000 câu, 10.000 lần lấy mẫu lại, seed 0). Quyết định: dùng instruction tiếng Việt cho cả ba model.
 
 ## 6. Run `dense-text-embedding-3-large-k30`
 

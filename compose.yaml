@@ -86,7 +86,7 @@ services:
       - "${LLAMA_RERANKER_PORT:-11435}:8080"
     environment:
       <<: *llama-env
-      LLAMA_ARG_MODEL: "/models/${LLAMA_RERANKER_MODEL:-qwen3-reranker-4b-f16.gguf}"
+      LLAMA_ARG_MODEL: "/models/${LLAMA_RERANKER_MODEL:-qwen3-reranker-4b-f16-vimed.gguf}"
       # /v1/rerank needs a classifier GGUF (tensor cls.output.weight).
       LLAMA_ARG_RERANKING: "true"
       # Rank pooling computes each document in one pass, so -b = -ub must hold the longest
