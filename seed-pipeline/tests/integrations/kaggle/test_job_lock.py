@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 
 from seed_pipeline.integrations.kaggle.job_lock import (
+    KaggleAccountBusy,
+    kaggle_account_lock,
     kaggle_cache_lock,
     kaggle_job_lock,
     lock_file_name,
@@ -93,3 +95,48 @@ def test_job_and_cache_locks_on_one_target_can_nest(tmp_path: Path) -> None:
         kinds = sorted(path.name.rsplit(".", 2)[-2] for path in lock_root.iterdir())
 
     assert kinds == ["cache", "job"]
+
+
+def test_account_lock_uses_one_file_per_account(tmp_path: Path) -> None:
+    lock_root = tmp_path / "locks"
+
+    with kaggle_account_lock("acc2", lock_root=lock_root) as profile:
+        assert profile == "acc2"
+        assert (lock_root / "kaggle-accounts" / "acc2.lock").is_file()
+
+
+def test_two_jobs_cannot_hold_the_same_account(tmp_path: Path) -> None:
+    lock_root = tmp_path / "locks"
+    entered = threading.Event()
+    release = threading.Event()
+
+    def first_job() -> None:
+        with kaggle_account_lock("acc3", lock_root=lock_root):
+            entered.set()
+            release.wait(2)
+
+    thread = threading.Thread(target=first_job)
+    thread.start()
+    assert entered.wait(2)
+    try:
+        with (
+            pytest.raises(KaggleAccountBusy, match="acc3"),
+            kaggle_account_lock("acc3", lock_root=lock_root),
+        ):
+            raise AssertionError("a held account must not be entered")
+        with kaggle_account_lock("acc1", lock_root=lock_root):
+            pass
+    finally:
+        release.set()
+        thread.join()
+
+    with kaggle_account_lock("acc3", lock_root=lock_root):
+        pass
+
+
+@pytest.mark.parametrize("profile", ["auto", "../acc1", "acc0", ""])
+def test_account_lock_rejects_names_that_are_not_profiles(
+    profile: str, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="invalid Kaggle account profile"):
+        kaggle_account_lock(profile, lock_root=tmp_path)
