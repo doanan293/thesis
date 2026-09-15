@@ -129,11 +129,11 @@ def test_compose_reranker_serves_batched_unified_kv() -> None:
     for line in (
         'LLAMA_ARG_RERANKING: "true"',
         'LLAMA_ARG_KV_UNIFIED: "true"',
-        'LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-8}"',
-        'LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-20480}"',
-        'LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"',
-        'LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"',
-        'LLAMA_ARG_THREADS: "${LLAMA_RERANKER_THREADS:-8}"',
+        'LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-4}"',
+        'LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-10240}"',
+        'LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-2048}"',
+        'LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-2048}"',
+        'LLAMA_ARG_THREADS: "${LLAMA_RERANKER_THREADS:-12}"',
     ):
         assert line in block
     assert "KV_UNIFIED_PER_SLOT" not in block
@@ -148,6 +148,6 @@ def test_compose_backend_sends_one_rerank_request_at_a_time() -> None:
         in text
     )
     assert (
-        'PHARMA_RETRIEVAL__RERANK__TIMEOUT_SECONDS: "${RERANK_TIMEOUT_SECONDS:-120}"'
+        'PHARMA_RETRIEVAL__RERANK__TIMEOUT_SECONDS: "${RERANK_TIMEOUT_SECONDS:-898}"'
         in text
     )
