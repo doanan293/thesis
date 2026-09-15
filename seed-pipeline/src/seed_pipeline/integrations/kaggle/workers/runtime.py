@@ -27,6 +27,7 @@ from seed_pipeline.runtime.catalog import (
     ModelTopology,
     require_model,
 )
+from seed_pipeline.runtime.runtime_profiles import reranker_context_size
 from seed_pipeline.runtime.server_policy import inference_cache_policy
 
 
@@ -340,15 +341,13 @@ def build_server_command(
     server_slots = overrides["server_slots"]
     if spec.kind is ModelKind.RERANKER:
         ubatch = overrides["physical_batch_size"]
-        if not (
-            overrides["context_per_slot"] == overrides["logical_batch_size"] == ubatch
-        ):
-            raise ValueError(
-                "reranker runtime must use one size for context, batch and ubatch"
-            )
-        # Rank pooling frees a sequence's KV right after its single pass, so the unified
-        # pool only holds the tokens computed together: -c equals -ub, not slots x -ub.
-        context = ubatch
+        if overrides["logical_batch_size"] != ubatch:
+            raise ValueError("reranker runtime must use one size for batch and ubatch")
+        context = reranker_context_size(
+            server_slots=server_slots,
+            ubatch=ubatch,
+            context_per_slot=overrides["context_per_slot"],
+        )
     else:
         context = overrides["context_per_slot"] * server_slots
     command = [

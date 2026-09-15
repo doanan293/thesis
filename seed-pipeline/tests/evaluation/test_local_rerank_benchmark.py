@@ -82,8 +82,8 @@ class ScoringClient:
         self.calls.append(len(documents))
         threads = int(level["LLAMA_RERANKER_THREADS"])
         ubatch = level["LLAMA_RERANKER_UBATCH_SIZE"]
-        # ubatch 8192 with 12 threads is the fastest level.
-        self.clock.now += (1.0 if ubatch == "8192" else 2.0) * 8 / threads
+        # ubatch 4096 with 12 threads is the fastest level.
+        self.clock.now += (1.0 if ubatch == "4096" else 2.0) * 8 / threads
         drift = 0.01 if ubatch == self.drifting_ubatch else 0.0
         return [len(document) / 1000 + drift for document in documents]
 
@@ -162,16 +162,15 @@ def test_benchmark_recreates_the_reranker_with_each_level_environment(bench: Ben
         (
             up["LLAMA_RERANKER_PARALLEL"],
             up["LLAMA_RERANKER_UBATCH_SIZE"],
+            up["LLAMA_RERANKER_CONTEXT_SIZE"],
             up["LLAMA_RERANKER_THREADS"],
         )
         for up in runner.ups
     ] == [
-        ("16", "4096", "8"),
-        ("16", "4096", "12"),
-        ("16", "8192", "8"),
-        ("16", "8192", "12"),
-        ("16", "16384", "8"),
-        ("16", "16384", "12"),
+        ("4", "2048", "10240", "8"),
+        ("4", "2048", "10240", "12"),
+        ("8", "4096", "20480", "8"),
+        ("8", "4096", "20480", "12"),
     ]
 
 
@@ -181,7 +180,7 @@ def test_each_level_sends_one_warm_up_and_six_full_groups(bench: Bench):
 
     bench.run(runner, client, clock)
 
-    assert client.calls == [15] * (6 * 7)
+    assert client.calls == [15] * (7 * 4)
 
 
 def test_lowest_p95_level_becomes_the_local_profile(bench: Bench):
@@ -212,12 +211,10 @@ def test_levels_whose_scores_drift_are_invalid(bench: Bench):
     runner, clock = RecordingRunner(), FakeClock()
 
     result = bench.run(
-        runner, ScoringClient(runner, clock, drifting_ubatch="16384"), clock
+        runner, ScoringClient(runner, clock, drifting_ubatch="4096"), clock
     )
 
     assert [item.error_category for item in result.measurements] == [
-        None,
-        None,
         None,
         None,
         "score_mismatch",
@@ -227,22 +224,22 @@ def test_levels_whose_scores_drift_are_invalid(bench: Bench):
 
 def test_a_level_that_fails_to_start_keeps_the_service_logs(bench: Bench):
     runner = RecordingRunner(
-        failing_ubatches=frozenset({"16384"}), logs="failed to allocate compute buffer"
+        failing_ubatches=frozenset({"4096"}), logs="failed to allocate compute buffer"
     )
     clock = FakeClock()
 
     result = bench.run(runner, ScoringClient(runner, clock), clock)
 
-    failed = result.measurements[4]
+    failed = result.measurements[2]
     assert (failed.status, failed.error_category) == ("invalid", "CalledProcessError")
     assert failed.log_tail is not None
     assert "failed to allocate compute buffer" in failed.log_tail
-    assert result.profile.selected == LOCAL_RERANK_SEARCH_SPACE.candidates[3]
+    assert result.profile.selected == LOCAL_RERANK_SEARCH_SPACE.candidates[1]
 
 
 def test_every_level_failing_stops_with_the_log_tails(bench: Bench):
     runner = RecordingRunner(
-        failing_ubatches=frozenset({"4096", "8192", "16384"}),
+        failing_ubatches=frozenset({"2048", "4096"}),
         logs="failed to allocate compute buffer",
     )
     clock = FakeClock()

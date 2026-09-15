@@ -31,18 +31,25 @@ class ModelTopology(StrEnum):
 
 KAGGLE_RERANK_REQUEST_BATCH_SIZE = 30
 LOCAL_RERANK_REQUEST_BATCH_SIZE = 15
+# Reranker levels as (-np, -ub). A batch holds about ub / 512 documents (mean prompt
+# 663 tokens), so each level has that many slots; -c grows with the slots
+# (reranker_context_size).
+SMALL_RERANK_LEVELS = ((4, 2048), (8, 4096))
+# On a T4 (14,806 MiB free) compute takes about 0.6 MiB per ubatch token and KV 0.11 MiB
+# (0.6b) or 0.14 MiB (4b, 8b) per -c token, so only the 0.6b-class models reach 8192.
+SMALL_MODEL_KAGGLE_RERANK_LEVELS = (*SMALL_RERANK_LEVELS, (16, 8192))
 # Local CPU llama-reranker levels. The backend sends one request with at most 15
 # candidates at a time, so a level has a single client request in flight.
 LOCAL_RERANK_SEARCH_SPACE = RuntimeSearchSpace(
     tuple(
         reranker_candidate(
-            server_slots=16,
+            server_slots=server_slots,
             ubatch=ubatch,
             request_batch_size=LOCAL_RERANK_REQUEST_BATCH_SIZE,
             concurrency=1,
             threads=threads,
         )
-        for ubatch in (4096, 8192, 16384)
+        for server_slots, ubatch in SMALL_RERANK_LEVELS
         for threads in (8, 12)
     )
 )
@@ -158,22 +165,22 @@ def _reranker(
     sha256: str,
     topology: ModelTopology,
     *,
-    server_slots: int,
-    ubatch_sizes: tuple[int, ...],
+    levels: tuple[tuple[int, int], ...],
 ) -> ModelSpec:
-    concurrency = rerank_concurrency(server_slots, KAGGLE_RERANK_REQUEST_BATCH_SIZE)
     search_space = RuntimeSearchSpace(
         tuple(
             reranker_candidate(
                 server_slots=server_slots,
                 ubatch=ubatch,
                 request_batch_size=KAGGLE_RERANK_REQUEST_BATCH_SIZE,
-                concurrency=concurrency,
+                concurrency=rerank_concurrency(
+                    server_slots, KAGGLE_RERANK_REQUEST_BATCH_SIZE
+                ),
             )
-            for ubatch in ubatch_sizes
+            for server_slots, ubatch in levels
         )
     )
-    smallest_ubatch = min(ubatch_sizes)
+    smallest = search_space.candidates[0]
     return ModelSpec(
         name=name,
         kind=ModelKind.RERANKER,
@@ -181,11 +188,11 @@ def _reranker(
         byte_size=size,
         sha256=sha256,
         topology=topology,
-        kaggle_parallel=server_slots,
+        kaggle_parallel=smallest.server_slots,
         kaggle_request_batch_size=KAGGLE_RERANK_REQUEST_BATCH_SIZE,
-        kaggle_context_per_slot=smallest_ubatch,
-        kaggle_logical_batch_size=smallest_ubatch,
-        kaggle_physical_batch_size=smallest_ubatch,
+        kaggle_context_per_slot=smallest.context_per_slot,
+        kaggle_logical_batch_size=smallest.logical_batch_size,
+        kaggle_physical_batch_size=smallest.physical_batch_size,
         reranker_protocol=NATIVE_RERANK_PROTOCOL,
         rerank_contract=native_rerank_contract(),
         rerank_search_space=search_space,
@@ -254,8 +261,7 @@ RERANKER_MODELS = {
         1_197_634_304,
         "fa726a72c1afafe42ae6ca6059c9a78a43f18db7389a8fa04f88bb7f37d0a8aa",
         ModelTopology.REPLICATED_2X1,
-        server_slots=64,
-        ubatch_sizes=(8192, 16384, 32768),
+        levels=SMALL_MODEL_KAGGLE_RERANK_LEVELS,
     ),
     "qwen3-reranker:4b-fp16": _reranker(
         "qwen3-reranker:4b-fp16",
@@ -263,8 +269,7 @@ RERANKER_MODELS = {
         8_049_922_912,
         "c4de2e3e4179d5bca95a2e960e07d225a565018e3bbb5e073f1777809091f117",
         ModelTopology.REPLICATED_2X1,
-        server_slots=32,
-        ubatch_sizes=(8192, 16384),
+        levels=SMALL_RERANK_LEVELS,
     ),
     "qwen3-reranker:8b-fp16": _reranker(
         "qwen3-reranker:8b-fp16",
@@ -272,8 +277,7 @@ RERANKER_MODELS = {
         15_141_207_744,
         "a53322f7936010458424a12f0f6d22291547e42fa85c16dd4730244d659cea96",
         ModelTopology.SHARDED_1X2,
-        server_slots=16,
-        ubatch_sizes=(4096, 8192),
+        levels=SMALL_RERANK_LEVELS,
     ),
     # XLM-R cross-encoder (568M, 8,192 positions) in the 0.6b size class; its inputs carry
     # no chat template, so it takes the 0.6b levels.
@@ -283,8 +287,7 @@ RERANKER_MODELS = {
         1_159_774_912,
         "3c2de408d2c0a85a9472dc09f9d5a22c9b73743c6343952c15053299c777c298",
         ModelTopology.REPLICATED_2X1,
-        server_slots=64,
-        ubatch_sizes=(8192, 16384, 32768),
+        levels=SMALL_MODEL_KAGGLE_RERANK_LEVELS,
     ),
 }
 

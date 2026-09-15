@@ -97,12 +97,12 @@ def test_resolve_input_file_does_not_accept_exact_path_with_wrong_filename(tmp_p
 
 
 RERANK_LEVEL = {
-    "server_slots": 64,
-    "concurrency": 4,
+    "server_slots": 16,
+    "concurrency": 2,
     "request_batch_size": 30,
-    "context_per_slot": 16384,
-    "logical_batch_size": 16384,
-    "physical_batch_size": 16384,
+    "context_per_slot": 2048,
+    "logical_batch_size": 8192,
+    "physical_batch_size": 8192,
 }
 
 
@@ -134,7 +134,9 @@ def test_embedding_command_sizes_context_per_slot():
     "model",
     ("qwen3-reranker:0.6b-fp16", "qwen3-reranker:8b-fp16", "bge-reranker-v2-m3:f16"),
 )
-def test_reranker_command_batches_documents_in_one_unified_kv_pool(model):
+def test_reranker_command_sizes_the_unified_kv_for_a_batch_and_every_slot_prompt(
+    model,
+):
     command = build_server_command(
         binary="llama-server",
         model="model.gguf",
@@ -146,9 +148,10 @@ def test_reranker_command_batches_documents_in_one_unified_kv_pool(model):
 
     assert "--reranking" in command
     assert "--kv-unified" in command
-    assert command[command.index("-np") + 1] == "64"
-    for flag in ("-c", "-b", "-ub"):
-        assert command[command.index(flag) + 1] == "16384"
+    assert command[command.index("-np") + 1] == "16"
+    assert command[command.index("-b") + 1] == "8192"
+    assert command[command.index("-ub") + 1] == "8192"
+    assert command[command.index("-c") + 1] == str(8192 + 16 * 2048)
 
 
 def test_sharded_reranker_splits_one_server_over_two_gpus():
@@ -164,15 +167,15 @@ def test_sharded_reranker_splits_one_server_over_two_gpus():
     assert command[command.index("--tensor-split") + 1] == "1,1"
 
 
-def test_reranker_command_rejects_split_context_and_ubatch():
-    with pytest.raises(ValueError, match="one size"):
+def test_reranker_command_rejects_split_batch_and_ubatch():
+    with pytest.raises(ValueError, match="one size for batch and ubatch"):
         build_server_command(
             binary="llama-server",
             model="model.gguf",
             port=11434,
             visible_devices="0",
             spec=require_model("qwen3-reranker:0.6b-fp16"),
-            runtime_overrides={**RERANK_LEVEL, "physical_batch_size": 8192},
+            runtime_overrides={**RERANK_LEVEL, "physical_batch_size": 4096},
         )
 
 

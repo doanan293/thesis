@@ -66,6 +66,7 @@ def test_reranker_without_runtime_keeps_the_compose_defaults(tmp_path: Path) -> 
     for name in (
         "LLAMA_RERANKER_PARALLEL",
         "LLAMA_RERANKER_UBATCH_SIZE",
+        "LLAMA_RERANKER_CONTEXT_SIZE",
         "LLAMA_RERANKER_THREADS",
         "LLAMA_RERANKER_RERANKING",
     ):
@@ -86,8 +87,9 @@ def test_reranker_runtime_recreates_the_service_with_its_level(tmp_path: Path) -
     assert (
         environment["LLAMA_RERANKER_PARALLEL"],
         environment["LLAMA_RERANKER_UBATCH_SIZE"],
+        environment["LLAMA_RERANKER_CONTEXT_SIZE"],
         environment["LLAMA_RERANKER_THREADS"],
-    ) == ("16", "8192", "12")
+    ) == ("8", "4096", "20480", "12")
 
 
 def test_runtime_is_rejected_for_the_embedding_service(tmp_path: Path) -> None:
@@ -100,9 +102,9 @@ def test_runtime_is_rejected_for_the_embedding_service(tmp_path: Path) -> None:
         )
 
 
-def test_reranker_environment_needs_one_size_for_context_batch_and_ubatch() -> None:
-    with pytest.raises(ValueError, match="one size"):
-        reranker_environment(RuntimeCandidate(16, 1, 15, 8192, 8192, 4096))
+def test_reranker_environment_needs_one_size_for_batch_and_ubatch() -> None:
+    with pytest.raises(ValueError, match="one size for batch and ubatch"):
+        reranker_environment(RuntimeCandidate(16, 1, 15, 2048, 8192, 4096))
 
 
 def test_logs_reads_the_service_tail(tmp_path: Path) -> None:
@@ -127,10 +129,10 @@ def test_compose_reranker_serves_batched_unified_kv() -> None:
     for line in (
         'LLAMA_ARG_RERANKING: "true"',
         'LLAMA_ARG_KV_UNIFIED: "true"',
-        'LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-16}"',
-        'LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_UBATCH_SIZE:-8192}"',
-        'LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-8192}"',
-        'LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-8192}"',
+        'LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-8}"',
+        'LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-20480}"',
+        'LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"',
+        'LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"',
         'LLAMA_ARG_THREADS: "${LLAMA_RERANKER_THREADS:-8}"',
     ):
         assert line in block

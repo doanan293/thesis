@@ -491,10 +491,10 @@ def test_local_benchmark_reports_the_selected_level_without_registering(
         )
     ]
     assert result.actions == (
-        "selected=server_slots=16 ubatch=8192 threads=8",
+        "selected=server_slots=8 ubatch=4096 threads=8",
         "latency_p95_seconds=0.5",
-        "env=LLAMA_RERANKER_PARALLEL=16 LLAMA_RERANKER_THREADS=8 "
-        "LLAMA_RERANKER_UBATCH_SIZE=8192",
+        "env=LLAMA_RERANKER_CONTEXT_SIZE=20480 LLAMA_RERANKER_PARALLEL=8 "
+        "LLAMA_RERANKER_THREADS=8 LLAMA_RERANKER_UBATCH_SIZE=4096",
     )
     assert (result.benchmark_levels, result.benchmark_report) == (1, report)
     assert load_run_record(complete_run / "run.json").rerank_variants == {}

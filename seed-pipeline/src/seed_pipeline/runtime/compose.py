@@ -10,7 +10,10 @@ from pathlib import Path
 
 from seed_pipeline.runtime.catalog import ModelKind, ModelSpec
 from seed_pipeline.runtime.client import LlamaCppClient
-from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
+from seed_pipeline.runtime.runtime_profiles import (
+    RuntimeCandidate,
+    reranker_context_size,
+)
 
 _LLAMA_CPP_IMAGE = re.compile(
     r"^\s*image:\s*(ghcr\.io/ggml-org/llama\.cpp:\S+)\s*$", re.MULTILINE
@@ -60,17 +63,17 @@ def compose_llama_cpp_image(compose_file: Path) -> str:
 
 def reranker_environment(runtime: RuntimeCandidate) -> dict[str, str]:
     """Root .env variables that compose.yaml maps to llama-reranker's LLAMA_ARG_*."""
-    if not (
-        runtime.context_per_slot
-        == runtime.logical_batch_size
-        == runtime.physical_batch_size
-    ):
-        raise ValueError(
-            "reranker runtime must use one size for context, batch and ubatch"
-        )
+    if runtime.logical_batch_size != runtime.physical_batch_size:
+        raise ValueError("reranker runtime must use one size for batch and ubatch")
+    context = reranker_context_size(
+        server_slots=runtime.server_slots,
+        ubatch=runtime.physical_batch_size,
+        context_per_slot=runtime.context_per_slot,
+    )
     environment = {
         "LLAMA_RERANKER_PARALLEL": str(runtime.server_slots),
         "LLAMA_RERANKER_UBATCH_SIZE": str(runtime.physical_batch_size),
+        "LLAMA_RERANKER_CONTEXT_SIZE": str(context),
     }
     if runtime.threads is not None:
         environment["LLAMA_RERANKER_THREADS"] = str(runtime.threads)

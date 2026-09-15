@@ -12,6 +12,7 @@ from seed_pipeline.runtime.runtime_profiles import (
     RuntimeSearchSpace,
     rerank_concurrency,
     reranker_candidate,
+    reranker_context_size,
 )
 from seed_pipeline.runtime.server_policy import inference_cache_policy
 
@@ -119,16 +120,23 @@ def test_rerank_concurrency_keeps_every_slot_busy(
     assert rerank_concurrency(server_slots, request_batch_size) == expected
 
 
-def test_reranker_candidate_uses_one_size_for_context_batch_and_ubatch():
+def test_reranker_candidate_holds_one_prompt_per_slot_beside_the_batch():
     level = reranker_candidate(
-        server_slots=32, ubatch=16384, request_batch_size=30, concurrency=3
+        server_slots=8, ubatch=4096, request_batch_size=30, concurrency=2
     )
 
     assert (
         level.context_per_slot,
         level.logical_batch_size,
         level.physical_batch_size,
-    ) == (16384, 16384, 16384)
+    ) == (2048, 4096, 4096)
+
+
+def test_reranker_context_holds_one_batch_and_the_prompt_of_every_slot():
+    assert (
+        reranker_context_size(server_slots=8, ubatch=4096, context_per_slot=2048)
+        == 20480
+    )
 
 
 def test_reranker_candidate_rejects_ubatch_below_the_longest_prompt():

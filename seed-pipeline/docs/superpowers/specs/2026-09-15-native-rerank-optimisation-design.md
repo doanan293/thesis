@@ -101,23 +101,39 @@ Kết quả Gemma:
 Mọi server reranker, trên Kaggle lẫn trong compose, chạy với:
 
 ```text
---reranking --kv-unified -np <slots> -c <ub> -b <ub> -ub <ub>
+--reranking --kv-unified -np <slots> -c <ub + slots × 2048> -b <ub> -ub <ub>
 ```
 
 - Flash attention để mặc định `auto`. Bản 8b giữ `--tensor-split 1,1` trên hai GPU.
-- **`-c` bằng `-ub`, không nhân theo số slot.** Mỗi task rerank trả KV ngay sau một lượt tính, nên vùng KV chỉ cần chứa số token đang tính cùng lúc.
 - **`-ub` tối thiểu 2048**, vì prompt dài nhất là 1.664 token và mỗi tài liệu phải nằm trọn trong một ubatch.
-- Trong `RuntimeCandidate` của reranker: `server_slots` là `-np`; `physical_batch_size = logical_batch_size = context_per_slot` là `-ub`; `request_batch_size` là số tài liệu mỗi request.
+- **`-c` bằng `-ub` cộng 2048 token cho mỗi slot.**
+  - Tính xong một tài liệu, llama-server vẫn giữ KV của prompt đó trong slot.
+  - Slot đang chờ chỉ bỏ KV cũ khi tài liệu mới của nó được xếp vào batch. Khi hết chỗ, server chỉ dọn slot rảnh.
+  - Nếu `-c` chỉ bằng `-ub`, KV cũ của các slot đang chờ lấp đầy vùng KV và server báo `Context size has been exceeded.`
+  - Lỗi này đã gặp trên Kaggle ở mức `-np 64 -c 8192` và tái hiện được trên CPU với `b10920`. Mã `b9637` và `b10920` xử lý giống nhau.
+- **Số slot đi theo `-ub`.** Một batch chứa khoảng `ub / 512` tài liệu (trung bình 663 token), nên mỗi mức lấy `-np = ub / 512`. Thêm slot không làm batch lớn hơn, chỉ tốn thêm KV.
+- Trong `RuntimeCandidate` của reranker:
+  - `server_slots` là `-np`.
+  - `physical_batch_size = logical_batch_size` là `-ub`.
+  - `context_per_slot` là 2048 token mỗi slot giữ.
+  - `request_batch_size` là số tài liệu mỗi request.
 - **`concurrency` không quét** mà tính bằng `ceil(server_slots / request_batch_size) + 1` cho mỗi server, để slot luôn đầy.
 
-Giá trị cố định và giá trị được quét:
+Bộ nhớ đo bằng `llama-server` `b10920` trên CPU. Compute buffer ở `-ub 32768` ra 21.135 MiB, khớp lần cấp phát lỗi trên T4.
+- Compute buffer khoảng 0,6 MiB mỗi token `-ub` với cả 0.6b, 4b và 8b. Phần theo `-c` chỉ là mask 2 byte cho mỗi ô `ub × c`.
+- KV: 0,109 MiB mỗi token `-c` với 0.6b, 0,141 MiB với 4b và 8b.
+- T4 còn trống 14.806 MiB:
+  - Ở `-np 64 -ub 16384`, server nạp được nhưng hết bộ nhớ lúc tính.
+  - Ở `-ub 32768`, server không cấp phát được compute buffer.
 
-| Nơi chạy | `-np` | `-ub` được quét | Tài liệu mỗi request | Tham số khác |
-| --- | ---: | --- | ---: | --- |
-| Kaggle T4, 0.6b (2 server) | 64 | 8192 / 16384 / 32768 | 30 | |
-| Kaggle T4, 4b (2 server) | 32 | 8192 / 16384 | 30 | |
-| Kaggle T4, 8b (1 server, 2 GPU) | 16 | 4096 / 8192 | 30 | |
-| CPU local, 4b | 16 | 4096 / 8192 / 16384 | 15 | `--threads` 8 / 12 |
+Các mức được quét, ghi dạng (`-np`, `-ub`):
+
+| Nơi chạy | Mức | Tài liệu mỗi request | Tham số khác |
+| --- | --- | ---: | --- |
+| Kaggle T4, 0.6b (2 server) | (4, 2048) / (8, 4096) / (16, 8192) | 30 | |
+| Kaggle T4, 4b (2 server) | (4, 2048) / (8, 4096) | 30 | |
+| Kaggle T4, 8b (1 server, 2 GPU) | (4, 2048) / (8, 4096) | 30 | |
+| CPU local, 4b | (4, 2048) / (8, 4096) | 15 | `--threads` 8 / 12 |
 
 ### 4.3 Benchmark đầu-cuối
 
@@ -208,7 +224,7 @@ Giá trị cố định và giá trị được quét:
 
 Unit test seed-pipeline:
 - **Catalog:** mọi reranker là `native_rerank`; không còn `bge-reranker-v2-gemma:f16`; model thử nghiệm (nếu còn) trỏ đúng file và sha256.
-- **Lệnh server:** reranker có đủ `--reranking --kv-unified -np -c -b -ub`, với `-c` bằng `-ub`.
+- **Lệnh server:** reranker có đủ `--reranking --kv-unified -np -c -b -ub`, với `-b` bằng `-ub` và `-c` bằng `-ub` cộng 2048 cho mỗi slot.
 - **`inference_cache_policy`:** không còn trường dành cho completion.
 - **Benchmark:** mức mang đủ candidate; chọn theo số cặp/giây (Kaggle) và p95 (local); bỏ qua mức `invalid`; phát hiện `score_mismatch`; báo lỗi khi mọi mức lỗi.
 - **Worker native:** request theo nhóm câu hỏi; số request đồng thời theo công thức mục 4.2; đóng artifact dở dang khi server rớt.

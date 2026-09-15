@@ -96,7 +96,9 @@ class RuntimeCandidate:
         return cls(**values, threads=threads)
 
 
-MIN_RERANK_UBATCH = 2048
+# Tokens of one rerank prompt: the longest is 1,664 tokens.
+RERANK_PROMPT_TOKENS = 2048
+MIN_RERANK_UBATCH = RERANK_PROMPT_TOKENS
 
 
 def rerank_concurrency(server_slots: int, request_batch_size: int) -> int:
@@ -104,6 +106,19 @@ def rerank_concurrency(server_slots: int, request_batch_size: int) -> int:
     if server_slots < 1 or request_batch_size < 1:
         raise ValueError("server_slots and request_batch_size must be positive")
     return math.ceil(server_slots / request_batch_size) + 1
+
+
+def reranker_context_size(
+    *, server_slots: int, ubatch: int, context_per_slot: int
+) -> int:
+    """-c of a reranker: one physical batch plus the last prompt of every slot.
+
+    llama-server keeps a finished prompt in the unified KV. A busy slot drops it only
+    when its next document enters a batch, and only idle slots are purged when the KV
+    is full. With -c equal to -ub, prompts held by waiting slots leave no room for the
+    next batch and the server fails with "Context size has been exceeded."
+    """
+    return ubatch + server_slots * context_per_slot
 
 
 def reranker_candidate(
@@ -114,10 +129,10 @@ def reranker_candidate(
     concurrency: int,
     threads: int | None = None,
 ) -> RuntimeCandidate:
-    """One reranker server level: -np server_slots and -c = -b = -ub = ubatch.
+    """One reranker server level: -np server_slots and -b = -ub = ubatch.
 
     Rank pooling computes each document in a single pass, so a document must fit in one
-    ubatch; the longest rerank prompt is 1,664 tokens.
+    ubatch. context_per_slot is the prompt a slot holds; reranker_context_size gives -c.
     """
     if ubatch < MIN_RERANK_UBATCH:
         raise ValueError(f"reranker ubatch must be at least {MIN_RERANK_UBATCH} tokens")
@@ -125,7 +140,7 @@ def reranker_candidate(
         server_slots=server_slots,
         concurrency=concurrency,
         request_batch_size=request_batch_size,
-        context_per_slot=ubatch,
+        context_per_slot=RERANK_PROMPT_TOKENS,
         logical_batch_size=ubatch,
         physical_batch_size=ubatch,
         threads=threads,

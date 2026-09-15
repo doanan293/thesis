@@ -301,8 +301,8 @@ def test_rerank_worker_sends_one_request_per_query_with_derived_concurrency(
         "query 2",
     ]
     assert all(len(documents) == 30 for _query, documents in client.calls)
-    # ceil(64 slots / 30 documents) + 1 requests per server keep every slot busy.
-    assert captured == {"concurrency": 4, "servers": 2}
+    # ceil(4 slots / 30 documents) + 1 requests per server keep every slot busy.
+    assert captured == {"concurrency": 2, "servers": 2}
 
 
 def test_rerank_worker_splits_a_query_larger_than_the_request_batch(tmp_path):

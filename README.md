@@ -51,9 +51,10 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   `/health` báo `CORPUS_NOT_READY` nếu metadata collection không khớp. Reranker chỉ chạy qua
   `/v1/rerank`, nên file GGUF phải là bản convert classifier (có tensor `cls.output.weight`);
   đặt `LLAMA_RERANKER_PROTOCOL=none` để bỏ rerank.
-- Reranker trên CPU: `LLAMA_RERANKER_PARALLEL` (`-np`), `LLAMA_RERANKER_UBATCH_SIZE` (dùng chung cho `-c`,
-  `-b`, `-ub`, tối thiểu 2048) và `LLAMA_RERANKER_THREADS` trong `.env` ở root; `RERANK_TIMEOUT_SECONDS` là
-  timeout của backend cho một request rerank.
+- Reranker trên CPU: `LLAMA_RERANKER_PARALLEL` (`-np`), `LLAMA_RERANKER_UBATCH_SIZE` (dùng chung cho `-b`
+  và `-ub`, tối thiểu 2048), `LLAMA_RERANKER_CONTEXT_SIZE` (`-c`, bằng `-ub` cộng 2048 cho mỗi slot) và
+  `LLAMA_RERANKER_THREADS` trong `.env` ở root; `RERANK_TIMEOUT_SECONDS` là timeout của backend cho một
+  request rerank.
   Đo lại cho máy khác trong `seed-pipeline/`:
   `uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16`,
   rồi chép dòng `env=` lệnh in ra vào `.env` và đặt `RERANK_TIMEOUT_SECONDS` ít nhất gấp đôi `latency_p95_seconds`.

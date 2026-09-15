@@ -89,16 +89,16 @@ services:
       LLAMA_ARG_MODEL: "/models/${LLAMA_RERANKER_MODEL:-qwen3-reranker-4b-f16.gguf}"
       # /v1/rerank needs a classifier GGUF (tensor cls.output.weight).
       LLAMA_ARG_RERANKING: "true"
-      # Rank pooling computes each document in one pass and frees its KV right after, so one
-      # unified KV pool the size of a physical batch serves every slot: -c = -b = -ub. The
-      # ubatch must hold the longest rerank prompt (1,664 tokens), so keep it >= 2048.
+      # Rank pooling computes each document in one pass, so -b = -ub must hold the longest
+      # rerank prompt (1,664 tokens): keep it >= 2048. A slot keeps its last prompt in the
+      # unified KV until its next document enters a batch, so -c = -ub + -np x 2048.
       LLAMA_ARG_KV_UNIFIED: "true"
       # Starting values. `seed rerank --backend local --benchmark` measures this machine and
       # prints the LLAMA_RERANKER_* values to set in the root .env.
-      LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-16}"
-      LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_UBATCH_SIZE:-8192}"
-      LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-8192}"
-      LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-8192}"
+      LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-8}"
+      LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-20480}"
+      LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"
+      LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"
       # Prompt processing dominates reranking; give it the performance-core threads.
       LLAMA_ARG_THREADS: "${LLAMA_RERANKER_THREADS:-8}"
 
