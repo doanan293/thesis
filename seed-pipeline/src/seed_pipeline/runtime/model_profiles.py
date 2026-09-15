@@ -49,33 +49,6 @@ class RerankContract:
 
 
 @dataclass(frozen=True)
-class RerankRuntimeProfile:
-    server_slots_per_gpu: int
-    concurrency_per_gpu: int
-    context_per_slot: int
-    logical_batch_size: int
-    physical_batch_size: int
-    benchmark_concurrency: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        values = (
-            self.server_slots_per_gpu,
-            self.concurrency_per_gpu,
-            self.context_per_slot,
-            self.logical_batch_size,
-            self.physical_batch_size,
-        )
-        if any(value < 1 for value in values):
-            raise ValueError("rerank runtime values must be positive")
-        if self.concurrency_per_gpu > self.server_slots_per_gpu:
-            raise ValueError("rerank concurrency cannot exceed server slots")
-        if not self.benchmark_concurrency or any(
-            value < 1 for value in self.benchmark_concurrency
-        ):
-            raise ValueError("rerank benchmark concurrency must be positive")
-
-
-@dataclass(frozen=True)
 class EmbeddingWorkloadProfile:
     production_batch_size: int
     production_concurrency: int

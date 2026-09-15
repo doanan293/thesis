@@ -4,19 +4,36 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import asdict, dataclass
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from typing import Any, Literal
 
-from seed_pipeline.runtime.model_profiles import (
-    EmbeddingWorkloadProfile,
-    RerankRuntimeProfile,
-)
+from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
+
+KAGGLE_RERANK_BENCHMARK_GROUPS = 32
+LOCAL_RERANK_BENCHMARK_GROUPS = 6
+SCORE_MISMATCH_TOLERANCE = 1e-3
+LOG_TAIL_CHARACTERS = 16_000
+
+BenchmarkObjective = Literal["throughput", "latency"]
 
 
-@dataclass(frozen=True, order=True)
-class BenchmarkLevel:
-    batch_size: int = 1
-    concurrency: int = 1
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    raise ValueError("benchmark measurement number is invalid")
+
+
+def _count(value: object) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    raise ValueError("benchmark measurement count is invalid")
+
+
+def _optional_text(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 @dataclass(frozen=True)
@@ -24,36 +41,54 @@ class BenchmarkWorkload:
     stage: str
     model: str
     sample_count: int
-    levels: tuple[BenchmarkLevel, ...]
-    sample_identity: str = ""
+    levels: tuple[RuntimeCandidate, ...]
 
 
 @dataclass(frozen=True)
 class BenchmarkMeasurement:
-    level: BenchmarkLevel
+    candidate: RuntimeCandidate
     items: int
     input_characters: int
     elapsed_seconds: float
     status: str = "ok"
     error_category: str | None = None
-    warmup: bool = False
+    latency_p50_seconds: float | None = None
     latency_p95_seconds: float | None = None
+    max_abs_score_delta: float | None = None
+    log_tail: str | None = None
 
     def __post_init__(self) -> None:
+        if self.items < 0 or self.input_characters < 0:
+            raise ValueError("benchmark counts must be non-negative")
         for name, value in (
-            ("items", self.items),
-            ("input_characters", self.input_characters),
+            ("elapsed_seconds", self.elapsed_seconds),
+            ("latency_p50_seconds", self.latency_p50_seconds),
+            ("latency_p95_seconds", self.latency_p95_seconds),
+            ("max_abs_score_delta", self.max_abs_score_delta),
         ):
-            if value < 0:
-                raise ValueError(f"{name} must be non-negative")
-        if not math.isfinite(self.elapsed_seconds) or self.elapsed_seconds < 0:
-            raise ValueError("elapsed_seconds must be finite and non-negative")
-        if self.latency_p95_seconds is not None and (
-            not math.isfinite(self.latency_p95_seconds) or self.latency_p95_seconds < 0
-        ):
-            raise ValueError("latency_p95_seconds must be finite and non-negative")
-        if self.level.batch_size < 1 or self.level.concurrency < 1:
-            raise ValueError("benchmark level values must be positive")
+            if value is not None and (not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be finite and non-negative")
+
+    @classmethod
+    def invalid(
+        cls,
+        candidate: RuntimeCandidate,
+        error_category: str,
+        log_tail: str | None = None,
+    ) -> BenchmarkMeasurement:
+        return cls(
+            candidate,
+            0,
+            0,
+            0.0,
+            status="invalid",
+            error_category=error_category,
+            log_tail=log_tail[-LOG_TAIL_CHARACTERS:] if log_tail else None,
+        )
+
+    @property
+    def items_per_second(self) -> float:
+        return self.items / self.elapsed_seconds if self.elapsed_seconds else math.inf
 
     @property
     def characters_per_second(self) -> float:
@@ -63,29 +98,105 @@ class BenchmarkMeasurement:
             else math.inf
         )
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "candidate": self.candidate.to_dict(),
+            "items": self.items,
+            "input_characters": self.input_characters,
+            "elapsed_seconds": self.elapsed_seconds,
+            "status": self.status,
+            "error_category": self.error_category,
+            "latency_p50_seconds": self.latency_p50_seconds,
+            "latency_p95_seconds": self.latency_p95_seconds,
+            "max_abs_score_delta": self.max_abs_score_delta,
+            "log_tail": self.log_tail,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> BenchmarkMeasurement:
+        candidate = payload.get("candidate")
+        if not isinstance(candidate, Mapping):
+            raise ValueError("benchmark measurement has no candidate")
+        elapsed = _optional_float(payload.get("elapsed_seconds"))
+        if elapsed is None:
+            raise ValueError("benchmark measurement has no elapsed time")
+        return cls(
+            RuntimeCandidate.from_dict(candidate),
+            items=_count(payload.get("items")),
+            input_characters=_count(payload.get("input_characters")),
+            elapsed_seconds=elapsed,
+            status=str(payload.get("status", "")),
+            error_category=_optional_text(payload.get("error_category")),
+            latency_p50_seconds=_optional_float(payload.get("latency_p50_seconds")),
+            latency_p95_seconds=_optional_float(payload.get("latency_p95_seconds")),
+            max_abs_score_delta=_optional_float(payload.get("max_abs_score_delta")),
+            log_tail=_optional_text(payload.get("log_tail")),
+        )
+
 
 @dataclass(frozen=True)
 class BenchmarkReport:
     workload: BenchmarkWorkload
     measurements: tuple[BenchmarkMeasurement, ...]
-    recommendation: BenchmarkLevel | None
-    schema_version: int = 1
+    recommendation: RuntimeCandidate | None
+    schema_version: int = 2
 
-    def to_payload(self) -> dict[str, Any]:
-        return {
-            "schema_version": self.schema_version,
-            "workload": asdict(self.workload),
-            "measurements": [asdict(item) for item in self.measurements],
-            "recommendation": asdict(self.recommendation)
-            if self.recommendation
-            else None,
-        }
 
-    def to_json(self) -> str:
-        return (
-            json.dumps(self.to_payload(), ensure_ascii=False, sort_keys=True, indent=2)
-            + "\n"
+@dataclass(frozen=True)
+class RerankGroup:
+    """One /v1/rerank request: a query with its first candidates."""
+
+    query_id: str
+    query: str
+    chunk_ids: tuple[str, ...]
+    documents: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.documents or len(self.chunk_ids) != len(self.documents):
+            raise ValueError("rerank group needs one chunk id per document")
+
+    @property
+    def characters(self) -> int:
+        return sum(len(self.query) + len(document) for document in self.documents)
+
+    def score_keys(self) -> tuple[str, ...]:
+        return tuple(f"{self.query_id}\x1f{chunk_id}" for chunk_id in self.chunk_ids)
+
+
+def rerank_groups_from_rows(
+    rows: Iterable[Mapping[str, Any]], *, documents_per_group: int
+) -> list[RerankGroup]:
+    """Full query groups (exactly `documents_per_group` candidates) from candidate rows."""
+    if documents_per_group < 1:
+        raise ValueError("documents_per_group must be positive")
+    groups: list[RerankGroup] = []
+    for row in rows:
+        candidates = list(row["candidates"])[:documents_per_group]
+        if len(candidates) < documents_per_group:
+            continue
+        groups.append(
+            RerankGroup(
+                str(row["query_id"]),
+                str(row.get("query", "")),
+                tuple(str(item["chunk_id"]) for item in candidates),
+                tuple(str(item.get("document_text", "")) for item in candidates),
+            )
         )
+    return groups
+
+
+def sample_rerank_groups(
+    groups: Sequence[RerankGroup], count: int
+) -> tuple[RerankGroup, ...]:
+    """The middle group of `count` equal strata ordered by total characters."""
+    if count < 1:
+        raise ValueError("sample count must be positive")
+    ordered = sorted(groups, key=lambda group: (group.characters, group.query_id))
+    if len(ordered) <= count:
+        return tuple(ordered)
+    return tuple(
+        ordered[(2 * index + 1) * len(ordered) // (2 * count)] for index in range(count)
+    )
 
 
 def stratified_sample(items, count: int, key, length) -> tuple:
@@ -115,34 +226,94 @@ def stratified_sample(items, count: int, key, length) -> tuple:
     return tuple(sorted(selected, key=key))
 
 
-def embedding_levels(profile: EmbeddingWorkloadProfile) -> tuple[BenchmarkLevel, ...]:
-    return tuple(
-        BenchmarkLevel(batch_size=batch, concurrency=concurrency)
-        for batch in profile.benchmark_batch_sizes
-        for concurrency in profile.benchmark_concurrency
-    )
+def percentile(values: Sequence[float], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * fraction
+    lower = math.floor(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
-def rerank_levels(profile: RerankRuntimeProfile) -> tuple[BenchmarkLevel, ...]:
-    return tuple(
-        BenchmarkLevel(concurrency=value) for value in profile.benchmark_concurrency
-    )
+@dataclass(frozen=True)
+class LevelResult:
+    measurement: BenchmarkMeasurement
+    # "<query_id>\x1f<chunk_id>" -> score; empty for embeddings and failed levels.
+    scores: Mapping[str, float]
+
+
+def _max_abs_delta(
+    baseline: Mapping[str, float], scores: Mapping[str, float]
+) -> float | None:
+    if set(baseline) != set(scores):
+        return None
+    return max((abs(scores[key] - baseline[key]) for key in baseline), default=0.0)
+
+
+def check_score_consistency(
+    results: Sequence[LevelResult], *, tolerance: float = SCORE_MISMATCH_TOLERANCE
+) -> tuple[BenchmarkMeasurement, ...]:
+    """Mark levels whose scores drift from the first valid level as score_mismatch."""
+    baseline: Mapping[str, float] | None = None
+    checked: list[BenchmarkMeasurement] = []
+    for result in results:
+        measurement = result.measurement
+        if measurement.status != "ok" or not result.scores:
+            checked.append(measurement)
+            continue
+        if baseline is None:
+            baseline = result.scores
+            checked.append(replace(measurement, max_abs_score_delta=0.0))
+            continue
+        delta = _max_abs_delta(baseline, result.scores)
+        if delta is None or delta > tolerance:
+            checked.append(
+                replace(
+                    measurement,
+                    status="invalid",
+                    error_category="score_mismatch",
+                    max_abs_score_delta=delta,
+                )
+            )
+        else:
+            checked.append(replace(measurement, max_abs_score_delta=delta))
+    return tuple(checked)
 
 
 def recommend(
-    measurements: list[BenchmarkMeasurement] | tuple[BenchmarkMeasurement, ...],
-) -> BenchmarkLevel | None:
+    measurements: Sequence[BenchmarkMeasurement], *, objective: BenchmarkObjective
+) -> RuntimeCandidate | None:
     valid = [
         item
         for item in measurements
         if item.status == "ok"
-        and not item.warmup
-        and math.isfinite(item.characters_per_second)
+        and item.items > 0
+        and math.isfinite(item.items_per_second)
     ]
-    if not valid:
+    if objective == "throughput":
+        if not valid:
+            return None
+        return max(valid, key=lambda item: item.items_per_second).candidate
+    timed = [
+        (item.latency_p95_seconds, item)
+        for item in valid
+        if item.latency_p95_seconds is not None
+    ]
+    if not timed:
         return None
-    best_rate = max(item.characters_per_second for item in valid)
-    tied = [item for item in valid if item.characters_per_second >= best_rate * 0.98]
-    return min(
-        tied, key=lambda item: (item.level.concurrency, item.level.batch_size)
-    ).level
+    return min(timed, key=lambda pair: (pair[0], -pair[1].items_per_second))[
+        1
+    ].candidate
+
+
+def describe_levels(measurements: Sequence[BenchmarkMeasurement]) -> str:
+    lines: list[str] = []
+    for item in measurements:
+        lines.append(
+            f"- {json.dumps(item.candidate.to_dict(), sort_keys=True)} "
+            f"status={item.status} error={item.error_category}"
+        )
+        if item.log_tail:
+            lines.append(item.log_tail)
+    return "\n".join(lines)

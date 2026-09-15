@@ -10,11 +10,12 @@ from seed_pipeline.integrations.kaggle.models import (
     InputBundle,
     InputFile,
     JobIdentity,
+    JSONValue,
     StageJob,
     StageName,
     StageRequest,
 )
-from seed_pipeline.runtime.benchmarking import BenchmarkLevel
+from seed_pipeline.runtime.benchmarking import KAGGLE_RERANK_BENCHMARK_GROUPS
 from seed_pipeline.runtime.catalog import ModelKind, require_model
 from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
@@ -264,7 +265,7 @@ class RerankStage:
 class BenchmarkStage:
     name: StageName
     base: StageAdapter
-    contract_version: int = 1
+    contract_version: int = 2
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
@@ -291,24 +292,28 @@ class BenchmarkStage:
             base_request.stage = self.base.name
             base_request.runtime_profile = search_space.candidates[0]
         base_job = self.base.build_job(base_request)
-        levels = tuple(
-            BenchmarkLevel(candidate.request_batch_size, candidate.concurrency)
-            for candidate in search_space.candidates
-        )
+        levels: list[JSONValue] = [
+            candidate.to_dict() for candidate in search_space.candidates
+        ]
+        benchmark: dict[str, JSONValue] = {"benchmark_levels": levels}
+        if spec.kind is ModelKind.RERANKER:
+            # Each measured request is one full query group, as in production.
+            benchmark["benchmark_groups"] = KAGGLE_RERANK_BENCHMARK_GROUPS
+            benchmark["benchmark_items"] = (
+                KAGGLE_RERANK_BENCHMARK_GROUPS
+                * search_space.candidates[0].request_batch_size
+            )
+        else:
+            benchmark["benchmark_items"] = (
+                request.benchmark_items or base_job.expected_total
+            )
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
             model=request.model,
             model_sha256=spec.sha256,
             input_sha256=base_job.input_bundle.sha256,
-            runtime_parameters={
-                "benchmark_items": getattr(request, "benchmark_items", None)
-                or base_job.expected_total,
-                "benchmark_levels": [
-                    {"batch_size": item.batch_size, "concurrency": item.concurrency}
-                    for item in levels
-                ],
-            },
+            runtime_parameters=benchmark,
         )
         output_dir = (
             request.output_dir / self.name.value / spec.slug / identity.sha256[:12]
@@ -319,15 +324,7 @@ class BenchmarkStage:
                 "stage": self.name.value,
                 "identity": identity.payload,
                 "job_sha256": identity.sha256,
-                "benchmark_levels": [
-                    {"batch_size": item.batch_size, "concurrency": item.concurrency}
-                    for item in levels
-                ],
-                "benchmark_candidates": [
-                    candidate.to_dict() for candidate in search_space.candidates
-                ],
-                "benchmark_items": getattr(request, "benchmark_items", None)
-                or base_job.expected_total,
+                **benchmark,
             }
         )
         return replace(

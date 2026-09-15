@@ -114,6 +114,8 @@ def test_legacy_cache_helpers_are_gone(module: str, name: str) -> None:
         ("seed_pipeline.runtime.client", "CompletionPromptTiming"),
         ("seed_pipeline.runtime.benchmarking", "compare_cache_arms"),
         ("seed_pipeline.runtime.benchmarking", "CacheComparison"),
+        ("seed_pipeline.runtime.model_profiles", "RerankRuntimeProfile"),
+        ("seed_pipeline.runtime.benchmarking", "rerank_levels"),
     ],
 )
 def test_completion_logprobs_code_is_gone(module: str, name: str) -> None:

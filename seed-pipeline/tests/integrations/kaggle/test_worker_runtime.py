@@ -96,13 +96,23 @@ def test_resolve_input_file_does_not_accept_exact_path_with_wrong_filename(tmp_p
         resolve_input_file(config, "candidates", input_root=tmp_path / "mounted")
 
 
-def test_build_server_command_accepts_benchmark_runtime_overrides():
+RERANK_LEVEL = {
+    "server_slots": 64,
+    "concurrency": 4,
+    "request_batch_size": 30,
+    "context_per_slot": 16384,
+    "logical_batch_size": 16384,
+    "physical_batch_size": 16384,
+}
+
+
+def test_embedding_command_sizes_context_per_slot():
     command = build_server_command(
         binary="llama-server",
         model="model.gguf",
         port=11434,
         visible_devices="0",
-        spec=require_model("qwen3-reranker:0.6b-fp16"),
+        spec=require_model("bge-m3:567m-fp16"),
         runtime_overrides={
             "server_slots": 8,
             "context_per_slot": 4096,
@@ -115,6 +125,55 @@ def test_build_server_command_accepts_benchmark_runtime_overrides():
     assert command[command.index("-c") + 1] == "32768"
     assert command[command.index("-b") + 1] == "8192"
     assert command[command.index("-ub") + 1] == "4096"
+    assert "--embedding" in command
+    assert "--reranking" not in command
+    assert "--kv-unified" not in command
+
+
+@pytest.mark.parametrize(
+    "model",
+    ("qwen3-reranker:0.6b-fp16", "qwen3-reranker:8b-fp16", "bge-reranker-v2-m3:f16"),
+)
+def test_reranker_command_batches_documents_in_one_unified_kv_pool(model):
+    command = build_server_command(
+        binary="llama-server",
+        model="model.gguf",
+        port=11434,
+        visible_devices="0",
+        spec=require_model(model),
+        runtime_overrides=RERANK_LEVEL,
+    )
+
+    assert "--reranking" in command
+    assert "--kv-unified" in command
+    assert command[command.index("-np") + 1] == "64"
+    for flag in ("-c", "-b", "-ub"):
+        assert command[command.index(flag) + 1] == "16384"
+
+
+def test_sharded_reranker_splits_one_server_over_two_gpus():
+    command = build_server_command(
+        binary="llama-server",
+        model="model.gguf",
+        port=11434,
+        visible_devices="0,1",
+        spec=require_model("qwen3-reranker:8b-fp16"),
+        runtime_overrides=RERANK_LEVEL,
+    )
+
+    assert command[command.index("--tensor-split") + 1] == "1,1"
+
+
+def test_reranker_command_rejects_split_context_and_ubatch():
+    with pytest.raises(ValueError, match="one size"):
+        build_server_command(
+            binary="llama-server",
+            model="model.gguf",
+            port=11434,
+            visible_devices="0",
+            spec=require_model("qwen3-reranker:0.6b-fp16"),
+            runtime_overrides={**RERANK_LEVEL, "physical_batch_size": 8192},
+        )
 
 
 @pytest.mark.parametrize(
@@ -136,7 +195,7 @@ def test_build_server_command_enforces_stateless_prompt_cache(model):
             "server_slots": 2,
             "context_per_slot": 4096,
             "logical_batch_size": 4096,
-            "physical_batch_size": 2048,
+            "physical_batch_size": 4096,
         },
     )
 
@@ -289,7 +348,7 @@ def test_managed_model_servers_reports_early_process_failure(monkeypatch, tmp_pa
             "server_slots": 4,
             "context_per_slot": 4096,
             "logical_batch_size": 4096,
-            "physical_batch_size": 2048,
+            "physical_batch_size": 4096,
         },
         "server_start_timeout": 0,
         "output_dir": str(tmp_path / "output"),
@@ -350,7 +409,7 @@ def test_managed_model_servers_reports_all_replicas_on_timeout(monkeypatch, tmp_
             "server_slots": 4,
             "context_per_slot": 4096,
             "logical_batch_size": 4096,
-            "physical_batch_size": 2048,
+            "physical_batch_size": 4096,
         },
         "server_start_timeout": 0,
         "output_dir": str(tmp_path / "output"),
@@ -418,7 +477,7 @@ def test_managed_model_servers_default_startup_timeout_allows_five_minute_window
             "server_slots": 4,
             "context_per_slot": 4096,
             "logical_batch_size": 4096,
-            "physical_batch_size": 2048,
+            "physical_batch_size": 4096,
         },
         "output_dir": str(tmp_path / "output"),
     }
@@ -476,7 +535,7 @@ def test_managed_model_servers_wraps_mid_run_exit_with_diagnostics(
             "server_slots": 2,
             "context_per_slot": 4096,
             "logical_batch_size": 4096,
-            "physical_batch_size": 2048,
+            "physical_batch_size": 4096,
         },
         "output_dir": str(tmp_path / "output"),
     }

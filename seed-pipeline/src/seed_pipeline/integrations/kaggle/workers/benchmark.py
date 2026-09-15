@@ -4,9 +4,11 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+from seed_pipeline.integrations.kaggle.models import CloudArtifact
 from seed_pipeline.integrations.kaggle.workers.runtime import (
     artifact_from_output,
     identity_from_config,
@@ -16,103 +18,78 @@ from seed_pipeline.integrations.kaggle.workers.runtime import (
 from seed_pipeline.integrations.kaggle.workers.scheduling import stream_map_ordered
 from seed_pipeline.integrations.kaggle.workers.telemetry import RuntimeTelemetry
 from seed_pipeline.runtime.benchmarking import (
-    BenchmarkLevel,
     BenchmarkMeasurement,
     BenchmarkReport,
     BenchmarkWorkload,
+    LevelResult,
+    RerankGroup,
+    check_score_consistency,
+    percentile,
     recommend,
+    rerank_groups_from_rows,
+    sample_rerank_groups,
+    stratified_sample,
 )
-from seed_pipeline.runtime.catalog import require_model
+from seed_pipeline.runtime.catalog import ModelKind, ModelSpec, require_model
+from seed_pipeline.runtime.client import LlamaCppClient
+from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
+
+MeasureLevel = Callable[[int, RuntimeCandidate], LevelResult]
+Clients = list[tuple[int, LlamaCppClient]]
+SERVER_LOG_TAIL_CHARACTERS = 4000
 
 
 def run_benchmark_worker(
     config: dict,
     *,
-    measure_level: Callable[[BenchmarkLevel], BenchmarkMeasurement] | None = None,
+    measure_level: MeasureLevel | None = None,
     clock: Callable[[], float] = time.monotonic,
-):
-    """Run isolated diagnostic levels; never creates a production cache."""
+) -> CloudArtifact:
+    """Measure every runtime level end to end; never creates a production cache."""
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     identity = identity_from_config(config)
     levels = tuple(
-        BenchmarkLevel(
-            batch_size=int(item.get("batch_size", 1)),
-            concurrency=int(item.get("concurrency", 1)),
-        )
-        for item in config.get("benchmark_levels", ())
+        RuntimeCandidate.from_dict(item) for item in config.get("benchmark_levels", ())
     )
     if not levels:
         raise ValueError("benchmark_levels must not be empty")
     workload = BenchmarkWorkload(
         stage=str(config.get("stage", "benchmark")),
         model=str(config["model"]),
-        sample_count=int(
-            config.get("benchmark_items", config.get("benchmark_pairs", 0))
-        ),
+        sample_count=int(config.get("benchmark_items", 0)),
         levels=levels,
-        sample_identity=str(config.get("sample_identity", "")),
     )
-    measurements: list[BenchmarkMeasurement] = []
-    for level in levels:
+    measure = measure_level or _default_measure(config, levels, output_dir, clock)
+    results: list[LevelResult] = []
+    for index, candidate in enumerate(levels):
         try:
-            measurement = (
-                measure_level(level)
-                if measure_level is not None
-                else _measure_level(
-                    config, level, workload.sample_count, output_dir, clock
-                )
-            )
-            if measurement.level != level:
+            result = measure(index, candidate)
+            if result.measurement.candidate != candidate:
                 raise ValueError("benchmark measurement level mismatch")
         except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            measurement = BenchmarkMeasurement(
-                level, 0, 0, 0.0, status="invalid", error_category=type(exc).__name__
+            detail = f"{exc}\n{_server_log_tail(output_dir / f'level-{index}')}"
+            result = LevelResult(
+                BenchmarkMeasurement.invalid(
+                    candidate, type(exc).__name__, detail.strip()
+                ),
+                {},
             )
-        measurements.append(measurement)
-    report = BenchmarkReport(workload, tuple(measurements), recommend(measurements))
+        results.append(result)
+    measurements = check_score_consistency(results)
+    report = BenchmarkReport(
+        workload, measurements, recommend(measurements, objective="throughput")
+    )
     data_path = output_dir / "benchmark_results.jsonl"
     with data_path.open("w", encoding="utf-8") as handle:
         for measurement in measurements:
-            handle.write(
-                json.dumps(
-                    {
-                        "identity": identity.sha256,
-                        **{
-                            key: value
-                            for key, value in report.to_payload().items()
-                            if key == "schema_version"
-                        },
-                        "measurement": {
-                            "level": {
-                                "batch_size": measurement.level.batch_size,
-                                "concurrency": measurement.level.concurrency,
-                            },
-                            "items": measurement.items,
-                            "input_characters": measurement.input_characters,
-                            "elapsed_seconds": measurement.elapsed_seconds,
-                            "status": measurement.status,
-                            "error_category": measurement.error_category,
-                        },
-                    },
-                    sort_keys=True,
-                )
-                + "\n"
-            )
-    (output_dir / "benchmark_report.md").write_text(
-        "# Runtime benchmark\n\n"
-        f"- stage: `{workload.stage}`\n- model: `{workload.model}`\n"
-        f"- recommendation: `{report.recommendation}`\n\n"
-        + "| batch | concurrency | items | chars/s | status | error |\n"
-        + "|---:|---:|---:|---:|---|---|\n"
-        + "\n".join(
-            f"| {item.level.batch_size} | {item.level.concurrency} | {item.items} | "
-            f"{item.characters_per_second:.2f} | {item.status} | {item.error_category or ''} |"
-            for item in measurements
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+            row = {
+                "identity": identity.sha256,
+                "schema_version": report.schema_version,
+                "measurement": measurement.to_dict(),
+            }
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+    (output_dir / "benchmark_report.md").write_text(_markdown(report), encoding="utf-8")
     return artifact_from_output(
         data_path,
         artifact_type="runtime_benchmark",
@@ -120,170 +97,231 @@ def run_benchmark_worker(
         total=len(measurements),
         complete=len(measurements),
         runtime_summary={
-            "recommendation": report.recommendation
-            and {
-                "batch_size": report.recommendation.batch_size,
-                "concurrency": report.recommendation.concurrency,
-            }
+            "recommendation": (
+                report.recommendation.to_dict() if report.recommendation else None
+            ),
+            "sample_count": workload.sample_count,
         },
     )
 
 
-def _sample_workload(config: dict, count: int) -> tuple[list, int]:
-    from seed_pipeline.runtime.benchmarking import stratified_sample
+def _default_measure(
+    config: dict,
+    levels: tuple[RuntimeCandidate, ...],
+    output_dir: Path,
+    clock: Callable[[], float],
+) -> MeasureLevel:
+    spec = require_model(str(config["model"]))
+    if spec.kind is ModelKind.RERANKER:
+        groups = sample_rerank_groups(
+            rerank_groups_from_rows(
+                _candidate_rows(config),
+                documents_per_group=levels[0].request_batch_size,
+            ),
+            int(config["benchmark_groups"]),
+        )
+        if not groups:
+            raise ValueError("candidates contain no full query group to benchmark")
 
+        def measure_rerank(index: int, candidate: RuntimeCandidate) -> LevelResult:
+            with _level_clients(config, spec, index, candidate, output_dir) as clients:
+                return _measure_rerank(spec, candidate, groups, clients, clock)
+
+        return measure_rerank
+    texts, characters = _sample_texts(config, int(config.get("benchmark_items", 0)))
+
+    def measure_embedding(index: int, candidate: RuntimeCandidate) -> LevelResult:
+        with _level_clients(config, spec, index, candidate, output_dir) as clients:
+            return _measure_embedding(
+                spec, candidate, texts, characters, clients, clock
+            )
+
+    return measure_embedding
+
+
+@contextmanager
+def _level_clients(
+    config: dict,
+    spec: ModelSpec,
+    index: int,
+    candidate: RuntimeCandidate,
+    output_dir: Path,
+) -> Generator[Clients, None, None]:
+    level_dir = output_dir / f"level-{index}"
+    level_config = {
+        **config,
+        "runtime_overrides": candidate.to_dict(),
+        "output_dir": str(level_dir),
+    }
+    telemetry = RuntimeTelemetry("benchmark", spec.name, level_dir)
+    try:
+        # A fresh server per level, so no slot or KV state carries over.
+        with managed_model_servers(level_config, telemetry=telemetry) as servers:
+            yield [
+                (server_index, LlamaCppClient(server.base_url))
+                for server_index, server in enumerate(servers)
+            ]
+    finally:
+        telemetry.close()
+        telemetry.write_report()
+
+
+def _measure_rerank(
+    spec: ModelSpec,
+    candidate: RuntimeCandidate,
+    groups: tuple[RerankGroup, ...],
+    clients: Clients,
+    clock: Callable[[], float],
+) -> LevelResult:
+    latencies: list[float] = []
+    scores: dict[str, float] = {}
+
+    async def operation(
+        resource: tuple[int, LlamaCppClient], _index: int, group: RerankGroup
+    ) -> None:
+        _server_index, client = resource
+        started = clock()
+        values = await asyncio.to_thread(
+            client.rerank_native, group.query, list(group.documents), spec.name
+        )
+        latencies.append(max(0.0, clock() - started))
+        scores.update(zip(group.score_keys(), values, strict=True))
+
+    asyncio.run(stream_map_ordered(groups[:1], clients, 1, operation, float("inf")))
+    latencies.clear()
+    scores.clear()
+    started = clock()
+    asyncio.run(
+        stream_map_ordered(
+            groups, clients, candidate.concurrency, operation, float("inf")
+        )
+    )
+    elapsed = max(0.0, clock() - started)
+    return LevelResult(
+        BenchmarkMeasurement(
+            candidate,
+            sum(len(group.documents) for group in groups),
+            sum(group.characters for group in groups),
+            elapsed,
+            latency_p50_seconds=percentile(latencies, 0.50),
+            latency_p95_seconds=percentile(latencies, 0.95),
+        ),
+        scores,
+    )
+
+
+def _measure_embedding(
+    spec: ModelSpec,
+    candidate: RuntimeCandidate,
+    texts: list[str],
+    characters: int,
+    clients: Clients,
+    clock: Callable[[], float],
+) -> LevelResult:
+    size = candidate.request_batch_size
+    batches = [texts[start : start + size] for start in range(0, len(texts), size)]
+    if not batches:
+        raise ValueError("benchmark input contains no text")
+    latencies: list[float] = []
+
+    async def operation(
+        resource: tuple[int, LlamaCppClient], _index: int, batch: list[str]
+    ) -> None:
+        _server_index, client = resource
+        started = clock()
+        await asyncio.to_thread(
+            client.embed, batch, spec.name, spec.vector_dimension or 0
+        )
+        latencies.append(max(0.0, clock() - started))
+
+    asyncio.run(stream_map_ordered(batches[:1], clients, 1, operation, float("inf")))
+    latencies.clear()
+    started = clock()
+    asyncio.run(
+        stream_map_ordered(
+            batches, clients, candidate.concurrency, operation, float("inf")
+        )
+    )
+    return LevelResult(
+        BenchmarkMeasurement(
+            candidate,
+            len(texts),
+            characters,
+            max(0.0, clock() - started),
+            latency_p50_seconds=percentile(latencies, 0.50),
+            latency_p95_seconds=percentile(latencies, 0.95),
+        ),
+        {},
+    )
+
+
+def _candidate_rows(config: dict) -> Iterator[dict]:
+    path = resolve_input_file(config, "candidates")
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                yield json.loads(line)
+
+
+def _sample_texts(config: dict, count: int) -> tuple[list[str], int]:
     stage = str(config.get("stage", ""))
-    if "rerank" in stage:
-        path = resolve_input_file(config, "candidates")
-        pairs = []
-        with path.open(encoding="utf-8") as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                row = json.loads(line)
-                for candidate in row["candidates"]:
-                    pairs.append(
-                        (
-                            str(row.get("query", "")),
-                            str(candidate.get("document_text", "")),
-                        )
-                    )
-        sample = stratified_sample(
-            pairs,
-            count,
-            key=lambda item: (item[0], item[1]),
-            length=lambda item: len(item[0]) + len(item[1]),
-        )
-        return list(sample), sum(
-            len(query) + len(document) for query, document in sample
-        )
     path = resolve_input_file(config, "input")
-    rows = []
+    rows: list[str] = []
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
                 continue
             row = json.loads(line)
-            text = str(
-                row.get("query", "")
-                if "query" in stage
-                else row.get("embedding_text", row.get("text", ""))
+            rows.append(
+                str(
+                    row.get("query", "")
+                    if "query" in stage
+                    else row.get("embedding_text", row.get("text", ""))
+                )
             )
-            rows.append(text)
     sample = stratified_sample(
         rows, count, key=lambda item: (len(item), item), length=len
     )
     return list(sample), sum(len(item) for item in sample)
 
 
-def _measure_level(
-    config: dict,
-    level: BenchmarkLevel,
-    sample_count: int,
-    output_dir: Path,
-    clock,
-) -> BenchmarkMeasurement:
-    spec = require_model(str(config["model"]))
-    candidates = [dict(item) for item in config.get("benchmark_candidates", ())]
-    matching = [
-        item
-        for item in candidates
-        if int(item.get("request_batch_size", 0)) == level.batch_size
-        and int(item.get("concurrency", 0)) == level.concurrency
+def _server_log_tail(level_dir: Path) -> str:
+    return "\n".join(
+        f"{path.name}:\n"
+        + path.read_text(encoding="utf-8", errors="replace")[
+            -SERVER_LOG_TAIL_CHARACTERS:
+        ]
+        for path in sorted(level_dir.glob("server-*.log"))
+    )
+
+
+def _seconds(value: float | None) -> str:
+    return "" if value is None else f"{value:.3f}"
+
+
+def _markdown(report: BenchmarkReport) -> str:
+    recommendation = (
+        json.dumps(report.recommendation.to_dict(), sort_keys=True)
+        if report.recommendation
+        else "none"
+    )
+    rows = [
+        f"| {item.candidate.server_slots} | {item.candidate.physical_batch_size} "
+        f"| {item.candidate.request_batch_size} | {item.candidate.concurrency} "
+        f"| {item.items} | {item.items_per_second:.2f} "
+        f"| {_seconds(item.latency_p50_seconds)} | {_seconds(item.latency_p95_seconds)} "
+        f"| {item.status} | {item.error_category or ''} |"
+        for item in report.measurements
     ]
-    if len(matching) != 1:
-        raise ValueError("benchmark level does not identify one runtime candidate")
-    candidate = matching[0]
-    samples, input_characters = _sample_workload(config, sample_count)
-    level_config = dict(config)
-    level_config["runtime_overrides"] = candidate
-    telemetry = RuntimeTelemetry("benchmark", str(config["model"]), output_dir)
-    try:
-        with managed_model_servers(level_config, telemetry=telemetry) as servers:
-            resources = [
-                (
-                    index,
-                    __import__(
-                        "seed_pipeline.runtime.client", fromlist=["LlamaCppClient"]
-                    ).LlamaCppClient(server.base_url),
-                )
-                for index, server in enumerate(servers)
-            ]
-            recording = False
-            if "rerank" in str(config.get("stage", "")):
-                items = samples
-
-                async def operation(resource, _index, item):
-                    server_index, client = resource
-                    started = time.monotonic()
-                    query, document = item
-                    await asyncio.to_thread(
-                        client.rerank_native,
-                        query,
-                        [document],
-                        str(config["model"]),
-                    )
-                    if recording:
-                        telemetry.record_operation(
-                            server_index,
-                            1,
-                            len(query) + len(document),
-                            time.monotonic() - started,
-                            "ok",
-                            0,
-                        )
-                    return None
-            else:
-                batches = [
-                    samples[start : start + level.batch_size]
-                    for start in range(0, len(samples), level.batch_size)
-                ]
-
-                async def operation(resource, _index, batch):
-                    server_index, client = resource
-                    started = time.monotonic()
-                    await asyncio.to_thread(
-                        client.embed,
-                        batch,
-                        str(config["model"]),
-                        spec.vector_dimension or 0,
-                    )
-                    if recording:
-                        telemetry.record_operation(
-                            server_index,
-                            len(batch),
-                            sum(len(item) for item in batch),
-                            time.monotonic() - started,
-                            "ok",
-                            0,
-                        )
-                    return None
-
-                items = batches
-            if items:
-                asyncio.run(
-                    stream_map_ordered(items[:1], resources, 1, operation, float("inf"))
-                )
-            recording = True
-            started_total = clock()
-            if items:
-                asyncio.run(
-                    stream_map_ordered(
-                        items, resources, level.concurrency, operation, float("inf")
-                    )
-                )
-            summary = telemetry.summary()
-            return BenchmarkMeasurement(
-                level,
-                len(samples),
-                input_characters,
-                max(clock() - started_total, 0.0),
-                status="ok",
-                latency_p95_seconds=summary["operations"].get("latency_p95_seconds"),
-            )
-    finally:
-        telemetry.close()
-        telemetry.write_report()
+    return (
+        "# Runtime benchmark\n\n"
+        f"- stage: `{report.workload.stage}`\n"
+        f"- model: `{report.workload.model}`\n"
+        f"- recommendation: `{recommendation}`\n\n"
+        "| slots | ubatch | batch | concurrency | items | items/s | p50 s | p95 s "
+        "| status | error |\n"
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n" + "\n".join(rows) + "\n"
+    )
 
 
 def main() -> int:

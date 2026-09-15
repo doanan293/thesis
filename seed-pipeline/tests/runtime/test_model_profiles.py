@@ -1,32 +1,16 @@
-from dataclasses import replace
-
 import pytest
 
-from seed_pipeline.runtime.catalog import require_model
+from seed_pipeline.runtime.catalog import RERANKER_MODELS, require_model
 from seed_pipeline.runtime.model_profiles import (
     EmbeddingRuntimeProfile,
     EmbeddingWorkloadProfile,
     RerankContract,
-    RerankRuntimeProfile,
 )
 
 
 def test_rerank_contract_rejects_other_protocols():
     with pytest.raises(ValueError, match="unsupported rerank protocol"):
         RerankContract(protocol="completion_logprobs")
-
-
-def test_runtime_changes_do_not_change_rerank_contract_hash():
-    spec = require_model("qwen3-reranker:0.6b-fp16")
-    assert spec.rerank_runtime is not None
-    assert spec.rerank_contract is not None
-    tuned = replace(
-        spec, rerank_runtime=replace(spec.rerank_runtime, concurrency_per_gpu=2)
-    )
-
-    assert tuned.rerank_runtime != spec.rerank_runtime
-    assert tuned.rerank_contract is not None
-    assert tuned.rerank_contract.sha256 == spec.rerank_contract.sha256
 
 
 def test_embedding_profile_separates_query_and_corpus_workloads():
@@ -50,34 +34,51 @@ def test_embedding_model_exposes_separate_runtime_search_spaces():
     )
 
 
-def test_reranker_exposes_runtime_search_space():
-    spec = require_model("qwen3-reranker:0.6b-fp16")
-
-    assert spec.rerank_search_space is not None
-    assert len(spec.rerank_search_space.candidates) >= 2
-
-
 @pytest.mark.parametrize(
-    "factory",
+    ("model", "server_slots", "ubatch_sizes", "concurrency"),
     [
-        lambda: RerankRuntimeProfile(
-            server_slots_per_gpu=1,
-            concurrency_per_gpu=0,
-            context_per_slot=4096,
-            logical_batch_size=4096,
-            physical_batch_size=2048,
-            benchmark_concurrency=(1,),
-        ),
-        lambda: RerankRuntimeProfile(
-            server_slots_per_gpu=1,
-            concurrency_per_gpu=2,
-            context_per_slot=4096,
-            logical_batch_size=4096,
-            physical_batch_size=2048,
-            benchmark_concurrency=(1,),
-        ),
+        ("qwen3-reranker:0.6b-fp16", 64, (8192, 16384, 32768), 4),
+        ("qwen3-reranker:4b-fp16", 32, (8192, 16384), 3),
+        ("qwen3-reranker:8b-fp16", 16, (4096, 8192), 2),
+        ("bge-reranker-v2-m3:f16", 64, (8192, 16384, 32768), 4),
     ],
 )
-def test_rerank_runtime_rejects_invalid_concurrency(factory):
-    with pytest.raises(ValueError):
-        factory()
+def test_kaggle_rerank_search_space_sweeps_the_ubatch(
+    model: str, server_slots: int, ubatch_sizes: tuple[int, ...], concurrency: int
+):
+    space = require_model(model).rerank_search_space
+
+    assert space is not None
+    assert tuple(item.physical_batch_size for item in space.candidates) == ubatch_sizes
+    for item in space.candidates:
+        assert (
+            item.server_slots,
+            item.request_batch_size,
+            item.concurrency,
+            item.threads,
+        ) == (server_slots, 30, concurrency, None)
+        assert item.context_per_slot == item.logical_batch_size
+        assert item.logical_batch_size == item.physical_batch_size
+
+
+@pytest.mark.parametrize("model", sorted(RERANKER_MODELS))
+def test_local_rerank_search_space_sweeps_ubatch_and_threads(model: str):
+    space = require_model(model).local_rerank_search_space
+
+    assert space is not None
+    assert [(item.physical_batch_size, item.threads) for item in space.candidates] == [
+        (4096, 8),
+        (4096, 12),
+        (8192, 8),
+        (8192, 12),
+        (16384, 8),
+        (16384, 12),
+    ]
+    for item in space.candidates:
+        assert (item.server_slots, item.request_batch_size, item.concurrency) == (
+            16,
+            15,
+            1,
+        )
+        assert item.context_per_slot == item.logical_batch_size
+        assert item.logical_batch_size == item.physical_batch_size

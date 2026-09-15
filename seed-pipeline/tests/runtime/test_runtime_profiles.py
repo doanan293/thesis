@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -9,6 +10,8 @@ from seed_pipeline.runtime.runtime_profiles import (
     RuntimeProfileIdentity,
     RuntimeProfileStore,
     RuntimeSearchSpace,
+    rerank_concurrency,
+    reranker_candidate,
 )
 from seed_pipeline.runtime.server_policy import inference_cache_policy
 
@@ -95,3 +98,41 @@ def test_search_space_rejects_empty_or_duplicate_candidates():
         RuntimeSearchSpace(())
     with pytest.raises(ValueError):
         RuntimeSearchSpace((candidate(), candidate()))
+
+
+def test_candidate_threads_are_optional_in_the_payload():
+    assert "threads" not in candidate().to_dict()
+    local = replace(candidate(), threads=12)
+
+    assert local.to_dict()["threads"] == 12
+    assert RuntimeCandidate.from_dict(local.to_dict()) == local
+    assert RuntimeCandidate.from_dict(candidate().to_dict()) == candidate()
+
+
+@pytest.mark.parametrize(
+    ("server_slots", "request_batch_size", "expected"),
+    [(64, 30, 4), (32, 30, 3), (16, 30, 2), (16, 15, 3)],
+)
+def test_rerank_concurrency_keeps_every_slot_busy(
+    server_slots: int, request_batch_size: int, expected: int
+):
+    assert rerank_concurrency(server_slots, request_batch_size) == expected
+
+
+def test_reranker_candidate_uses_one_size_for_context_batch_and_ubatch():
+    level = reranker_candidate(
+        server_slots=32, ubatch=16384, request_batch_size=30, concurrency=3
+    )
+
+    assert (
+        level.context_per_slot,
+        level.logical_batch_size,
+        level.physical_batch_size,
+    ) == (16384, 16384, 16384)
+
+
+def test_reranker_candidate_rejects_ubatch_below_the_longest_prompt():
+    with pytest.raises(ValueError, match="2048"):
+        reranker_candidate(
+            server_slots=4, ubatch=1024, request_batch_size=30, concurrency=1
+        )

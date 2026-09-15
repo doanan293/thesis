@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
@@ -43,6 +44,8 @@ class RuntimeCandidate:
     context_per_slot: int
     logical_batch_size: int
     physical_batch_size: int
+    # CPU threads of a local llama-server; Kaggle GPU levels leave it unset.
+    threads: int | None = None
 
     def __post_init__(self) -> None:
         values = (
@@ -55,9 +58,11 @@ class RuntimeCandidate:
         )
         if any(value < 1 for value in values):
             raise ValueError("runtime candidate values must be positive")
+        if self.threads is not None and self.threads < 1:
+            raise ValueError("runtime candidate threads must be positive")
 
     def to_dict(self) -> dict[str, int]:
-        return {
+        payload = {
             "server_slots": self.server_slots,
             "concurrency": self.concurrency,
             "request_batch_size": self.request_batch_size,
@@ -65,6 +70,9 @@ class RuntimeCandidate:
             "logical_batch_size": self.logical_batch_size,
             "physical_batch_size": self.physical_batch_size,
         }
+        if self.threads is not None:
+            payload["threads"] = self.threads
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> RuntimeCandidate:
@@ -81,9 +89,47 @@ class RuntimeCandidate:
             raise ValueError(f"runtime candidate is missing: {', '.join(missing)}")
         try:
             values = {name: _to_int(payload[name]) for name in names}
+            raw_threads = payload.get("threads")
+            threads = None if raw_threads is None else _to_int(raw_threads)
         except (TypeError, ValueError) as exc:
             raise ValueError("runtime candidate values must be integers") from exc
-        return cls(**values)
+        return cls(**values, threads=threads)
+
+
+MIN_RERANK_UBATCH = 2048
+
+
+def rerank_concurrency(server_slots: int, request_batch_size: int) -> int:
+    """Concurrent requests per server that keep every reranker slot busy."""
+    if server_slots < 1 or request_batch_size < 1:
+        raise ValueError("server_slots and request_batch_size must be positive")
+    return math.ceil(server_slots / request_batch_size) + 1
+
+
+def reranker_candidate(
+    *,
+    server_slots: int,
+    ubatch: int,
+    request_batch_size: int,
+    concurrency: int,
+    threads: int | None = None,
+) -> RuntimeCandidate:
+    """One reranker server level: -np server_slots and -c = -b = -ub = ubatch.
+
+    Rank pooling computes each document in a single pass, so a document must fit in one
+    ubatch; the longest rerank prompt is 1,664 tokens.
+    """
+    if ubatch < MIN_RERANK_UBATCH:
+        raise ValueError(f"reranker ubatch must be at least {MIN_RERANK_UBATCH} tokens")
+    return RuntimeCandidate(
+        server_slots=server_slots,
+        concurrency=concurrency,
+        request_batch_size=request_batch_size,
+        context_per_slot=ubatch,
+        logical_batch_size=ubatch,
+        physical_batch_size=ubatch,
+        threads=threads,
+    )
 
 
 @dataclass(frozen=True)

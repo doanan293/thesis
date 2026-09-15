@@ -337,6 +337,20 @@ def build_server_command(
     if runtime_overrides is None:
         raise ValueError("runtime_overrides is required")
     overrides = dict(runtime_overrides)
+    server_slots = overrides["server_slots"]
+    if spec.kind is ModelKind.RERANKER:
+        ubatch = overrides["physical_batch_size"]
+        if not (
+            overrides["context_per_slot"] == overrides["logical_batch_size"] == ubatch
+        ):
+            raise ValueError(
+                "reranker runtime must use one size for context, batch and ubatch"
+            )
+        # Rank pooling frees a sequence's KV right after its single pass, so the unified
+        # pool only holds the tokens computed together: -c equals -ub, not slots x -ub.
+        context = ubatch
+    else:
+        context = overrides["context_per_slot"] * server_slots
     command = [
         str(binary),
         "--model",
@@ -350,9 +364,9 @@ def build_server_command(
         "--n-gpu-layers",
         "99",
         "-np",
-        str(overrides["server_slots"]),
+        str(server_slots),
         "-c",
-        str(overrides["context_per_slot"] * overrides["server_slots"]),
+        str(context),
         "-b",
         str(overrides["logical_batch_size"]),
         "-ub",
@@ -361,8 +375,8 @@ def build_server_command(
     ]
     if spec.kind is ModelKind.EMBEDDING:
         command.append("--embedding")
-    elif spec.reranker_protocol == "native_rerank":
-        command.append("--reranking")
+    else:
+        command.extend(["--reranking", "--kv-unified"])
     if spec.topology is ModelTopology.SHARDED_1X2:
         command.extend(["--tensor-split", "1,1"])
     return command

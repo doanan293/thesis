@@ -2,12 +2,14 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from tests.integrations.kaggle.factories import rerank_runtime_profile
 
 from seed_pipeline.artifacts.manifest import Completion
 from seed_pipeline.integrations.kaggle.auto_profile import (
     ensure_runtime_profile,
 )
+from seed_pipeline.runtime.benchmarking import BenchmarkMeasurement
 from seed_pipeline.runtime.catalog import require_model
 from seed_pipeline.runtime.server_policy import (
     InferenceCachePolicy,
@@ -16,46 +18,34 @@ from seed_pipeline.runtime.server_policy import (
 MODEL = "qwen3-reranker:0.6b-fp16"
 
 
-def _benchmark_result(tmp_path: Path):
+def _benchmark_result(
+    tmp_path: Path, *, valid: bool = True, log_tail: str | None = None
+):
     selected = rerank_runtime_profile(MODEL, index=-1)
+    measurement = (
+        BenchmarkMeasurement(
+            selected, 960, 100, 1.0, latency_p50_seconds=0.1, latency_p95_seconds=0.2
+        )
+        if valid
+        else BenchmarkMeasurement.invalid(selected, "ModelServerExited", log_tail)
+    )
     data = tmp_path / "benchmark_results.jsonl"
     data.write_text(
-        json.dumps(
-            {
-                "measurement": {
-                    "level": {
-                        "batch_size": selected.request_batch_size,
-                        "concurrency": selected.concurrency,
-                    },
-                    "items": 512,
-                    "input_characters": 100,
-                    "elapsed_seconds": 1.0,
-                    "status": "ok",
-                    "error_category": None,
-                }
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+        json.dumps({"measurement": measurement.to_dict()}) + "\n", encoding="utf-8"
     )
     (tmp_path / "manifest.json").write_text(
         json.dumps(
             {
                 "runtime": {
-                    "recommendation": {
-                        "batch_size": selected.request_batch_size,
-                        "concurrency": selected.concurrency,
-                    }
+                    "recommendation": selected.to_dict() if valid else None,
+                    "sample_count": 960,
                 },
                 "identity": {"job_sha256": "a" * 64},
             }
         ),
         encoding="utf-8",
     )
-    return SimpleNamespace(
-        artifact_path=data,
-        completion=Completion(1, 1, 0),
-    )
+    return SimpleNamespace(artifact_path=data, completion=Completion(1, 1, 0))
 
 
 def test_cache_miss_benchmarks_and_persists_selected_profile(tmp_path):
@@ -81,7 +71,7 @@ def test_cache_miss_benchmarks_and_persists_selected_profile(tmp_path):
 
     assert result.action == "created"
     assert result.profile is not None
-    assert result.profile.sample_count == 512
+    assert result.profile.sample_count == 960
     assert result.path.is_file()
     assert len(calls) == 1
 
@@ -254,3 +244,46 @@ def test_benchmark_cleans_up_work_directory(tmp_path, monkeypatch):
     assert result.action == "created"
     assert not benchmark_dir.exists()
     assert not (work_dir / "kaggle-runtime-benchmarks").exists()
+
+
+def test_profile_stores_the_recommended_candidate(tmp_path):
+    result = ensure_runtime_profile(
+        workload="rerank",
+        benchmark_stage="rerank-benchmark",
+        model=MODEL,
+        input_path=tmp_path / "candidates.jsonl",
+        gguf_root=tmp_path / "gguf",
+        budget_seconds=60,
+        dry_run=False,
+        force=False,
+        profile_root=tmp_path / "profiles",
+        runtime_sha256="b" * 64,
+        benchmark_runner=lambda **_kwargs: _benchmark_result(tmp_path),
+    )
+
+    assert result.profile is not None
+    assert result.profile.selected == rerank_runtime_profile(MODEL, index=-1)
+    assert result.profile.measurements[0]["candidate"] == (
+        result.profile.selected.to_dict()
+    )
+
+
+def test_benchmark_without_a_valid_level_stops_with_the_server_log_tail(tmp_path):
+    with pytest.raises(RuntimeError, match="CUDA error: out of memory"):
+        ensure_runtime_profile(
+            workload="rerank",
+            benchmark_stage="rerank-benchmark",
+            model=MODEL,
+            input_path=tmp_path / "candidates.jsonl",
+            gguf_root=tmp_path / "gguf",
+            budget_seconds=60,
+            dry_run=False,
+            force=False,
+            profile_root=tmp_path / "profiles",
+            runtime_sha256="b" * 64,
+            benchmark_runner=lambda **_kwargs: _benchmark_result(
+                tmp_path, valid=False, log_tail="CUDA error: out of memory"
+            ),
+        )
+
+    assert not list((tmp_path / "profiles").rglob("*.json"))

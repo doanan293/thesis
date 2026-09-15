@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from seed_pipeline.config.paths import KAGGLE_PROFILE_DIR, WORK_DIR
+from seed_pipeline.runtime.benchmarking import BenchmarkMeasurement, describe_levels
 from seed_pipeline.runtime.catalog import require_model
 from seed_pipeline.runtime.runtime_profiles import (
     RuntimeCandidate,
@@ -48,7 +49,7 @@ def _search_space(model: str, workload: str) -> RuntimeSearchSpace:
 
 def _load_benchmark_selection(
     artifact_path: Path, search_space: RuntimeSearchSpace
-) -> tuple[RuntimeCandidate, tuple[dict[str, object], ...], str]:
+) -> tuple[RuntimeCandidate, tuple[BenchmarkMeasurement, ...], str, int]:
     data_path = Path(artifact_path)
     manifest_path = data_path.with_name("manifest.json")
     try:
@@ -60,48 +61,26 @@ def _load_benchmark_selection(
         ]
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"invalid benchmark artifact: {data_path}") from exc
-    recommendation = (manifest.get("runtime") or {}).get("recommendation")
-    if not isinstance(recommendation, dict):
-        raise RuntimeError("benchmark has no runtime recommendation")
     try:
-        batch_size = int(recommendation["batch_size"])
-        concurrency = int(recommendation["concurrency"])
+        measurements = tuple(
+            BenchmarkMeasurement.from_dict(row["measurement"]) for row in rows
+        )
     except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("benchmark measurement row is malformed") from exc
+    runtime = manifest.get("runtime") or {}
+    recommendation = runtime.get("recommendation")
+    if recommendation is None:
+        raise RuntimeError(
+            "runtime benchmark found no valid level:\n" + describe_levels(measurements)
+        )
+    try:
+        selected = RuntimeCandidate.from_dict(recommendation)
+    except (AttributeError, TypeError, ValueError) as exc:
         raise RuntimeError("benchmark recommendation is malformed") from exc
-    candidates = [
-        candidate
-        for candidate in search_space.candidates
-        if candidate.request_batch_size == batch_size
-        and candidate.concurrency == concurrency
-    ]
-    if len(candidates) != 1:
-        raise RuntimeError("benchmark recommendation does not identify one candidate")
-    selected = candidates[0]
-    measurements: list[dict[str, object]] = []
-    for row in rows:
-        measurement = row.get("measurement") if isinstance(row, dict) else None
-        if not isinstance(measurement, dict):
-            raise RuntimeError("benchmark measurement row is malformed")
-        level = measurement.get("level")
-        if not isinstance(level, dict):
-            raise RuntimeError("benchmark measurement level is malformed")
-        try:
-            level_batch = int(level["batch_size"])
-            level_concurrency = int(level["concurrency"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise RuntimeError("benchmark measurement level is malformed") from exc
-        matching = [
-            candidate
-            for candidate in search_space.candidates
-            if candidate.request_batch_size == level_batch
-            and candidate.concurrency == level_concurrency
-        ]
-        if len(matching) != 1:
-            raise RuntimeError("benchmark measurement does not identify one candidate")
-        measurements.append(dict(measurement) | {"candidate": matching[0].to_dict()})
+    if selected not in search_space.candidates:
+        raise RuntimeError("benchmark recommendation is not in the search space")
     if not any(
-        item.get("status") == "ok" and item.get("candidate") == selected.to_dict()
-        for item in measurements
+        item.status == "ok" and item.candidate == selected for item in measurements
     ):
         raise RuntimeError("benchmark recommendation has no successful measurement")
     identity = manifest.get("identity")
@@ -109,8 +88,10 @@ def _load_benchmark_selection(
         identity.get("job_sha256"), str
     ):
         raise RuntimeError("benchmark manifest is missing job identity")
-    job_sha256 = identity["job_sha256"]
-    return selected, tuple(measurements), job_sha256
+    sample_count = runtime.get("sample_count")
+    if not isinstance(sample_count, int) or sample_count < 1:
+        raise RuntimeError("benchmark manifest has no sample count")
+    return selected, measurements, identity["job_sha256"], sample_count
 
 
 def ensure_runtime_profile(
@@ -186,14 +167,14 @@ def ensure_runtime_profile(
     )
     if result.artifact_path is None or not result.completion.is_complete:
         raise RuntimeError("runtime benchmark did not produce a complete artifact")
-    selected, measurements, benchmark_job_sha256 = _load_benchmark_selection(
-        result.artifact_path, space
+    selected, measurements, benchmark_job_sha256, sample_count = (
+        _load_benchmark_selection(result.artifact_path, space)
     )
     profile = RuntimeProfile.create(
         identity,
         selected,
-        sample_count=512,
-        measurements=measurements,
+        sample_count=sample_count,
+        measurements=[item.to_dict() for item in measurements],
         benchmark_job_sha256=benchmark_job_sha256,
     )
     saved = store.save(profile, model_slug=spec.slug)

@@ -13,6 +13,7 @@ from seed_pipeline.integrations.kaggle.stages import (
     RerankStage,
     get_stage_adapter,
 )
+from seed_pipeline.runtime.catalog import require_model
 from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
 
@@ -138,7 +139,14 @@ def test_rerank_benchmark_isolated_from_production_artifact(tmp_path):
     assert job.data_filename == "benchmark_results.jsonl"
     assert job.worker_module.endswith("workers.benchmark")
     assert job.local_cache_path.name == "benchmark_results.jsonl"
-    assert "benchmark_levels" in job.worker_config
+    space = require_model("qwen3-reranker:0.6b-fp16").rerank_search_space
+    assert space is not None
+    assert job.contract_version == 2
+    assert job.worker_config["benchmark_levels"] == [
+        candidate.to_dict() for candidate in space.candidates
+    ]
+    assert job.worker_config["benchmark_groups"] == 32
+    assert job.worker_config["benchmark_items"] == 960
     assert set(job.input_bundle.descriptors()) == {
         "candidates",
         "candidate_manifest",
