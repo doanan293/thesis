@@ -46,7 +46,23 @@ def retrieve(
     rrf_k: Annotated[
         int, typer.Option("--rrf-k", callback=lambda _c, _p, v: positive_int(str(v)))
     ] = DEFAULT_RRF_K,
-    limit: Annotated[int | None, typer.Option("--limit")] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", help="First N rows of the evaluation file"),
+    ] = None,
+    sample: Annotated[
+        int | None,
+        typer.Option(
+            "--sample",
+            help="Stratified sample of N rows, proportional per eval_group",
+            callback=lambda _c, _p, value: (
+                None if value is None else positive_int(str(value))
+            ),
+        ),
+    ] = None,
+    sample_seed: Annotated[
+        int, typer.Option("--sample-seed", help="Random seed for --sample")
+    ] = 0,
     collection: Annotated[str, typer.Option("--collection")] = COLLECTION_KEY,
     query_embeddings: Annotated[
         Path | None,
@@ -61,6 +77,8 @@ def retrieve(
     ] = BACKEND_ENV_FILE,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
+    if limit is not None and sample is not None:
+        raise typer.BadParameter("--limit and --sample are mutually exclusive")
     request = RetrieveRequest(
         evaluation_path=evaluation,
         run_root=run_dir(run),
@@ -73,6 +91,8 @@ def retrieve(
         collection=collection,
         backend_env_file=backend_env_file,
         query_embeddings=query_embeddings,
+        sample=sample,
+        sample_seed=sample_seed,
     )
     run_handler(state_from_context(ctx), lambda: _run(request))
 

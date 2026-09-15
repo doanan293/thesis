@@ -41,6 +41,7 @@ def test_retrieve_passes_the_run_tree_and_backend_defaults(monkeypatch):
     assert request.collection == "formulary"
     assert request.backend_env_file == BACKEND_ENV_FILE
     assert request.query_embeddings is None
+    assert (request.limit, request.sample, request.sample_seed) == (None, None, 0)
 
 
 def test_retrieve_forwards_bm25_k_values_and_query_cache(monkeypatch, tmp_path):
@@ -76,3 +77,38 @@ def test_retrieve_no_longer_accepts_qdrant_options():
     )
 
     assert result.exit_code == 2
+
+
+def test_retrieve_forwards_the_stratified_sample(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(retrieve_command, "run_retrieval", _fake_run(captured))
+
+    result = runner.invoke(
+        app,
+        [
+            "retrieve",
+            "--run",
+            "experiment-sample1000",
+            "--sample",
+            "1000",
+            "--sample-seed",
+            "7",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    request = captured["request"]
+    assert (request.limit, request.sample, request.sample_seed) == (None, 1000, 7)
+
+
+def test_retrieve_rejects_limit_together_with_sample(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(retrieve_command, "run_retrieval", _fake_run(captured))
+
+    result = runner.invoke(
+        app, ["retrieve", "--run", "experiment", "--limit", "5", "--sample", "10"]
+    )
+
+    assert result.exit_code == 2
+    assert "mutually exclusive" in result.output
+    assert captured == {}

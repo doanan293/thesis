@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -38,6 +39,7 @@ from seed_pipeline.evaluation.run_workspace import (
 from seed_pipeline.runtime.catalog import require_model
 
 RETRIEVERS = ("bm25", "dense", "hybrid")
+SAMPLE_STRATUM = "eval_group"
 
 
 class SearchService(Protocol):
@@ -72,6 +74,8 @@ class RetrieveRequest:
     prefetch_k: int | None = None
     backend_env_file: Path | None = None
     query_embeddings: Path | None = None
+    sample: int | None = None
+    sample_seed: int = 0
 
 
 @dataclass(frozen=True)
@@ -168,7 +172,7 @@ async def current_release_id(service: SearchService, probe_query: str) -> str:
     return releases.pop()
 
 
-def load_query_rows(path: Path, limit: int | None = None) -> list[dict]:
+def _read_query_rows(path: Path, limit: int | None) -> list[dict]:
     rows: list[dict] = []
     try:
         with Path(path).open(encoding="utf-8") as handle:
@@ -198,6 +202,62 @@ def load_query_rows(path: Path, limit: int | None = None) -> list[dict]:
     if not rows:
         raise ValueError(f"Evaluation JSONL is empty: {path}")
     return rows
+
+
+def sample_quotas(counts: dict[str, int], sample: int) -> dict[str, int]:
+    """Split `sample` over strata in proportion to their size (largest remainder).
+
+    Remainder ties go to the stratum seen first (dict order is file order), so the
+    allocation depends only on the evaluation file and `sample`.
+    """
+    total = sum(counts.values())
+    quotas = {group: sample * count // total for group, count in counts.items()}
+    by_remainder = sorted(counts, key=lambda group: -(sample * counts[group] % total))
+    for group in by_remainder[: sample - sum(quotas.values())]:
+        quotas[group] += 1
+    return quotas
+
+
+def stratified_sample(rows: Sequence[dict], sample: int, *, seed: int) -> list[dict]:
+    """Random rows per stratum in proportion to its size, returned in file order."""
+    if sample > len(rows):
+        raise ValueError(f"--sample {sample} exceeds the {len(rows)} evaluation rows")
+    positions: dict[str, list[int]] = {}
+    for index, row in enumerate(rows):
+        group = row.get(SAMPLE_STRATUM)
+        if not isinstance(group, str) or not group:
+            raise ValueError(
+                f"--sample needs {SAMPLE_STRATUM} on every row; "
+                f"query {row['query_id']} has none"
+            )
+        positions.setdefault(group, []).append(index)
+    quotas = sample_quotas(
+        {group: len(indices) for group, indices in positions.items()}, sample
+    )
+    rng = random.Random(seed)
+    chosen = sorted(
+        index
+        for group, indices in positions.items()
+        for index in rng.sample(indices, quotas[group])
+    )
+    return [rows[index] for index in chosen]
+
+
+def load_query_rows(
+    path: Path,
+    limit: int | None = None,
+    *,
+    sample: int | None = None,
+    sample_seed: int = 0,
+) -> list[dict]:
+    if limit is not None and sample is not None:
+        raise ValueError("--limit and --sample are mutually exclusive")
+    if sample is not None and sample < 1:
+        raise ValueError("--sample must be >= 1")
+    rows = _read_query_rows(path, limit)
+    if sample is None:
+        return rows
+    return stratified_sample(rows, sample, seed=sample_seed)
 
 
 class BackendCandidateRetriever:
@@ -257,7 +317,12 @@ def run_retrieval(
             request.retriever, request.candidate_k, request.prefetch_k
         ),
     )
-    rows = load_query_rows(request.evaluation_path, request.limit)
+    rows = load_query_rows(
+        request.evaluation_path,
+        request.limit,
+        sample=request.sample,
+        sample_seed=request.sample_seed,
+    )
     base = (
         Settings(_env_file=request.backend_env_file)
         if request.backend_env_file is not None
@@ -295,6 +360,8 @@ def run_retrieval(
                 prefetch_k=request.prefetch_k,
                 release_id=release_id,
                 chunker_version=CHUNKER_VERSION,
+                sample=request.sample,
+                sample_seed=request.sample_seed if request.sample is not None else None,
             )
             workspace = RunWorkspace.open_or_create(
                 request.run_root, identity, force=request.force

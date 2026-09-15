@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,7 +17,12 @@ from pharma_agent.domain.retrieval.models import (
 from pharma_agent.domain.retrieval.service import SearchResult
 from pharma_agent.infrastructure.settings import Settings
 
-from seed_pipeline.evaluation.backend_retrieval import RetrieveRequest, run_retrieval
+from seed_pipeline.evaluation.backend_retrieval import (
+    RetrieveRequest,
+    load_query_rows,
+    run_retrieval,
+    sample_quotas,
+)
 from seed_pipeline.evaluation.cached_query_embedder import (
     CachedQueryEmbedder,
     QueryEmbeddingMissing,
@@ -103,7 +109,10 @@ class FakeFactory:
 
 def _evaluation(tmp_path: Path) -> Path:
     path = tmp_path / "evaluation.jsonl"
-    rows = [{"query_id": "q1", "query": ADULT}, {"query_id": "q2", "query": CHILD}]
+    rows = [
+        {"query_id": "q1", "query": ADULT, "eval_group": "formulary"},
+        {"query_id": "q2", "query": CHILD, "eval_group": "leaflet"},
+    ]
     path.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
@@ -128,6 +137,8 @@ def _request(
     retriever: str = "hybrid",
     prefetch_k: int | None = 50,
     cache_rows: dict[str, str] | None = None,
+    sample: int | None = None,
+    sample_seed: int = 0,
 ) -> RetrieveRequest:
     env_file = tmp_path / "backend.env"
     env_file.write_text(
@@ -148,6 +159,8 @@ def _request(
         force=False,
         backend_env_file=env_file,
         query_embeddings=_query_cache(tmp_path, rows),
+        sample=sample,
+        sample_seed=sample_seed,
     )
 
 
@@ -191,6 +204,7 @@ def test_hybrid_retrieval_uses_cached_query_vectors(tmp_path: Path) -> None:
     assert identity.embedding_model == MODEL
     assert identity.collection_name == settings.retrieval.qdrant_collection
     assert identity.query_embeddings_sha256 is not None
+    assert (identity.limit, identity.sample, identity.sample_seed) == (None, None, None)
     record = load_run_record(tmp_path / "run" / "run.json")
     assert record.origin == "backend"
     assert record.identity.evaluation_path == str(
@@ -265,3 +279,91 @@ def test_unknown_retriever_and_dense_prefetch_are_rejected(tmp_path: Path) -> No
             _request(tmp_path, retriever="dense", prefetch_k=10),
             backend_factory=FakeFactory(stack),
         )
+
+
+GOLD_GROUP_SIZES = {
+    "patient_natural": 500,
+    "leaflet": 2500,
+    "chunk_risk": 1000,
+    "formulary": 5000,
+    "noisy_confuser": 500,
+    "multi_intent": 500,
+}
+
+
+def _gold(tmp_path: Path, sizes: dict[str, int]) -> Path:
+    path = tmp_path / "gold.jsonl"
+    rows = [
+        {
+            "query_id": f"{group}-{number:05d}",
+            "query": f"câu hỏi {group} {number}",
+            "eval_group": group,
+        }
+        for group, size in sizes.items()
+        for number in range(size)
+    ]
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_sample_takes_ten_percent_of_every_eval_group(tmp_path: Path) -> None:
+    rows = load_query_rows(_gold(tmp_path, GOLD_GROUP_SIZES), sample=1000)
+
+    assert Counter(row["eval_group"] for row in rows) == {
+        "patient_natural": 50,
+        "leaflet": 250,
+        "chunk_risk": 100,
+        "formulary": 500,
+        "noisy_confuser": 50,
+        "multi_intent": 50,
+    }
+
+
+def test_sample_rounds_by_largest_remainder_then_file_order() -> None:
+    assert sample_quotas({"a": 5, "b": 3, "c": 2}, 3) == {"a": 1, "b": 1, "c": 1}
+    assert sample_quotas({"a": 1, "b": 1}, 1) == {"a": 1, "b": 0}
+
+
+def test_sample_is_repeatable_per_seed_and_keeps_file_order(tmp_path: Path) -> None:
+    path = _gold(tmp_path, {"formulary": 100, "leaflet": 100})
+    position = {
+        row["query_id"]: index for index, row in enumerate(load_query_rows(path))
+    }
+
+    first = [row["query_id"] for row in load_query_rows(path, sample=20, sample_seed=0)]
+    again = [row["query_id"] for row in load_query_rows(path, sample=20, sample_seed=0)]
+    other = [row["query_id"] for row in load_query_rows(path, sample=20, sample_seed=1)]
+
+    assert first == again
+    assert first != other
+    assert [position[query_id] for query_id in first] == sorted(
+        position[query_id] for query_id in first
+    )
+
+
+def test_sample_rejects_limit_oversize_and_rows_without_a_group(tmp_path: Path) -> None:
+    path = _gold(tmp_path, {"formulary": 3})
+    plain = tmp_path / "plain.jsonl"
+    plain.write_text('{"query_id": "q1", "query": "câu hỏi"}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        load_query_rows(path, 2, sample=2)
+    with pytest.raises(ValueError, match="exceeds the 3 evaluation rows"):
+        load_query_rows(path, sample=4)
+    with pytest.raises(ValueError, match="eval_group on every row"):
+        load_query_rows(plain, sample=1)
+
+
+def test_sampled_run_records_the_sample_in_its_identity(tmp_path: Path) -> None:
+    stack = FakeStack(service=FakeSearchService(_hits()))
+
+    result = run_retrieval(
+        _request(tmp_path, sample=1, sample_seed=7), backend_factory=FakeFactory(stack)
+    )
+
+    assert result.artifact.query_count == 1
+    identity = load_run_record(tmp_path / "run" / "run.json").identity
+    assert (identity.limit, identity.sample, identity.sample_seed) == (None, 1, 7)

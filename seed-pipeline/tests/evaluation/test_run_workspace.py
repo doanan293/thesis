@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -125,3 +126,23 @@ def test_unregister_rerank_variant_keeps_the_other_variants(tmp_path: Path) -> N
     assert workspace.variant_records() == {"model_a": kept}
     with pytest.raises(RunConflictError, match="model_b"):
         workspace.unregister_rerank_variant("model_b")
+
+
+def test_run_json_written_before_sampling_loads_as_unsampled(tmp_path: Path) -> None:
+    workspace = RunWorkspace.open_or_create(tmp_path / "run", identity())
+    payload = json.loads(workspace.record_path.read_text(encoding="utf-8"))
+    del payload["identity"]["sample"], payload["identity"]["sample_seed"]
+    workspace.record_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_run_record(workspace.record_path).identity
+
+    assert loaded == identity()
+    assert (loaded.sample, loaded.sample_seed) == (None, None)
+
+
+def test_a_different_sample_seed_is_an_identity_conflict(tmp_path: Path) -> None:
+    sampled = replace(identity(), sample=1000, sample_seed=0)
+    RunWorkspace.open_or_create(tmp_path / "run", sampled)
+
+    with pytest.raises(RunConflictError, match="sample_seed"):
+        RunWorkspace.open_or_create(tmp_path / "run", replace(sampled, sample_seed=1))

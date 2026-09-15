@@ -29,6 +29,11 @@ class RunIdentity:
     prefetch_k: int | None = None
     release_id: str | None = None
     chunker_version: str | None = None
+    # Stratified sample of the evaluation file (seed retrieve --sample); None for runs
+    # over the whole file or its first `limit` rows, including run.json files written
+    # before sampling existed.
+    sample: int | None = None
+    sample_seed: int | None = None
 
 
 @dataclass(frozen=True)

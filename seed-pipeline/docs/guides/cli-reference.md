@@ -17,7 +17,7 @@ seed bundle export --output DIR
 seed bundle embed --bundle DIR --backend local|kaggle --model MODEL
 seed evaluation build [--bundle DIR]
 seed embed queries --backend local|kaggle
-seed retrieve --run NAME
+seed retrieve --run NAME [--limit N | --sample N [--sample-seed S]]
 seed rerank --run NAME --backend local|kaggle --model MODEL [--kaggle-account accN|auto] [--max-runs N] [--recover-kernel OWNER/SLUG]
 seed rerank --run NAME --backend local --benchmark --model MODEL
 seed metrics --run NAME
@@ -51,7 +51,7 @@ Global `--json` in envelope máy đọc được, `--debug` bật traceback. `uv
 - Lệnh ghi đè `retrieval.mode`, `candidate_k`, `prefetch_k`, `rrf_k`, `collections = [--collection]` (mặc định `formulary`), tắt rerank (`protocol = none`) và Langfuse.
 - `dense` và `hybrid` dùng vector query có sẵn trong cache của `seed embed queries` (`--query-embeddings`, mặc định `data/cache/query_embeddings/<model-slug>.jsonl` theo `PHARMA_RETRIEVAL__EMBEDDING__MODEL`). Thiếu vector của query nào thì lệnh dừng trước khi retrieve; evaluation không bao giờ embed query qua endpoint. `bm25` không cần vector query.
 - Phải có release đã import và publish; release lấy từ query đầu tiên và mọi hit sau phải cùng release.
-- Run identity: evaluation path/sha256, collection Qdrant, `embedding_model`, `query_embeddings_sha256`, `retriever`, K, `limit`, `release_id`, `chunker_version`.
+- Run identity: evaluation path/sha256, collection Qdrant, `embedding_model`, `query_embeddings_sha256`, `retriever`, K, `limit`, `sample`, `sample_seed`, `release_id`, `chunker_version`.
 
 | Retriever | Query embeddings | Qdrant | Candidate semantics |
 | --- | --- | --- | --- |
@@ -69,6 +69,12 @@ uv run seed retrieve \
 ```
 
 Candidate `chunk_id` là nhãn vị trí `<section_key>:chunk-<ordinal:03d>`, `document_text` là `embedding_text` của chunk (dùng cho rerank).
+
+`--limit N` lấy N dòng đầu của file gold. `--sample N` lấy mẫu phân tầng theo `eval_group`: mỗi nhóm nhận số câu tỉ lệ với cỡ nhóm, làm tròn theo phần dư lớn nhất (phần dư bằng nhau thì nhóm xuất hiện trước trong file được ưu tiên), chọn ngẫu nhiên trong nhóm bằng `--sample-seed` (mặc định 0) và giữ thứ tự của file. Hai tuỳ chọn loại trừ nhau. Với bộ gold 10.000 câu, `--sample 1000` cho 500 `formulary`, 250 `leaflet`, 100 `chunk_risk`, 50 `patient_natural`, 50 `noisy_confuser`, 50 `multi_intent`.
+
+```bash
+uv run seed retrieve --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --retriever hybrid --prefetch-k 50 --candidate-k 30 --rrf-k 2 --sample 1000 --sample-seed 0
+```
 
 ## Rerank và metrics
 
