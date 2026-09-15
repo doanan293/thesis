@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "kaggle-cli": {
+      "source": "kaggle/kaggle-cli",
+      "sourceType": "github",
+      "skillPath": "skills/SKILL.md",
+      "computedHash": "eac7307209f1098b046757e609f8f4ddc37d7d988d4844155ec8266c168556c4"
+    },
+    "latex-document-skill": {
+      "source": "ndpvt-web/latex-document-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "aa677a51432adffa70093d894da74cc4469fe5b2ef3a12b97da42726c50d7f31"
+    }
+  }
+}
