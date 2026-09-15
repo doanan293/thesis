@@ -1,22 +1,24 @@
 {
   "artifact_type": "retrieval_candidates",
-  "created_at": "2026-09-15T02:26:01.830992+00:00",
+  "created_at": "2026-09-15T18:01:36.702255+00:00",
   "data_filename": "candidates.jsonl",
-  "data_sha256": "769db7dc96bd24583c913a5c0facdbda390b50efca8fb77ecae14f95387f0d03",
+  "data_sha256": "0422351ae0a70ea39a04cdfb7db01a0ddaa6f9036b2c3f833ed710e0f07046e1",
   "identity": {
     "candidate_k": 30,
-    "chunker_version": null,
-    "collection_name": "thesis_chunks_qwen3_embedding_4b_fp16",
+    "chunker_version": "chunker-v1",
+    "collection_name": "eval_qwen3_embedding_4b_fp16",
     "embedding_model": "qwen3-embedding:4b-fp16",
     "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
-    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "evaluation_sha256": "a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af",
     "limit": null,
     "pair_count": 300000,
     "prefetch_k": 50,
-    "query_embeddings_sha256": null,
-    "release_id": null,
+    "query_embeddings_sha256": "6ecef0709378dee1b29c12780ca227f377b530e0f80f06a05f87f0edd4089953",
+    "release_id": "f5d76763-b7fc-44b0-b6eb-55f5476b3290",
     "retriever": "hybrid",
-    "rrf_k": 2
+    "rrf_k": 2,
+    "sample": null,
+    "sample_seed": null
   },
   "record_count": 10000,
   "schema_version": 1

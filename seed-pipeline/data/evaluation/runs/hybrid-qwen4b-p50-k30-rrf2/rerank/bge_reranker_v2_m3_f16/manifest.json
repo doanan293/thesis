@@ -1,18 +1,18 @@
 {
   "artifact_type": "rerank_score_cache",
   "complete": 300000,
-  "created_at": "2026-09-15T02:29:44.358387+00:00",
+  "created_at": "2026-09-15T19:56:37.443742+00:00",
   "data_filename": "rerank_scores.jsonl",
-  "data_sha256": "d2c749b3e8f2f7db4fe5b058dbbb097d6866956abab00af9fbe62c53f7593f22",
+  "data_sha256": "609fb69c2fa7460db7d05abbed5e91088176e01118caf248ee0ce49f1522a5b2",
   "identity": {
-    "candidate_data_sha256": "769db7dc96bd24583c913a5c0facdbda390b50efca8fb77ecae14f95387f0d03",
+    "candidate_data_sha256": "0422351ae0a70ea39a04cdfb7db01a0ddaa6f9036b2c3f833ed710e0f07046e1",
     "contract_version": 1,
     "model_sha256": "3c2de408d2c0a85a9472dc09f9d5a22c9b73743c6343952c15053299c777c298",
     "pair_count": 300000,
     "protocol": "native_rerank",
     "request_contract_sha256": "95b81f733a6695906ec4b9c0a30ab9588dc1f43bd9e64e45800101c87ee0eb48",
     "reranker": "bge-reranker-v2-m3:f16",
-    "variant_sha256": "199c8f6b5361a2b0511ede38ca2751dc9ac4e7dda61728291aa08f717b544ca9"
+    "variant_sha256": "18a15e9678359e7ab688e35715a89f4628f4d714a0d48dbb62d536207d01b4f1"
   },
   "missing": 0,
   "record_count": 300000,
