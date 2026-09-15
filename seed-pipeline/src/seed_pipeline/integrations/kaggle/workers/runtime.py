@@ -407,8 +407,15 @@ def managed_model_servers(
     config: dict,
     *,
     telemetry: object | None = None,
+    restart_index: int = 0,
+    close_telemetry: bool = True,
 ) -> Generator[list[WorkerServer], None, None]:
-    """Start one local llama.cpp server per configured replica on Kaggle."""
+    """Start one local llama.cpp server per configured replica on Kaggle.
+
+    A caller that restarts the servers passes `restart_index` so each lifetime keeps
+    its own server logs, and `close_telemetry=False` so sampling continues across
+    lifetimes; that caller then closes the telemetry itself.
+    """
     spec = require_model(str(config["model"]))
     input_root = Path(config.get("kaggle_input_root", "/kaggle/input"))
     model_path = find_unique(input_root, "*.gguf")
@@ -547,9 +554,10 @@ def managed_model_servers(
         for reader in readers:
             reader.join(timeout=2)
         output_dir = Path(config.get("output_dir", "/kaggle/working/artifact"))
+        suffix = "" if restart_index == 0 else f".restart-{restart_index}"
         for index, collector in enumerate(collectors):
-            collector.write(output_dir / f"server-{index}.log")
-        if telemetry is not None:
+            collector.write(output_dir / f"server-{index}{suffix}.log")
+        if telemetry is not None and close_telemetry:
             close = getattr(telemetry, "close", None)
             write_report = getattr(telemetry, "write_report", None)
             if callable(close):

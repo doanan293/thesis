@@ -1,4 +1,5 @@
 import json
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -322,3 +323,92 @@ def test_rerank_worker_splits_a_query_larger_than_the_request_batch(tmp_path):
 
     assert artifact.completion.complete == 5
     assert sorted(len(documents) for _query, documents in client.calls) == [1, 2, 2]
+
+
+_NATIVE_OVERRIDES = {
+    "server_slots": 1,
+    "concurrency": 1,
+    "request_batch_size": 1,
+    "context_per_slot": 4096,
+    "logical_batch_size": 4096,
+    "physical_batch_size": 4096,
+}
+
+
+def _native_config(tmp_path: Path, query_count: int) -> dict:
+    config = _config(tmp_path, query_count=query_count, candidates_per_query=1)
+    config["runtime_overrides"] = dict(_NATIVE_OVERRIDES)
+    return config
+
+
+class _CountingServerManager:
+    def __init__(self):
+        self.restart_indexes: list[int] = []
+
+    @contextmanager
+    def __call__(
+        self, _config, *, telemetry=None, restart_index=0, close_telemetry=True
+    ):
+        del telemetry, close_telemetry
+        self.restart_indexes.append(restart_index)
+        yield [SimpleNamespace(base_url="http://127.0.0.1:11434")]
+
+
+class _FlakyQuery:
+    """Drops the connection for the first `failures` requests of one query."""
+
+    def __init__(self, query: str, failures: int):
+        self.query = query
+        self.failures = failures
+        self._lock = threading.Lock()
+
+    def rerank_native(self, query, documents, _model):
+        with self._lock:
+            if query == self.query and self.failures > 0:
+                self.failures -= 1
+                raise LlamaCppRequestError("connection refused", retryable=True)
+        return [0.5 for _document in documents]
+
+
+def test_rerank_worker_restarts_the_server_and_scores_the_missing_pairs(tmp_path):
+    config = _native_config(tmp_path, query_count=3)
+    manager = _CountingServerManager()
+    client = _FlakyQuery("query 1", failures=2)
+    messages: list[str] = []
+
+    artifact = run_rerank_worker(
+        config,
+        server_manager=manager,
+        client_factory=lambda _url: client,
+        emit=messages.append,
+        clock=lambda: 0.0,
+    )
+
+    manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    assert artifact.completion.complete == 3
+    assert manager.restart_indexes == [0, 1, 2]
+    assert manifest["runtime"]["server_restarts"] == 2
+    assert "termination" not in manifest["runtime"]
+    assert any("restart 2/3" in message for message in messages)
+
+
+def test_rerank_worker_seals_a_partial_artifact_after_three_restarts(tmp_path):
+    config = _native_config(tmp_path, query_count=1)
+    manager = _CountingServerManager()
+    client = _FlakyQuery("query 0", failures=10)
+
+    artifact = run_rerank_worker(
+        config,
+        server_manager=manager,
+        client_factory=lambda _url: client,
+        emit=lambda _message: None,
+        clock=lambda: 0.0,
+    )
+
+    manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    assert manager.restart_indexes == [0, 1, 2, 3]
+    assert artifact.completion.complete == 0
+    termination = manifest["runtime"]["termination"]
+    assert termination["category"] == "model_server_unavailable"
+    assert termination["server_restarts"] == 3
+    assert manifest["runtime"]["server_restarts"] == 3

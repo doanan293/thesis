@@ -552,3 +552,78 @@ def test_managed_model_servers_wraps_mid_run_exit_with_diagnostics(
     assert "replica=0" in str(error)
     assert "host allocation failed" in str(error)
     assert isinstance(error.__cause__, LlamaCppRequestError)
+
+
+def test_managed_model_servers_can_leave_telemetry_open_and_name_restart_logs(
+    monkeypatch, tmp_path
+):
+    from seed_pipeline.integrations.kaggle.workers import runtime
+    from seed_pipeline.runtime import client
+
+    class QuietProcess:
+        def __init__(self, output: bytes):
+            self.stdout = io.BytesIO(output)
+            self.returncode = None
+            self.pid = 2000
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    class RecordingTelemetry:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def register_server_processes(self, processes):
+            self.calls.append("register")
+
+        def close(self):
+            self.calls.append("close")
+
+        def write_report(self):
+            self.calls.append("write_report")
+
+    model_path = tmp_path / "model.gguf"
+    model_path.touch()
+    manifest_path = tmp_path / "runtime_manifest.json"
+    manifest_path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        runtime,
+        "find_unique",
+        lambda _root, pattern: model_path if pattern == "*.gguf" else manifest_path,
+    )
+    monkeypatch.setattr(runtime, "materialize_runtime", lambda *_args: tmp_path)
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: QuietProcess(b"restarted server\n"),
+    )
+    monkeypatch.setattr(client.LlamaCppClient, "health", lambda _self: None)
+    telemetry = RecordingTelemetry()
+    config = {
+        "model": "qwen3-reranker:0.6b-fp16",
+        "runtime_overrides": {
+            "server_slots": 2,
+            "context_per_slot": 4096,
+            "logical_batch_size": 4096,
+            "physical_batch_size": 4096,
+        },
+        "output_dir": str(tmp_path / "output"),
+    }
+
+    with managed_model_servers(
+        config, telemetry=telemetry, restart_index=2, close_telemetry=False
+    ) as servers:
+        assert servers
+
+    assert telemetry.calls == ["register"]
+    output = tmp_path / "output"
+    assert (output / "server-0.restart-2.log").read_text(encoding="utf-8") == (
+        "restarted server\n"
+    )
+    assert not (output / "server-0.log").exists()

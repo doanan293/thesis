@@ -5,6 +5,7 @@ import json
 import math
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from seed_pipeline.artifacts.jsonl import iter_jsonl_objects
@@ -111,6 +112,51 @@ def _pair_details(candidate_path: Path) -> dict[str, tuple[str, str]]:
 
 def _emit_progress(message: str) -> None:
     print(f"[rerank] {message}", flush=True)
+
+
+MAX_SERVER_RESTARTS = 3
+
+
+@dataclass(frozen=True)
+class ServerLifetimes:
+    restarts: int
+    termination: dict[str, object] | None
+
+
+def score_with_server_restarts(
+    score_once: Callable[[int], None],
+    *,
+    deadline: float,
+    emit: Callable[[str], None],
+    max_restarts: int = MAX_SERVER_RESTARTS,
+    clock: Callable[[], float] = time.monotonic,
+) -> ServerLifetimes:
+    """Run scoring passes, one per llama-server lifetime.
+
+    `score_once(restart_index)` starts the servers (waiting for /health), scores the
+    pairs that are still missing and returns. After a recoverable model-server failure
+    a new lifetime starts, at most `max_restarts` times and never after the deadline.
+    `termination` describes the last failure when no restart is left.
+    """
+    restarts = 0
+    while True:
+        try:
+            score_once(restarts)
+        except Exception as error:
+            termination = recoverable_termination(error)
+            if termination is None:
+                raise
+            if restarts >= max_restarts or clock() >= deadline:
+                return ServerLifetimes(
+                    restarts, termination | {"server_restarts": restarts}
+                )
+            restarts += 1
+            emit(
+                f"model server unavailable ({type(error).__name__}); "
+                f"restart {restarts}/{max_restarts}"
+            )
+            continue
+        return ServerLifetimes(restarts, None)
 
 
 def run_rerank_worker(
@@ -245,36 +291,45 @@ def run_rerank_worker(
                 0,
             )
             commit(records)
-    termination = None
+    lifetimes = ServerLifetimes(0, None)
     if score_pair is None and missing:
         server_config = dict(config)
         runtime_overrides = server_config.get("runtime_overrides")
         if not isinstance(runtime_overrides, dict):
             raise ValueError("runtime_overrides is required")
         server_config["runtime_overrides"] = runtime_overrides
-        try:
-            if client_factory is None:
-                from seed_pipeline.runtime.client import LlamaCppClient
+        if client_factory is None:
+            from seed_pipeline.runtime.client import LlamaCppClient
 
-                client_factory = LlamaCppClient
-            with server_manager(server_config, telemetry=telemetry) as servers:
-                clients = [client_factory(server.base_url) for server in servers]
+            client_factory = LlamaCppClient
+        make_client = client_factory
+        per_client = max(1, int(runtime_overrides["concurrency"]))
+        request_batch_size = max(1, int(runtime_overrides["request_batch_size"]))
+
+        def score_once(restart_index: int) -> None:
+            # Every lifetime scores only the pairs earlier lifetimes left unscored.
+            pending = [pair for pair in pairs if _pair_key(pair) not in existing]
+            if not pending:
+                return
+            grouped: dict[tuple[str, str], list[Pair]] = {}
+            for pair in pending:
+                query, _text = details[_pair_key(pair)]
+                grouped.setdefault((pair["query_id"], query), []).append(pair)
+            # One /v1/rerank request per query; llama-server packs the documents of
+            # all busy slots into shared physical batches.
+            groups = [
+                (query_id, query, group[start : start + request_batch_size])
+                for (query_id, query), group in grouped.items()
+                for start in range(0, len(group), request_batch_size)
+            ]
+            with server_manager(
+                server_config,
+                telemetry=telemetry,
+                restart_index=restart_index,
+                close_telemetry=False,
+            ) as servers:
+                clients = [make_client(server.base_url) for server in servers]
                 resources = list(enumerate(clients))
-                per_client = max(1, int(runtime_overrides["concurrency"]))
-                request_batch_size = max(
-                    1, int(runtime_overrides["request_batch_size"])
-                )
-                grouped: dict[tuple[str, str], list[Pair]] = {}
-                for pair in missing:
-                    query, _text = details[_pair_key(pair)]
-                    grouped.setdefault((pair["query_id"], query), []).append(pair)
-                # One /v1/rerank request per query; llama-server packs the documents of
-                # all busy slots into shared physical batches.
-                groups = [
-                    (query_id, query, group[start : start + request_batch_size])
-                    for (query_id, query), group in grouped.items()
-                    for start in range(0, len(group), request_batch_size)
-                ]
 
                 async def native_operation(resource, _index, item):
                     server_index, client = resource
@@ -320,16 +375,22 @@ def run_rerank_worker(
                 scheduled = asyncio.run(run_native())
                 if scheduled.stopped_early:
                     emit(f"budget exhausted pairs={len(existing)}/{len(pairs)}")
-        except Exception as error:
-            termination = recoverable_termination(error)
-            if termination is None:
-                raise
+
+        try:
+            lifetimes = score_with_server_restarts(
+                score_once, deadline=deadline, emit=emit
+            )
+        except BaseException:
+            telemetry.close()
+            raise
+    termination = lifetimes.termination
 
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.touch(exist_ok=True)
     journal.compact(pairs, data_path)
     telemetry.close()
     runtime_summary = telemetry.summary()
+    runtime_summary["server_restarts"] = lifetimes.restarts
     if termination is not None:
         runtime_summary["termination"] = termination
         emit(
