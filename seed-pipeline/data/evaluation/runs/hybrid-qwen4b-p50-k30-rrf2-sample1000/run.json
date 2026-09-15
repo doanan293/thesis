@@ -1,0 +1,33 @@
+{
+  "candidates_dir": "candidates",
+  "identity": {
+    "candidate_k": 30,
+    "chunker_version": "chunker-v1",
+    "collection_name": "eval_qwen3_embedding_4b_fp16",
+    "embedding_model": "qwen3-embedding:4b-fp16",
+    "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af",
+    "limit": null,
+    "prefetch_k": 50,
+    "query_embeddings_sha256": "8a0685537a0c4eb47c8a42476f7734879d2a0f9f0b84f2d1b50b856ca0e4cb28",
+    "release_id": "f5d76763-b7fc-44b0-b6eb-55f5476b3290",
+    "retriever": "hybrid",
+    "rrf_k": 2,
+    "sample": 1000,
+    "sample_seed": 0
+  },
+  "origin": "backend",
+  "rerank_variants": {
+    "qwen3_reranker_0_6b_fp16": {
+      "artifact_dir": "rerank/qwen3_reranker_0_6b_fp16",
+      "model": "qwen3-reranker:0.6b-fp16",
+      "variant_sha256": "6e83705ef2a81dd92baf92307478db6c375121eb42e9ca5b00582f99ec740b45"
+    },
+    "qwen3_reranker_0_6b_fp16_vimed": {
+      "artifact_dir": "rerank/qwen3_reranker_0_6b_fp16_vimed",
+      "model": "qwen3-reranker:0.6b-fp16-vimed",
+      "variant_sha256": "3459fd514078e0c4145af9ad70df64607529c668fbb9053841194ffda3f8d9f9"
+    }
+  },
+  "schema_version": 3
+}

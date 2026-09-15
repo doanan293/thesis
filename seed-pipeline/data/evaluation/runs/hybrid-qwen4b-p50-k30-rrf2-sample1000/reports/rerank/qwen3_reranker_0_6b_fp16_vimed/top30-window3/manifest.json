@@ -1,0 +1,23 @@
+{
+  "artifact_type": "metrics_report",
+  "complete": 1000,
+  "created_at": "2026-09-15T19:47:41.944561+00:00",
+  "data_filename": "metrics.jsonl",
+  "data_sha256": "2d9ed29b349f0ea7aa8a083d733fc9b43294eeab6fcec0ed920c0873b966fc62",
+  "identity": {
+    "candidate_data_sha256": "4275346c9fcc6242a3b8015ed77ebb1b66139b5c7902311691d24065f883159c",
+    "contract_version": 1,
+    "evaluation_sha256": "a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af",
+    "judgments_sha256": "f68a12331f632fec2d1791fd5dcd5eae961ca3f9fa6d1dc2daf57c581ad20e34",
+    "metrics_sha256": "e868b17ec4d594e6772897bb65a990b11aa72e56128753dcb2a761f145e525b9",
+    "model": "qwen3-reranker:0.6b-fp16-vimed",
+    "rerank_variant_sha256": "3459fd514078e0c4145af9ad70df64607529c668fbb9053841194ffda3f8d9f9",
+    "top_k": 30,
+    "variant_sha256": "3459fd514078e0c4145af9ad70df64607529c668fbb9053841194ffda3f8d9f9",
+    "window_size": 3
+  },
+  "missing": 0,
+  "record_count": 1000,
+  "schema_version": 1,
+  "total": 1000
+}
