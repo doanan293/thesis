@@ -16,6 +16,11 @@ Ngày: 2026-09-15. Phạm vi: reranker của seed-pipeline (catalog, contract, c
 - `compose.yaml` đặt `LLAMA_ARG_UBATCH` 512, thấp hơn độ dài prompt trung vị (726 token). Với `/v1/rerank`, phần lớn tài liệu sẽ bị từ chối "input is too large".
 - `seed rerank --backend local` chấm từng tài liệu một, và local chưa có benchmark.
 - `reuse_sha256` của job rerank chứa `runtime_profile`, nên đổi cấu hình runtime là mất checkpoint dù điểm không phụ thuộc cấu hình.
+- **Orchestrator Kaggle chạy nối tối đa 10 phiên cho một job, nhưng chỉ trên một tài khoản.** `CheckpointInheritanceService` chỉ tìm checkpoint tốt nhất trong các tài khoản một lần lúc bắt đầu. Không có bước nào đọc quota GPU.
+- **Sự cố ngày 15/09:**
+  - Kernel 0.6b (`doanvanan0209/rerank-5f22fcadeede1072`) dừng ở giây 7.659 vì llama-server ngừng (`recoverable model-server termination`). Worker đóng artifact dở dang 94.950/300.000 cặp, dù ngân sách phiên còn gần 4 giờ.
+  - WSL khởi động lại lúc 19:24, làm mất session tmux, tiến trình ở máy và log trong `/tmp` trước khi artifact được tải về.
+- **Quota GPU ngày 15/09** (làm mới 2026-09-19): acc1 còn 27,58 giờ, acc2 29,61 giờ, acc3 30,00 giờ.
 
 Quyết định của người dùng:
 - Bỏ hẳn `completion_logprobs`; giữ kết quả `bge-reranker-v2-gemma` hiện có làm kết quả cuối cùng.
@@ -23,6 +28,7 @@ Quyết định của người dùng:
 - Tối ưu cả Kaggle lẫn CPU production bằng benchmark đầu-cuối.
 - Gom tài liệu thành khối để tính một lượt.
 - Chọn instruction bằng phép đo trên tập con.
+- Job Kaggle tự chuyển tài khoản theo quota GPU; khi cả ba tài khoản không đủ quota thì dừng và báo thời điểm làm mới.
 
 ## 2. Mục tiêu và ngoài phạm vi
 
@@ -33,6 +39,7 @@ Mục tiêu:
 3. Đổi cấu hình runtime không làm mất điểm đã chấm.
 4. Instruction được chọn bằng số đo trên tập con, theo quy tắc quyết định chốt trước khi đo.
 5. Chấm lại `qwen3-reranker` 0.6b, 4b, 8b trên 300.000 cặp, rồi cập nhật báo cáo.
+6. Job Kaggle chạy nối nhiều phiên trên nhiều tài khoản theo quota GPU, không mất điểm khi đổi tài khoản, đổi cấu hình, server rớt hoặc máy khởi động lại.
 
 Ngoài phạm vi: lượng tử hoá; đổi engine suy luận (vLLM, TEI); thêm hoặc đổi model; chấm lại Gemma; nâng runtime Kaggle từ `b9637` lên `b10920` (thay vào đó dùng bộ cờ có ở cả hai bản); spec và plan cũ trong `docs/superpowers/`.
 
@@ -130,7 +137,7 @@ Giá trị cố định và giá trị được quét:
 
 - Worker gửi một request `/v1/rerank` cho mỗi câu hỏi, kèm đủ 30 ứng viên, với số request đồng thời theo mục 4.2. Hai server của 0.6b và 4b dùng chung hàng đợi.
 - `JobIdentity` của stage rerank giữ `runtime_profile` trong `payload` (mỗi cấu hình có kernel riêng), nhưng `reuse_payload` bỏ `runtime_parameters.runtime_profile`. Checkpoint và artifact dở dang vì vậy được dùng lại qua các cấu hình.
-- Lỗi `Dependency owner … does not match dataset service owner …` được bổ sung hướng dẫn: chạy lần đầu bằng tài khoản `KAGGLE_SHARED_OWNER` để tạo dataset.
+- Dataset dependency chưa tồn tại được tạo bằng context của `KAGGLE_SHARED_OWNER`, theo mục 4.9, nên lỗi `Dependency owner … does not match dataset service owner …` không còn xảy ra khi chạy bằng tài khoản khác.
 
 ### 4.5 Local CPU
 
@@ -165,17 +172,35 @@ Giá trị cố định và giá trị được quét:
 
 - **Một mức benchmark hết bộ nhớ, server không lên, hoặc điểm lệch mốc:** mức đó ghi `invalid`, chạy tiếp mức sau.
 - **Job chấm hết ngân sách 6 giờ:** artifact dở dang được gộp vào cache; chạy lại lệnh là tiếp tục từ checkpoint nhờ `reuse_sha256` mới.
-- **Server rớt giữa chừng:** giữ hành vi hiện tại, đóng artifact dở dang để có thể phục hồi.
-- **Lệnh chạy lâu** (benchmark, chấm Kaggle, tải model, `seed data push/pull`) chạy trong tmux, mỗi job một cửa sổ và có file log.
+- **Server rớt giữa phiên:** worker khởi động lại llama-server tối đa 3 lần mỗi phiên (chờ `/health`), rồi chấm tiếp các cặp còn thiếu. Hết số lần thử mới đóng artifact dở dang như hiện tại.
+- **Lệnh chạy lâu** (benchmark, chấm Kaggle, tải model, `seed data push/pull`) chạy trong tmux, mỗi job một cửa sổ.
+- **Log bền:** mỗi lệnh `seed rerank` ghi thêm vào `data/work/logs/rerank/<model-slug>.log`, có timestamp: tài khoản được chọn, quota trước và sau phiên, kernel, tiến độ, lỗi. Log không nằm trong `/tmp`, nên còn sau khi máy khởi động lại. Chạy lại lệnh sẽ nối vào kernel đang chạy nhờ cơ chế reconcile sẵn có.
+
+### 4.9 Nhiều phiên, nhiều tài khoản theo quota
+
+- **Tuỳ chọn `--kaggle-account auto`** cho `seed rerank --backend kaggle`. Giá trị `accN` cụ thể vẫn dùng được như trước.
+- **Chọn tài khoản trước mỗi phiên:**
+  - Chạy `kaggle quota -v` bằng thông tin xác thực của từng profile `accN` trong `.env`, đọc dòng `GPU` của CSV `resource,used,remaining,total,refreshAt`.
+  - Bỏ các tài khoản đang bị job khác khoá, rồi chọn tài khoản có `remaining` lớn nhất; nếu bằng nhau thì chọn số `accN` nhỏ hơn.
+  - Ngân sách phiên = min(`--budget-seconds`, `remaining` − 0,5 giờ). Chỉ nộp kernel khi ngân sách ít nhất 1 giờ.
+- **Hết quota:** nếu không tài khoản nào đủ 1 giờ, lệnh kết thúc với trạng thái `incomplete` và in bảng quota kèm `refreshAt` của từng tài khoản. Checkpoint đã được đồng bộ, nên chạy lại sau khi quota làm mới là chấm tiếp.
+- **Khoá tài khoản:** `data/work/locks/kaggle-accounts/<accN>.lock` (flock) giữ suốt phiên. Nhiều lệnh `seed rerank` cho các model khác nhau chạy song song sẽ tự chia tài khoản, mỗi tài khoản một phiên GPU.
+- **Dataset dependency:** dataset chưa tồn tại (model, input) luôn được tạo bằng context của `KAGGLE_SHARED_OWNER`, bất kể tài khoản nào chạy phiên. Người dùng không phải chạy lại bằng `acc1` như lỗi của bản 4b.
+- **Checkpoint theo phiên:**
+  - Sau mỗi phiên, artifact (kể cả dở dang) được gộp vào cache điểm ở máy trước tiên, rồi mới publish checkpoint.
+  - Trước mỗi phiên, nguồn có nhiều cặp nhất trong {cache điểm ở máy, checkpoint của mọi tài khoản} được publish làm checkpoint của tài khoản sắp chạy. `CheckpointInheritanceService` được mở rộng thêm nguồn cache ở máy và chạy lại ở mỗi phiên, không chỉ lúc bắt đầu.
+  - Cache ở máy là nguồn gốc, nên đổi tài khoản, đổi cấu hình hay đổi identity job đều không mất điểm.
+- **Số phiên:** vòng lặp chạy tới khi xong hoặc hết quota, không còn giới hạn cứng 10 phiên. `--max-runs` vẫn giữ để đặt giới hạn khi cần.
 
 ## 5. Thứ tự triển khai
 
-1. Làm mục 4.1–4.6; toàn bộ test, ruff, pyrefly của hai project pass.
-2. Benchmark Kaggle cho `qwen3-reranker:0.6b-fp16` với search space mới.
-3. Đo instruction theo mục 4.7 và chốt template.
-4. Chấm toàn bộ 300.000 cặp: 0.6b trên `acc1`; 4b trên `acc3` (dataset model đã được `acc1` tạo); 8b trên `acc2`, chạy nối nhiều phiên và chia sang tài khoản khác nếu vượt quota tuần.
-5. Benchmark CPU local cho `qwen3-reranker:4b-fp16`, rồi ghi mặc định vào `compose.yaml` và `.env.example`.
-6. Với mỗi model, chạy `seed metrics` và kiểm tra phân bố điểm: điểm phải trải từ gần 0 tới gần 1, trung vị chênh lệch điểm trong một câu hỏi phải lớn hơn 0,9. Sau đó cập nhật bảng 5.1–5.3 và nhận xét trong `report/report.md`, cùng bảng trong `docs/guides/evaluation.md`. Bảng tốc độ 5.3 ghi số native đã tối ưu cho Kaggle và p95 CPU.
+1. Làm mục 4.1–4.6, 4.8 và 4.9; toàn bộ test, ruff, pyrefly của hai project pass.
+2. Tải output kernel `doanvanan0209/rerank-5f22fcadeede1072` (94.950 cặp của 0.6b, template gốc) và gộp vào cache điểm ở máy.
+3. Benchmark Kaggle cho `qwen3-reranker:0.6b-fp16` với search space mới.
+4. Đo instruction theo mục 4.7 và chốt template. Nếu instruction tiếng Việt thắng, 94.950 cặp ở bước 2 bị xoá cùng các dữ liệu dùng template gốc.
+5. Chấm toàn bộ 300.000 cặp của ba model bằng `--kaggle-account auto`, mỗi model một cửa sổ trong tmux, chạy song song.
+6. Benchmark CPU local cho `qwen3-reranker:4b-fp16`, rồi ghi mặc định vào `compose.yaml` và `.env.example`.
+7. Với mỗi model, chạy `seed metrics` và kiểm tra phân bố điểm: điểm phải trải từ gần 0 tới gần 1, trung vị chênh lệch điểm trong một câu hỏi phải lớn hơn 0,9. Sau đó cập nhật bảng 5.1–5.3 và nhận xét trong `report/report.md`, cùng bảng trong `docs/guides/evaluation.md`. Bảng tốc độ 5.3 ghi số native đã tối ưu cho Kaggle và p95 CPU.
 
 ## 6. Kiểm thử
 
@@ -189,6 +214,18 @@ Unit test seed-pipeline:
 - **Local:** chấm theo nhóm; lệnh benchmark truyền đúng biến môi trường cho từng mức, kiểm bằng runner giả.
 - **`seed retrieve --sample`:** số câu mỗi `eval_group` đúng tỉ lệ; cùng seed ra cùng mẫu; mẫu ghi vào identity.
 - **`seed metrics`:** chạy được trên run không còn variant Gemma; report Gemma không bị ghi đè.
+- **Chọn tài khoản** (runner giả trả CSV quota):
+  - Chọn tài khoản còn nhiều giờ nhất; bằng nhau thì chọn số nhỏ hơn.
+  - Bỏ tài khoản đang bị khoá.
+  - Ngân sách phiên trừ 0,5 giờ dự phòng; không nộp kernel khi ngân sách dưới 1 giờ.
+  - Hết quota thì kết thúc `incomplete` và in `refreshAt`.
+- **Khoá tài khoản:** hai job không lấy cùng một tài khoản cùng lúc.
+- **Checkpoint qua tài khoản:**
+  - Artifact dở dang được gộp vào cache ở máy.
+  - Phiên kế tiếp trên tài khoản khác nhận checkpoint từ nguồn có nhiều cặp nhất; số cặp đã có không bao giờ giảm.
+- **Dataset dependency:** dataset thiếu được tạo bằng context của `KAGGLE_SHARED_OWNER` khi tài khoản chạy phiên là tài khoản khác.
+- **Worker:** server rớt được khởi động lại tối đa 3 lần rồi chấm tiếp; quá số lần thì đóng artifact dở dang.
+- **Log:** ghi vào `data/work/logs/rerank/<model-slug>.log`, có tài khoản và quota của từng phiên.
 
 Unit test backend: `RerankSettings` từ chối `completion_logprobs`; composition dựng `NativeReranker`; test tracing chỉ còn nhánh native.
 
@@ -203,7 +240,7 @@ Lệnh bắt buộc: `pytest` (warning coi là lỗi), `ruff check`, `ruff forma
 
 - `seed-pipeline/docs/guides/evaluation.md`: chỉ còn rerank native; benchmark Kaggle và local; run tập con; phép đo instruction (lệnh `gguf-new-metadata`, sha256, quy tắc quyết định); bảng kết quả mới.
 - `seed-pipeline/docs/guides/cli-reference.md`: `seed rerank --backend local --benchmark`, `seed retrieve --sample/--sample-seed`.
-- `seed-pipeline/docs/guides/workflow-local-kaggle.md`, `workflow-local-only.md`: lệnh rerank mới, tài khoản tạo dataset model, chạy trong tmux.
+- `seed-pipeline/docs/guides/workflow-local-kaggle.md`, `workflow-local-only.md`: lệnh rerank mới, `--kaggle-account auto` và cách đọc bảng quota khi dừng, chạy trong tmux, vị trí log.
 - `seed-pipeline/data/README.md`: thêm `cache/local_profiles/`.
 - `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md`: bảng settings (`native_rerank | none`), bỏ mô tả `completion_logprobs`, cập nhật mục 5 của nhật ký quyết định.
 - `README.md` và `.env.example` ở gốc repo: biến llama.cpp của reranker và cách chạy lại benchmark CPU.
@@ -216,3 +253,5 @@ Lệnh bắt buộc: `pytest` (warning coi là lỗi), `ruff check`, `ruff forma
 - **Quota bản 8b:** có thể cần nhiều tuần. Checkpoint dùng lại được qua phiên và qua tài khoản, nhờ `reuse_sha256` không phụ thuộc cấu hình và nhờ dataset do `acc1` sở hữu.
 - **Hai phiên bản llama.cpp:** số tốc độ Kaggle (`b9637`) và CPU (`b10920`) được báo cáo riêng, không so với nhau.
 - **Chênh lệch số thực khi gom khối:** giới hạn bằng kiểm tra `score_mismatch` trong benchmark (mục 4.3).
+- **Số quota Kaggle cập nhật trễ:** quota được đọc lại trước mỗi phiên và có 0,5 giờ dự phòng. Nếu Kaggle vẫn cắt phiên vì hết quota, artifact dở dang được gộp như khi hết ngân sách.
+- **Giới hạn phiên GPU đồng thời của mỗi tài khoản:** khoá tài khoản bảo đảm mỗi tài khoản chỉ chạy một phiên từ pipeline.
