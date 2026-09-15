@@ -907,8 +907,10 @@ For each row, run the three commands from the repo root, in this order, finishin
 | `qwen3-embedding:0.6b-fp16` | 1024 | `dense-qwen06b-k30` |
 | `qwen3-embedding:8b-fp16` | 4096 | `dense-qwen8b-k30` |
 
+Import never moves an existing Qdrant alias to another model's collection (corpus platform spec: the alias changes only when the embedding model changes, and that switch is not automated), so each model reads and writes its own alias `eval_<model_slug>` through `PHARMA_RETRIEVAL__QDRANT_COLLECTION`. Re-importing a model whose release already exists reuses it and only creates the alias.
+
 ```bash
-EVAL="PHARMA_POSTGRES__DSN=postgresql+psycopg://thesis:thesis@localhost:5434/thesis PHARMA_QDRANT__URL=http://localhost:6335 PHARMA_RETRIEVAL__EMBEDDING__MODEL=<model> PHARMA_RETRIEVAL__EMBEDDING__DIMENSION=<dimension>"
+EVAL="PHARMA_POSTGRES__DSN=postgresql+psycopg://thesis:thesis@localhost:5434/thesis PHARMA_QDRANT__URL=http://localhost:6335 PHARMA_RETRIEVAL__EMBEDDING__MODEL=<model> PHARMA_RETRIEVAL__EMBEDDING__DIMENSION=<dimension> PHARMA_RETRIEVAL__QDRANT_COLLECTION=eval_<model_slug>"
 env $EVAL uv --directory backend run pharma-agent corpus import ../seed-pipeline/data/corpus/formulary --collection formulary --publish
 env $EVAL uv --directory seed-pipeline run seed retrieve --run <run> --retriever dense --candidate-k 30
 uv --directory seed-pipeline run seed metrics --run <run> --top-k 30
@@ -919,7 +921,7 @@ Expected: import publishes a release for that model; retrieve prints `queries=10
 - [ ] **Step 3: The 4B model: dense, BM25 and both hybrids**
 
 ```bash
-EVAL="PHARMA_POSTGRES__DSN=postgresql+psycopg://thesis:thesis@localhost:5434/thesis PHARMA_QDRANT__URL=http://localhost:6335 PHARMA_RETRIEVAL__EMBEDDING__MODEL=qwen3-embedding:4b-fp16 PHARMA_RETRIEVAL__EMBEDDING__DIMENSION=2560"
+EVAL="PHARMA_POSTGRES__DSN=postgresql+psycopg://thesis:thesis@localhost:5434/thesis PHARMA_QDRANT__URL=http://localhost:6335 PHARMA_RETRIEVAL__EMBEDDING__MODEL=qwen3-embedding:4b-fp16 PHARMA_RETRIEVAL__EMBEDDING__DIMENSION=2560 PHARMA_RETRIEVAL__QDRANT_COLLECTION=eval_qwen3_embedding_4b_fp16"
 env $EVAL uv --directory backend run pharma-agent corpus import ../seed-pipeline/data/corpus/formulary --collection formulary --publish
 env $EVAL uv --directory seed-pipeline run seed retrieve --run dense-qwen4b-k30 --retriever dense --candidate-k 30
 env $EVAL uv --directory seed-pipeline run seed retrieve --run bm25-qwen4b-k30 --retriever bm25 --candidate-k 30
