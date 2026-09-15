@@ -10,6 +10,7 @@ from seed_pipeline.integrations.kaggle.artifacts import sha256_file
 from seed_pipeline.integrations.kaggle.config import OwnerConfiguration
 from seed_pipeline.integrations.kaggle.dataset_service import (
     DatasetInventory,
+    DatasetPresence,
     DatasetService,
 )
 from seed_pipeline.integrations.kaggle.model_artifacts import (
@@ -50,8 +51,8 @@ class DependencyService:
     ):
         self.datasets = datasets
         self.desired_builder = desired_builder
-        # A dataset can only be created or versioned by the account that owns it, so
-        # each reference is published by the profile whose username is its owner.
+        # A dataset can only be created, versioned or verified as missing by the account
+        # that owns it, so each reference goes through the profile that owns it.
         self.publishers: dict[str, DatasetService] = {
             service.owner.casefold(): service for service in publishers
         }
@@ -68,6 +69,35 @@ class DependencyService:
             guidance="publish the Kaggle runtime dataset before running a stage",
         )
 
+    def _owning_service(self, reference: str) -> DatasetService | None:
+        owner, _, _slug = reference.partition("/")
+        return self.publishers.get(owner.casefold())
+
+    def _inventory(
+        self, desired: Sequence[DesiredDataset], owners: OwnerConfiguration
+    ) -> DatasetInventory:
+        """Remote state of every desired dataset, read by the account that owns it.
+
+        Another account cannot tell a missing dataset from one it may not see, so only
+        references without an owning profile are read with the execution account.
+        """
+        states = {}
+        for item in desired:
+            service = self._owning_service(item.reference)
+            reader, active_owner = (
+                (service, service.owner)
+                if service is not None
+                else (self.datasets, owners.execution)
+            )
+            states.update(
+                DatasetInventory.load(
+                    reader,
+                    {item.reference: item.manifest_filename},
+                    active_owner=active_owner,
+                ).states
+            )
+        return DatasetInventory(self.datasets, owners.execution, states)
+
     def reconcile(
         self,
         job: StageJob,
@@ -78,14 +108,19 @@ class DependencyService:
         check_only: bool,
     ) -> Sequence[ReconcileAction]:
         desired = tuple(self.desired(job, owners, workspace))
-        resources = {item.reference: item.manifest_filename for item in desired}
-        inventory = DatasetInventory.load(
-            self.datasets, resources, active_owner=owners.execution
-        )
+        inventory = self._inventory(desired, owners)
         actions: list[ReconcileAction] = []
         for item in desired:
-            owner, _, slug = item.reference.partition("/")
-            publisher = self.publishers.get(owner.casefold())
+            _owner, _, slug = item.reference.partition("/")
+            publisher = self._owning_service(item.reference)
+            if (
+                publisher is None
+                and inventory.get(item.reference).presence is DatasetPresence.UNKNOWN
+            ):
+                raise ValueError(
+                    f"No Kaggle account profile can publish {item.reference}; "
+                    f"profiles own: {', '.join(sorted(self.publishers))}"
+                )
             item_force = force and publisher is not None
             action = plan_dataset(item, inventory.get(item.reference), force=item_force)
             if action.verb is ActionVerb.WAIT and not check_only:

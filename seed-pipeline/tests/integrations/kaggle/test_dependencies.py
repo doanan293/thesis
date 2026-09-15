@@ -129,6 +129,13 @@ class FakeKaggleDatasets:
                 return DatasetRemoteState(
                     DatasetPresence.EXISTS, status="READY", current_version=1
                 )
+            # Like Kaggle: another account cannot tell a missing dataset from a
+            # private one it may not see.
+            if not reference.startswith(f"{owner}/"):
+                return DatasetRemoteState(
+                    DatasetPresence.UNKNOWN,
+                    detail=f"cannot verify optional dataset {reference}: owner differs",
+                )
             return DatasetRemoteState(DatasetPresence.ABSENT)
 
         def ensure_dataset(
