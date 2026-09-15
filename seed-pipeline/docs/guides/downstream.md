@@ -18,6 +18,6 @@
 - **Source inputs**: `data/sources/` gồm PDF Dược thư, `leaflets/` (HTML, danh sách URL, manifest), `curation/`, mappings, glossary và danh sách âm tiết.
 - **Rebuildable workspace**: `data/work/build/in-progress/` trong lúc build (tự xoá sau publish; build lỗi giữ ở `data/work/build/failed/latest/`), input embedding `data/work/bundle-embed/`, chunk evaluation `data/work/evaluation-chunks/`, lock `data/work/locks/`.
 - **Final reproducible contracts**: `data/corpus/rag-final/` (contract `rag-final-v3`) và bundle `data/corpus/formulary/`.
-- **Caches**: `data/cache/text_embeddings/`, `query_embeddings/`, `rerank_scores/` (mỗi model một file `<model>.jsonl`, mỗi record có checksum) và `kaggle_profiles/<workload>/<model>.json`.
+- **Caches**: `data/cache/text_embeddings/`, `query_embeddings/`, `rerank_scores/` (mỗi model một file `<model>.jsonl`, mỗi record có checksum), `kaggle_profiles/<workload>/<model>.json` và `local_profiles/<workload>/<model>.json`.
 - **Experiment outputs**: bộ gold `data/evaluation/gold/` và run `data/evaluation/runs/<run>/`.
 - Tên file và thư mục không chứa hash; digest nằm trong manifest và record. Git chỉ giữ file nhỏ (manifest, `run.json`, `report.md`, file nguồn tự duy trì); phần còn lại nằm trong archive Kaggle, xem `data/README.md`.

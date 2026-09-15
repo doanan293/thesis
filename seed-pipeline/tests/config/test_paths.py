@@ -12,6 +12,7 @@ def test_evaluation_cache_corpus_and_work_folders_follow_the_layout() -> None:
     assert paths.QUERY_EMBEDDING_CACHE_DIR == paths.CACHE_DIR / "query_embeddings"
     assert paths.RERANK_SCORE_CACHE_DIR == paths.CACHE_DIR / "rerank_scores"
     assert paths.KAGGLE_PROFILE_DIR == paths.CACHE_DIR / "kaggle_profiles"
+    assert paths.LOCAL_PROFILE_DIR == paths.CACHE_DIR / "local_profiles"
     assert paths.CACHE_DIR == paths.DATA_DIR / "cache"
     assert paths.WORK_DIR == paths.DATA_DIR / "work"
     assert paths.BUILD_WORK_DIR == paths.WORK_DIR / "build"

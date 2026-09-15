@@ -38,6 +38,13 @@ def rerank(
     request_timeout_seconds: Annotated[
         float, typer.Option("--request-timeout-seconds")
     ] = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    benchmark: Annotated[
+        bool,
+        typer.Option(
+            "--benchmark",
+            help="Measure local llama-reranker levels and store the lowest-p95 profile.",
+        ),
+    ] = False,
     kaggle_account: Annotated[str | None, typer.Option("--kaggle-account")] = None,
 ) -> None:
     adapter = (
@@ -50,6 +57,7 @@ def rerank(
         dry_run=dry_run,
         budget_seconds=budget_seconds,
         request_timeout_seconds=request_timeout_seconds,
+        benchmark=benchmark,
         kaggle_account=kaggle_account,
     )
     run_handler(state_from_context(ctx), lambda: _result(adapter.run(request)))

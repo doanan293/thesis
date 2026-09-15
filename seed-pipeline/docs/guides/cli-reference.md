@@ -19,6 +19,7 @@ seed evaluation build [--bundle DIR]
 seed embed queries --backend local|kaggle
 seed retrieve --run NAME
 seed rerank --run NAME --backend local|kaggle --model MODEL
+seed rerank --run NAME --backend local --benchmark --model MODEL
 seed metrics --run NAME
 ```
 
@@ -72,6 +73,14 @@ Candidate `chunk_id` là nhãn vị trí `<section_key>:chunk-<ordinal:03d>`, `d
 ## Rerank và metrics
 
 `seed rerank` chỉ đọc candidates của run; với Kaggle, stage chỉ load reranker và chấm candidate pairs. Mỗi reranker có đúng một biến thể dưới `rerank/<model>/` của run. `--dry-run` in `target=` và `missing_pairs=N`, số cặp query–chunk chưa có điểm trong `data/cache/rerank_scores/<model>.jsonl`; khi cache đã đủ, rerank không khởi động model.
+
+Rerank chỉ gọi `POST /v1/rerank` với file GGUF bản convert classifier; mỗi request là một câu hỏi cùng các ứng viên chưa có điểm, ở local lẫn Kaggle. `--backend local` dùng service `llama-reranker` của `../compose.yaml`: nếu `data/cache/local_profiles/rerank/<model>.json` khớp model, CPU (`/proc/cpuinfo`) và image llama.cpp của compose thì service được dựng theo profile, không thì theo mặc định của compose.
+
+`--backend local --benchmark` đo từng mức của search space CPU (`-np` 16; `-ub` 4096/8192/16384, dùng chung cho `-c` và `-b`; `--threads` 8/12). Mỗi mức dựng lại `llama-reranker`, chạy một nhóm khởi động không tính giờ rồi 6 nhóm câu hỏi × 15 ứng viên chọn phân tầng theo tổng số ký tự. Mức có điểm lệch mức hợp lệ đầu tiên quá `1e-3` bị loại; lệnh chọn p95 thấp nhất (bằng nhau thì số cặp/giây cao hơn), lưu profile và in `selected=`, `latency_p95_seconds=`, `env=`. Chép `env=` vào `.env` ở gốc repo và đặt `RERANK_TIMEOUT_SECONDS` ít nhất gấp đôi `latency_p95_seconds`.
+
+```bash
+uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16
+```
 
 ```bash
 uv run seed rerank --run backend-hybrid-qwen4b-p50-k30-rrf2 --backend kaggle --model qwen3-reranker:4b-fp16 --kaggle-account acc2

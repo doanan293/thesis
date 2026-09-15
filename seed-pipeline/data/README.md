@@ -11,6 +11,7 @@ data/
 │                 rerank/<model>/, reports/)
 ├── cache/        text_embeddings/<model>.jsonl, query_embeddings/<model>.jsonl,
 │                 rerank_scores/<model>.jsonl, kaggle_profiles/<workload>/<model>.json
+│                 local_profiles/<workload>/<model>.json
 └── work/         scratch space: build workspace, locks, bundle-embed input, archive staging
 ```
 

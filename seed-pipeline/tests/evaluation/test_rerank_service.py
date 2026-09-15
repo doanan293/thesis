@@ -1,6 +1,7 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from seed_pipeline.artifacts.manifest import Completion
 from seed_pipeline.cache.jsonl_records import append_record
 from seed_pipeline.evaluation import rerank_service
+from seed_pipeline.evaluation.local_rerank_benchmark import LocalRerankBenchmarkResult
 from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.rerank_service import (
     KaggleRerankBackend,
@@ -19,7 +21,12 @@ from seed_pipeline.evaluation.run_workspace import load_run_record
 from seed_pipeline.integrations.kaggle import auto_profile
 from seed_pipeline.integrations.kaggle import service as kaggle_service
 from seed_pipeline.integrations.kaggle.models import ActionVerb, ReconcileAction
-from seed_pipeline.runtime.catalog import require_model
+from seed_pipeline.runtime.benchmarking import BenchmarkMeasurement
+from seed_pipeline.runtime.catalog import LOCAL_RERANK_SEARCH_SPACE, require_model
+from seed_pipeline.runtime.runtime_profiles import (
+    RuntimeProfile,
+    RuntimeProfileIdentity,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -383,3 +390,91 @@ def test_local_rerank_scores_each_query_in_one_request(two_candidate_run):
     assert reranker.calls == [("test query", ["chunk-1", "chunk-2"])]
     assert "scored=2" in result.actions
     assert result.artifact_dir is not None
+
+
+def test_local_benchmark_reports_the_selected_level_without_registering(
+    complete_run,
+):
+    selected = LOCAL_RERANK_SEARCH_SPACE.candidates[2]
+    measurement = BenchmarkMeasurement(
+        selected, 90, 1000, 3.0, latency_p50_seconds=0.4, latency_p95_seconds=0.5
+    )
+    identity = RuntimeProfileIdentity.create(
+        workload="rerank",
+        model="qwen3-reranker:4b-fp16",
+        model_sha256="a" * 64,
+        runtime_sha256="b" * 64,
+        inference_cache_policy_sha256="c" * 64,
+        machine_shape="cpu",
+        topology="cpu_compose",
+        search_space=LOCAL_RERANK_SEARCH_SPACE,
+    )
+    profile = RuntimeProfile.create(
+        identity,
+        selected,
+        sample_count=90,
+        measurements=[measurement.to_dict()],
+        benchmark_job_sha256="d" * 64,
+    )
+    report = Path("profiles/rerank/qwen3_reranker_4b_fp16.json")
+    seen = []
+
+    def fake_benchmark(spec, candidate_data_path, timeout):
+        seen.append((spec.name, candidate_data_path, timeout))
+        return LocalRerankBenchmarkResult(profile, report, (measurement,))
+
+    def no_server(_spec, _timeout):
+        raise AssertionError("a benchmark must not score the run")
+
+    result = LocalRerankBackend(
+        reranker_factory=no_server, benchmark_runner=fake_benchmark
+    ).run(replace(request(complete_run, "qwen3-reranker:4b-fp16"), benchmark=True))
+
+    assert seen == [
+        (
+            "qwen3-reranker:4b-fp16",
+            complete_run / "candidates" / "candidates.jsonl",
+            5.0,
+        )
+    ]
+    assert result.actions == (
+        "selected=server_slots=16 ubatch=8192 threads=8",
+        "latency_p95_seconds=0.5",
+        "env=LLAMA_RERANKER_PARALLEL=16 LLAMA_RERANKER_THREADS=8 "
+        "LLAMA_RERANKER_UBATCH_SIZE=8192",
+    )
+    assert (result.benchmark_levels, result.benchmark_report) == (1, report)
+    assert load_run_record(complete_run / "run.json").rerank_variants == {}
+
+
+def test_local_reranker_starts_compose_with_the_stored_local_profile(monkeypatch):
+    spec = require_model("qwen3-reranker:4b-fp16")
+    selected = LOCAL_RERANK_SEARCH_SPACE.candidates[2]
+    ensured = []
+
+    class FakeManager:
+        def __init__(self, compose_file):
+            self.compose_file = compose_file
+
+        def ensure(self, role, ensured_spec, gguf_root, runtime=None):
+            del gguf_root
+            ensured.append((role, ensured_spec.name, runtime))
+            return "http://127.0.0.1:11435"
+
+    monkeypatch.setattr(
+        rerank_service,
+        "load_local_rerank_profile",
+        lambda _spec: SimpleNamespace(selected=selected),
+    )
+    monkeypatch.setattr(rerank_service, "LlamaCppComposeManager", FakeManager)
+
+    LocalRerankBackend._default_reranker(spec, 5.0)
+
+    assert ensured == [("reranker", spec.name, selected)]
+
+
+def test_kaggle_backend_leaves_benchmarks_to_the_runtime_profile(complete_run):
+    with pytest.raises(ValueError, match="--backend local"):
+        KaggleRerankBackend().run(
+            replace(request(complete_run, "qwen3-reranker:0.6b-fp16"), benchmark=True)
+        )

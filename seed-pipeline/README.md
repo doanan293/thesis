@@ -52,7 +52,7 @@ seed metrics           Hit@K, MRR -> reports/baseline/ hoặc reports/rerank/<mo
 - `data/corpus/rag-final/`: `sections.jsonl`, `blocks.jsonl`, `manifest.json`, `validation_report.json` (contract `rag-final-v3`).
 - `data/corpus/formulary/`: knowledge bundle bàn giao cho backend.
 - `data/cache/text_embeddings/<model>.jsonl`: cache embedding theo `sha256(embedding_text)`, dùng lại giữa các lần build.
-- `data/cache/query_embeddings/<model>.jsonl`, `data/cache/rerank_scores/<model>.jsonl`, `data/cache/kaggle_profiles/<workload>/<model>.json`: cache của `seed embed queries`, `seed rerank` và profile runtime Kaggle.
+- `data/cache/query_embeddings/<model>.jsonl`, `data/cache/rerank_scores/<model>.jsonl`, `data/cache/kaggle_profiles/<workload>/<model>.json`, `data/cache/local_profiles/<workload>/<model>.json`: cache của `seed embed queries`, `seed rerank`, profile runtime Kaggle và profile reranker CPU local.
 - `data/evaluation/runs/<run>/`: `run.json`, `candidates/`, `rerank/<model>/`, `reports/`.
 
 Git chỉ giữ file nhỏ; phần còn lại nằm trong archive Kaggle, xem [data/README.md](data/README.md).

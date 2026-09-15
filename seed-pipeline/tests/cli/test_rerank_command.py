@@ -53,12 +53,30 @@ def test_rerank_rejects_removed_options(option: list[str]) -> None:
     assert result.exit_code == 2
 
 
-def test_rerank_benchmark_rejects_local_backend() -> None:
-    result = runner.invoke(
-        app, ["rerank", "--run", "experiment", "--backend", "local", "--benchmark"]
+def test_rerank_benchmark_reaches_the_local_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+    monkeypatch.setattr(
+        rerank_command, "LocalRerankBackend", fake_backend(captured, incomplete=False)
     )
 
-    assert result.exit_code == 2
+    result = runner.invoke(
+        app,
+        [
+            "rerank",
+            "--run",
+            "experiment",
+            "--backend",
+            "local",
+            "--benchmark",
+            "--model",
+            "qwen3-reranker:4b-fp16",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["request"].benchmark is True
 
 
 def test_rerank_passes_kaggle_account_to_request(

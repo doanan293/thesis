@@ -65,6 +65,16 @@ uv run seed metrics --run hybrid-qwen4b-p50-k30-rrf2 --model qwen3-reranker:4b-f
 
 `--dry-run` in `missing_pairs=N`. Candidates của `hybrid-qwen4b-p50-k30-rrf2` trong archive là đúng các cặp query–chunk đã có điểm trong `data/cache/rerank_scores/`, nên `N` bằng 0 và rerank chỉ đọc cache, không khởi động model.
 
+Mọi reranker được gọi qua `/v1/rerank`. Kết quả `bge-reranker-v2-gemma:f16` ở mục 6 là kết quả cuối cùng: model đã bỏ khỏi catalog, report của nó vẫn nằm ở `reports/rerank/bge_reranker_v2_gemma_f16/`.
+
+Cấu hình `llama-reranker` cho backend trên CPU được chọn bằng benchmark đầu-cuối trên máy production (chạy trong tmux: mỗi mức nạp lại model 4B trên CPU):
+
+```bash
+uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16
+```
+
+Lệnh lưu `data/cache/local_profiles/rerank/<model>.json` và in các biến `LLAMA_RERANKER_*` cho `.env` ở gốc repo. Trên Kaggle, benchmark chạy tự động trước lần chấm đầu tiên khi chưa có profile khớp (xem [CLI reference](cli-reference.md)).
+
 Qdrant tìm dense bằng HNSW (gần đúng), nên retrieve lại trên index dựng mới có thể chọn khác vài chunk có điểm sát nhau ở cuối top 30. Lần dựng lại tháng 9/2026 lệch 4.678 trên 300.000 cặp, gần hết ở hạng 21–30. Khi đó `N` lớn hơn 0 và cần chạy reranker (CPU hoặc Kaggle) cho các cặp còn thiếu.
 
 ## 5. Run `dense-text-embedding-3-large-k30`

@@ -58,6 +58,7 @@ TEXT_EMBEDDING_CACHE_DIR = CACHE_DIR / "text_embeddings"
 QUERY_EMBEDDING_CACHE_DIR = CACHE_DIR / "query_embeddings"
 RERANK_SCORE_CACHE_DIR = CACHE_DIR / "rerank_scores"
 KAGGLE_PROFILE_DIR = CACHE_DIR / "kaggle_profiles"
+LOCAL_PROFILE_DIR = CACHE_DIR / "local_profiles"
 
 WORK_DIR = DATA_DIR / "work"
 BUILD_WORK_DIR = WORK_DIR / "build"

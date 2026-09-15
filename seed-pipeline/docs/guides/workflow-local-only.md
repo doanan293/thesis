@@ -41,9 +41,12 @@ uv run seed retrieve --run backend-dense-qwen4b-k30 --retriever dense --candidat
 uv run seed metrics --run backend-dense-qwen4b-k30 --top-k 30
 uv run seed retrieve --run backend-hybrid-qwen4b-p50-k30-rrf2 --retriever hybrid \
   --prefetch-k 50 --candidate-k 30 --rrf-k 2
+uv run seed rerank --run backend-hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16
 uv run seed rerank --run backend-hybrid-qwen4b-p50-k30-rrf2 --backend local --model qwen3-reranker:4b-fp16
 uv run seed metrics --run backend-hybrid-qwen4b-p50-k30-rrf2 --top-k 30
 ```
+
+`--benchmark` chọn cấu hình `llama-reranker` có p95 thấp nhất trên máy này và lưu profile ở `data/cache/local_profiles/rerank/`; lệnh rerank sau đó dựng service theo profile và gửi một request `/v1/rerank` cho mỗi câu hỏi. Benchmark và rerank cả run chạy lâu, nên chạy trong tmux.
 
 Mỗi baseline cần ít nhất 30 candidates/query để tính Hit@30. Thêm `--limit 50` với tên run riêng để smoke test; bỏ `--limit` làm đổi run identity.
 

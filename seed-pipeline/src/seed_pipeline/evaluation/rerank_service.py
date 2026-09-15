@@ -13,6 +13,12 @@ from seed_pipeline.config.paths import (
     WORK_DIR,
     rerank_score_cache_path,
 )
+from seed_pipeline.evaluation.local_rerank_benchmark import (
+    ComposeRerankServer,
+    LocalRerankBenchmarkResult,
+    load_local_rerank_profile,
+    run_local_rerank_benchmark,
+)
 from seed_pipeline.evaluation.rerank_artifacts import (
     finalize_run_rerank_bundle,
     load_registered_rerank_bundle,
@@ -36,9 +42,9 @@ from seed_pipeline.integrations.kaggle.job_lock import (
     kaggle_cache_lock,
     kaggle_job_lock,
 )
-from seed_pipeline.runtime.catalog import ModelKind, require_model
+from seed_pipeline.runtime.catalog import ModelKind, ModelSpec, require_model
 from seed_pipeline.runtime.client import LlamaCppClient
-from seed_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
+from seed_pipeline.runtime.compose import LlamaCppComposeManager, reranker_environment
 
 
 @dataclass(frozen=True)
@@ -50,7 +56,6 @@ class RerankRequest:
     budget_seconds: int
     request_timeout_seconds: float
     benchmark: bool = False
-    benchmark_pairs: int = 512
     kaggle_account: str | None = None
 
 
@@ -132,22 +137,75 @@ def _existing_variant(
 class LocalRerankBackend:
     def __init__(
         self,
-        reranker_factory: Callable[[object, float], Reranker] | None = None,
+        reranker_factory: Callable[[ModelSpec, float], Reranker] | None = None,
+        benchmark_runner: Callable[[ModelSpec, Path, float], LocalRerankBenchmarkResult]
+        | None = None,
     ):
         self.reranker_factory = reranker_factory or self._default_reranker
+        self.benchmark_runner = benchmark_runner or self._default_benchmark
 
     @staticmethod
-    def _default_reranker(spec, timeout: float) -> Reranker:
+    def _default_reranker(spec: ModelSpec, timeout: float) -> Reranker:
+        # A stored local benchmark profile sets the llama-reranker level; without one
+        # compose defaults (or the root .env) apply.
+        profile = load_local_rerank_profile(spec)
         manager = LlamaCppComposeManager(COMPOSE_FILE)
-        endpoint = resolve_server("compose", [], spec, manager, GGUF_ROOT)[0]
+        endpoint = manager.ensure(
+            "reranker",
+            spec,
+            GGUF_ROOT,
+            runtime=profile.selected if profile is not None else None,
+        )
         return LlamaCppReranker(spec, LlamaCppClient(endpoint, timeout=timeout))
+
+    @staticmethod
+    def _default_benchmark(
+        spec: ModelSpec, candidate_data_path: Path, timeout: float
+    ) -> LocalRerankBenchmarkResult:
+        manager = LlamaCppComposeManager(COMPOSE_FILE)
+        return run_local_rerank_benchmark(
+            spec=spec,
+            candidate_data_path=candidate_data_path,
+            server=ComposeRerankServer(manager, spec, GGUF_ROOT),
+            client_factory=lambda endpoint: LlamaCppClient(endpoint, timeout=timeout),
+        )
+
+    def _benchmark(
+        self,
+        request: RerankRequest,
+        spec: ModelSpec,
+        candidate_data_path: Path,
+        variant_sha256: str,
+    ) -> RerankStageResult:
+        result = self.benchmark_runner(
+            spec, candidate_data_path, request.request_timeout_seconds
+        )
+        selected = result.profile.selected
+        environment = " ".join(
+            f"{name}={value}"
+            for name, value in sorted(reranker_environment(selected).items())
+        )
+        return RerankStageResult(
+            None,
+            variant_sha256,
+            None,
+            (
+                f"selected=server_slots={selected.server_slots} "
+                f"ubatch={selected.physical_batch_size} threads={selected.threads}",
+                "latency_p95_seconds="
+                f"{result.selected_measurement.latency_p95_seconds}",
+                f"env={environment}",
+            ),
+            benchmark_report=result.path,
+            benchmark_levels=len(result.measurements),
+        )
 
     def run(self, request: RerankRequest) -> RerankStageResult:
         spec = require_model(request.model)
         if spec.kind is not ModelKind.RERANKER:
             raise ValueError("--model must select a reranker model")
-        if request.benchmark:
-            raise ValueError("benchmark requires --backend kaggle")
+        if request.benchmark and request.dry_run:
+            raise ValueError("--benchmark cannot be combined with --dry-run")
         workspace = _workspace(request)
         candidate_bundle = load_bundle(
             workspace.candidates_dir,
@@ -157,6 +215,10 @@ class LocalRerankBackend:
         identity = RerankVariantIdentity.create(
             candidate_bundle.manifest.data_sha256, request.model
         )
+        if request.benchmark:
+            return self._benchmark(
+                request, spec, candidate_bundle.data_path, identity.sha256
+            )
         existing = _existing_variant(
             workspace, spec.slug, identity.sha256, force=request.force
         )
@@ -272,6 +334,11 @@ class KaggleRerankBackend:
 
     @staticmethod
     def _run_kaggle(request: RerankRequest) -> RerankStageResult:
+        if request.benchmark:
+            raise ValueError(
+                "--benchmark measures the CPU reranker with --backend local; Kaggle "
+                "benchmarks run automatically when no runtime profile matches"
+            )
         spec = require_model(request.model)
         # Kaggle staging/runtime resources are model-scoped under WORK_DIR,
         # so serialize the same model across runs while allowing variants

@@ -54,6 +54,9 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
 - Reranker trên CPU: `LLAMA_RERANKER_PARALLEL` (`-np`), `LLAMA_RERANKER_UBATCH_SIZE` (dùng chung cho `-c`,
   `-b`, `-ub`, tối thiểu 2048) và `LLAMA_RERANKER_THREADS` trong `.env` ở root; `RERANK_TIMEOUT_SECONDS` là
   timeout của backend cho một request rerank.
+  Đo lại cho máy khác trong `seed-pipeline/`:
+  `uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16`,
+  rồi chép dòng `env=` lệnh in ra vào `.env` và đặt `RERANK_TIMEOUT_SECONDS` ít nhất gấp đôi `latency_p95_seconds`.
 - Dùng OpenAI cloud hoặc server OpenAI-compatible khác thay cho proxy: đặt `LLM_BASE_URL` trong
   `.env` ở root.
 - Lần đầu cần nạp corpus vào container: `docker compose cp seed-pipeline/data/corpus/formulary backend:/tmp/bundle` rồi
