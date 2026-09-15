@@ -13,9 +13,6 @@ temp/
 .kaggle/
 seed-pipeline-kaggle-*/
 
-# Pre-migration data folder; the data migration removes this rule with the folder.
-data/heavy/
-
 # Large or generated data lives in the Kaggle archive (`seed data push` / `seed data pull`).
 data/sources/**/*.pdf
 data/sources/leaflets/html/

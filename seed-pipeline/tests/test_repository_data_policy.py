@@ -18,7 +18,6 @@ def _is_ignored(path: str) -> bool:
 @pytest.mark.parametrize(
     ("path", "ignored"),
     [
-        ("data/heavy/probe.bin", True),
         ("data/sources/duoc-thu-quoc-gia-viet-nam.pdf", True),
         ("data/sources/leaflets/html/thuoc/panadol.html", True),
         ("data/sources/leaflets/manifest.json", False),
