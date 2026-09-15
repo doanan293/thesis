@@ -1292,6 +1292,93 @@ Expected: a tmux path, and a window list that contains `shell`.
 
 ---
 
+### Task 4a: Rebuild the local-model evaluation runs on the refreshed gold
+
+Commit `18f5050` rebuilt the corpus (`rag-final` build `d817f083f3eeb458`, fixing the word split "BẤTHOẠT" → "BẤT HOẠT" in two vaccine monographs) and regenerated `seed-pipeline/data/evaluation/gold/section_retrieval_eval.jsonl` (sha256 `a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af`). The 10,000 query ids are unchanged, but 12 query texts changed, so every run whose identity holds the old digest `5b0ed3d6…` fails `seed metrics` with `Run evaluation input changed after retrieval`. Decision of the author (2026-09-15): use the new gold; rebuild the eight runs that use local models; keep `dense-text-embedding-3-large-k30` (paid OpenAI embeddings) with its current candidates, `run.json` and report untouched, and never run `seed metrics` on it.
+
+**Files:**
+- Modify (tracked): `seed-pipeline/data/evaluation/runs/{bm25-qwen4b-k30,dense-bge-m3-k30,dense-gemma300m-k30,dense-qwen06b-k30,dense-qwen4b-k30,dense-qwen8b-k30,hybrid-qwen4b-p50-k30-rrf2,hybrid-qwen4b-p50-k30-rrf60}/` (`run.json`, `candidates/manifest.json`, `reports/**`, `rerank/bge_reranker_v2_m3_f16/manifest.json`)
+- Produces (ignored): rebuilt candidates, bundle and query embedding cache entries for the changed texts, bge-reranker-v2-m3 scores for changed pairs, console logs under `seed-pipeline/data/work/logs/rollout/`
+
+**Interfaces:**
+- Consumes: `seed bundle embed --bundle DIR --backend local|kaggle --model M [--dry-run] [--kaggle-account auto]`, `seed embed queries --backend local|kaggle --model M [--dry-run]`, `pharma-agent corpus import BUNDLE_DIR --collection formulary --publish`, `seed retrieve … --force`, `seed metrics … --force`, `seed rerank --backend kaggle --kaggle-account auto` (Plan B), the evaluation stack of `seed-pipeline/docs/guides/evaluation.md` sections 2–3.
+- Produces: eight runs whose `identity.evaluation_sha256` is `a4fb91a8…`, with fresh baseline reports, and a complete `bge-reranker-v2-m3:f16` variant on the rebuilt `hybrid-qwen4b-p50-k30-rrf2`. Counts quoted later in this plan (for example `missing_pairs=205050` in Task 6) assume the old rrf2 candidates; after this task use the values the dry runs print.
+
+- [ ] **Step 1: Confirm the inputs**
+
+```bash
+cd /home/andv/personal/thesis/seed-pipeline
+sha256sum data/evaluation/gold/section_retrieval_eval.jsonl
+python3 -c "import json; print(json.load(open('data/corpus/rag-final/manifest.json'))['build_id'])"
+```
+
+Expected: `a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af` and `d817f083f3eeb458`. Anything else: stop and ask the author.
+
+- [ ] **Step 2: Bundle embeddings for the refreshed sections**
+
+For each model `embeddinggemma:300m`, `bge-m3:567m-fp16`, `qwen3-embedding:0.6b-fp16`, `qwen3-embedding:4b-fp16`, `qwen3-embedding:8b-fp16`:
+
+```bash
+uv run seed bundle embed --bundle data/corpus/formulary --backend local --model <MODEL> --dry-run
+```
+
+The embedding cache is keyed by `sha256(embedding_text)`, so only the texts of changed chunks are missing. When a dry run reports missing texts, embed them in tmux window `bundle-embed` (console log `data/work/logs/rollout/bundle-embed.console.log`): `--backend local` when at most 200 texts are missing, otherwise `--backend kaggle --kaggle-account auto`. Expected: a second dry run reports nothing missing for all five models.
+
+- [ ] **Step 3: Query embeddings for the changed queries**
+
+For the same five models:
+
+```bash
+uv run seed embed queries --backend local --model <MODEL> --dry-run
+uv run seed embed queries --backend local --model <MODEL>
+```
+
+Expected: the dry run reports 12 missing queries (the changed texts), the second command embeds them through the compose embedding service, and a repeated dry run reports none missing.
+
+- [ ] **Step 4: Rebuild the runs in the evaluation stack**
+
+In tmux window `rebuild-runs` (console log `data/work/logs/rollout/rebuild-runs.console.log`), start the stack of `docs/guides/evaluation.md` section 2 and, for each model in its section 3 table, export the three `PHARMA_RETRIEVAL__…` variables, import and publish the bundle (`uv run pharma-agent corpus import ../seed-pipeline/data/corpus/formulary --collection formulary --publish` in `backend/`), then in `seed-pipeline/`:
+
+```bash
+# embeddinggemma:300m, bge-m3:567m-fp16, qwen3-embedding:0.6b-fp16, qwen3-embedding:8b-fp16 (one run each)
+uv run seed retrieve --run <RUN> --retriever dense --candidate-k 30 --force
+uv run seed metrics --run <RUN> --top-k 30 --force
+# qwen3-embedding:4b-fp16
+uv run seed retrieve --run dense-qwen4b-k30 --retriever dense --candidate-k 30 --force
+uv run seed retrieve --run bm25-qwen4b-k30 --retriever bm25 --candidate-k 30 --force
+uv run seed retrieve --run hybrid-qwen4b-p50-k30-rrf60 --retriever hybrid --prefetch-k 50 --candidate-k 30 --rrf-k 60 --force
+uv run seed retrieve --run hybrid-qwen4b-p50-k30-rrf2 --retriever hybrid --prefetch-k 50 --candidate-k 30 --rrf-k 2 --force
+for RUN in dense-qwen4b-k30 bm25-qwen4b-k30 hybrid-qwen4b-p50-k30-rrf60 hybrid-qwen4b-p50-k30-rrf2; do
+  uv run seed metrics --run "$RUN" --top-k 30 --force
+done
+```
+
+Expected: every retrieve ends `status=complete` with 10,000 queries; every `run.json` of the eight runs now holds `a4fb91a8…`; `dense-text-embedding-3-large-k30/run.json` is unchanged (`git status --short data/evaluation/runs/dense-text-embedding-3-large-k30` prints nothing).
+
+- [ ] **Step 5: Re-score bge-reranker-v2-m3 on the rebuilt rrf2 candidates**
+
+```bash
+uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend kaggle --kaggle-account auto --model bge-reranker-v2-m3:f16 --force --dry-run
+```
+
+The score cache is keyed by query and document hashes, so the dry run's `missing_pairs` counts only pairs whose query text or top-30 candidates changed. Run the same command without `--dry-run` in tmux window `rerank-bge-m3` (it finalizes the variant from the cache when nothing is missing), then `uv run seed metrics --run hybrid-qwen4b-p50-k30-rrf2 --model bge-reranker-v2-m3:f16 --top-k 30 --force`. Expected: `status=complete`.
+
+- [ ] **Step 6: Verify and commit**
+
+```bash
+cd /home/andv/personal/thesis/seed-pipeline
+uv run pytest -q tests/evaluation/test_tracked_runs.py
+cd /home/andv/personal/thesis
+git status --short seed-pipeline/data/evaluation/runs
+git add seed-pipeline/data/evaluation/runs/bm25-qwen4b-k30 seed-pipeline/data/evaluation/runs/dense-bge-m3-k30 seed-pipeline/data/evaluation/runs/dense-gemma300m-k30 seed-pipeline/data/evaluation/runs/dense-qwen06b-k30 seed-pipeline/data/evaluation/runs/dense-qwen4b-k30 seed-pipeline/data/evaluation/runs/dense-qwen8b-k30 seed-pipeline/data/evaluation/runs/hybrid-qwen4b-p50-k30-rrf2 seed-pipeline/data/evaluation/runs/hybrid-qwen4b-p50-k30-rrf60
+git diff --cached --name-status
+git commit -m "chore(seed-data): rebuild the local-model evaluation runs on the refreshed gold" -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+Expected: the test passes; the staged set holds only tracked files of the eight runs (Git ignores candidates and score data). Task 16 also refreshes the table 5.1 and 5.2 rows of these runs from their new `report.md` files.
+
+---
+
 ### Task 5: Retire the completion-era Qwen3 variants of the rrf2 run
 
 `run.json` of `hybrid-qwen4b-p50-k30-rrf2` still registers `qwen3-reranker` 0.6b, 4b and 8b variants scored with `completion_logprobs` (4b with the old mradermacher file). Their identities no longer match the native catalog, so `seed rerank` and `seed rerank --dry-run` stop with `RunConflictError` until they are unregistered. Their `reports/rerank/<slug>/` stay until Task 15 replaces them, so the committed numbers keep matching the report meanwhile.
@@ -2683,6 +2770,8 @@ Expected: for each model a `selected` level (`server_slots`, `physical_batch_siz
 - [ ] **Step 2: Table 5.1**
 
 In `report/report.md`, replace the cells of the rows `Hybrid k=2 + \`qwen3-reranker:0.6b\``, `Hybrid k=2 + \`qwen3-reranker:4b\`` and `Hybrid k=2 + \`qwen3-reranker:8b\`` with each model's `table 5.1 cells` line. In the Hit@3, Hit@5, Hit@10, MRR and Multi-all-hit@10 columns, bold exactly the largest value of the column (move the bold if a new value is larger, bold both on a tie); leave the Hit@30 column as it is. Make the row label bold only for the reranker with the highest MRR, and remove the bold from the other labels.
+
+Also replace the cells of the BM25, dense and hybrid rows (all runs rebuilt in Task 4a) with the numbers of their new `reports/baseline/top30-window3/report.md` and the `bge-reranker-v2-m3` row with `reports/rerank/bge_reranker_v2_m3_f16/top30-window3/report.md`; the `text-embedding-3-large` and `bge-reranker-v2-gemma` rows stay as they are.
 
 - [ ] **Step 3: Table 5.2**
 
