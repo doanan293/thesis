@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from pharma_agent.domain.corpus.bundle import BlockKind, DocumentKind, KnowledgeBundle
+from pharma_agent.domain.corpus.chunking import ChunkDraft
 from pharma_agent.domain.corpus.hydrate import hydrate_strategy_for
 
 from seed_pipeline.bundle.chunks import gold_chunk_label, iter_section_chunks
-from seed_pipeline.bundle.parity import draft_view
 
 CHUNK_ROLES: dict[BlockKind, str] = {
     BlockKind.PROSE: "prose",
@@ -23,6 +23,27 @@ CONTENT_TYPES: dict[DocumentKind, str] = {
     DocumentKind.GENERAL_MONOGRAPH: "general_monograph",
     DocumentKind.LEAFLET: "brand_page",
 }
+
+
+def draft_view(draft: ChunkDraft, hydrate_strategy: str) -> dict[str, object]:
+    colloquial = (
+        {}
+        if draft.colloquial is None
+        else {
+            name: value
+            for name, value in draft.colloquial.model_dump().items()
+            if value not in ("", [])
+        }
+    )
+    return {
+        "chunk_text": draft.chunk_text,
+        "start_page": draft.start_page,
+        "end_page": draft.end_page,
+        "hydrate_strategy": hydrate_strategy,
+        "embedding_text": draft.embedding_text,
+        "term_annotations": [term.model_dump() for term in draft.term_annotations],
+        "colloquial_mapping": colloquial,
+    }
 
 
 def evaluation_chunk_rows(bundle: KnowledgeBundle) -> list[dict[str, Any]]:

@@ -14,7 +14,7 @@ cd seed-pipeline
 | --- | --- |
 | Build ở local, Kaggle GPU embed bundle và chấm rerank | [Local + Kaggle GPU](docs/guides/workflow-local-kaggle.md) |
 | Không dùng Kaggle; mọi model chạy local | [Local CPU-only](docs/guides/workflow-local-only.md) |
-| Chuyển từ corpus-pipeline cũ (một lần, môi trường dev) | [Migration 2026-09](docs/guides/migration-2026-09.md) |
+| Đánh giá retrieval (dựng lại số liệu luận văn) | [Evaluation](docs/guides/evaluation.md) |
 
 ## Luồng dữ liệu
 
@@ -63,7 +63,7 @@ Chính sách bàn giao và artifact: [Downstream](docs/guides/downstream.md).
 
 - `src/seed_pipeline/orchestration/`: build và atomic publish `rag-final`.
 - `src/seed_pipeline/corpus/`: trích xuất PDF, crawl tờ hướng dẫn, canonical blocks, bảng Docling, validation.
-- `src/seed_pipeline/bundle/`: export, parity, embed và evaluation chunks dựa trên `pharma_agent.domain.corpus`.
+- `src/seed_pipeline/bundle/`: export, embed và evaluation chunks dựa trên `pharma_agent.domain.corpus`.
 - `src/seed_pipeline/embeddings/`: cache embedding theo hash và backend local/Kaggle.
 - `src/seed_pipeline/integrations/kaggle/`: reconciliation, checkpoint và worker trên Kaggle (worker không import backend).
 - `src/seed_pipeline/evaluation/`: dataset, retrieval qua backend, rerank, metrics.
@@ -79,5 +79,4 @@ Entrypoint duy nhất là `uv run seed`. Xem [CLI reference](docs/guides/cli-ref
 uv run ruff check src tests && uv run ruff format --check src tests
 uv run pyrefly check --min-severity warn
 uv run pytest -q
-uv run pytest -q -m data     # cần build thật dưới data/heavy (xem migration guide)
 ```

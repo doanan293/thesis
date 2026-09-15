@@ -14,7 +14,6 @@ seed source crawl [--sitemap-url URL]
 seed build [--leaflets-dir DIR]
 seed validate
 seed bundle export --output DIR
-seed bundle parity --bundle DIR --old-chunks FILE
 seed bundle embed --bundle DIR --backend local|kaggle --model MODEL
 seed evaluation build [--bundle DIR]
 seed embed queries --backend local|kaggle
@@ -37,7 +36,6 @@ Global `--json` in envelope máy đọc được, `--debug` bật traceback. `uv
 | Command | Việc |
 | --- | --- |
 | `seed bundle export --output DIR [--rag-final-dir DIR] [--glossary FILE] [--mappings FILE] [--force]` | Đọc `rag-final/{sections,blocks,manifest}` và resources, xuất `knowledge-bundle/v1`, validate bằng `read_bundle` trước khi thay `DIR` |
-| `seed bundle parity --bundle DIR --old-chunks FILE [--report FILE] [--max-chars N]` | So `chunk_section` của backend với `chunks.jsonl` của build cũ (chunk_text, trang, hydrate_strategy, embedding_text, term_annotations, colloquial_mapping, thứ tự); exit 1 nếu lệch |
 | `seed bundle embed --bundle DIR --backend local\|kaggle --model MODEL [--cache FILE] [--work-dir DIR] [--kaggle-account accN] [--dry-run] [--force]` | Gom cặp `(embedding_text_sha256, embedding_text)` duy nhất, embed phần thiếu, ghi `embeddings/<model_slug>.jsonl` và manifest; exit 3 nếu Kaggle chưa xong (chạy lại để resume) |
 
 `--model` của `bundle embed` phải trùng `PHARMA_RETRIEVAL__EMBEDDING__MODEL` của backend, ví dụ `qwen3-embedding:4b-fp16`. Cache nằm ở `data/cache/text_embeddings/<model-slug>.jsonl`; Kaggle dùng dataset input `seed-pipeline-bundle`, stage `corpus-embed` contract version 3.
@@ -105,7 +103,7 @@ uv run seed data pull --kaggle-account acc1
 | Code | Meaning |
 | ---: | --- |
 | 0 | Stage completed successfully |
-| 1 | Runtime or validation failure (bao gồm parity lệch) |
+| 1 | Runtime or validation failure |
 | 2 | Invalid CLI usage |
 | 3 | Resumable incomplete stage |
 | 130 | Interrupted by the operator |

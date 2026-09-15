@@ -42,19 +42,3 @@ def test_documented_seed_commands_parse(doc: str, args: list[str]) -> None:
     result = CliRunner().invoke(app, [*args, "--help"])
 
     assert result.exit_code == 0, (doc, args, result.output)
-
-
-def test_migration_runbook_covers_every_spec_step() -> None:
-    text = (GUIDES / "migration-2026-09.md").read_text(encoding="utf-8")
-
-    for step in range(1, 8):
-        assert f"\n## {step}. " in text
-    for required in (
-        "uv run seed bundle parity",
-        "uv run seed bundle embed --bundle data/heavy/bundles/formulary --backend kaggle",
-        "pharma-agent corpus import",
-        "hybrid-qwen4b-p50-k30-rrf2",
-        "95.98%",
-        "0.7960",
-    ):
-        assert required in text, required

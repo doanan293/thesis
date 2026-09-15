@@ -44,8 +44,6 @@ LEAFLETS_MANIFEST_PATH = LEAFLETS_DIR / "manifest.json"
 FORMULARY_PDF_PATH = SOURCES_DIR / "duoc-thu-quoc-gia-viet-nam.pdf"
 SOURCES_CURATION_DIR = SOURCES_DIR / "curation"
 
-MIGRATION_DIR = DATA_DIR / "heavy" / "migration"
-
 CORPUS_DIR = DATA_DIR / "corpus"
 RAG_FINAL_DIR = CORPUS_DIR / "rag-final"
 RAG_FINAL_SECTIONS_PATH = RAG_FINAL_DIR / "sections.jsonl"

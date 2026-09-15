@@ -23,6 +23,7 @@ REMOVED_MODULES = (
     "seed_pipeline.corpus.crawling.collect_urls",
     "seed_pipeline.corpus.crawling.download_html",
     "seed_pipeline.corpus.crawling.integrate_ankhang",
+    "seed_pipeline.bundle.parity",
 )
 
 REMOVED_PATH_NAMES = (
@@ -52,6 +53,7 @@ REMOVED_PATH_NAMES = (
     "RESOURCES_ANKHANG_DIR",
     "RAW_ANKHANG_HTML_DIR",
     "MANIFESTS_DIR",
+    "MIGRATION_DIR",
 )
 
 
@@ -62,7 +64,12 @@ def test_old_chunk_contract_modules_are_gone(module: str) -> None:
 
 @pytest.mark.parametrize(
     "args",
-    [["vectors", "upload"], ["embed", "chunks"], ["evaluation", "rejudge-current"]],
+    [
+        ["vectors", "upload"],
+        ["embed", "chunks"],
+        ["evaluation", "rejudge-current"],
+        ["bundle", "parity"],
+    ],
 )
 def test_old_commands_are_gone(args: list[str]) -> None:
     assert CliRunner().invoke(app, [*args, "--help"]).exit_code == 2
