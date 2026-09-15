@@ -144,29 +144,19 @@ def test_build_server_command_enforces_stateless_prompt_cache(model):
     assert "--no-cache-idle-slots" in command
 
 
-def test_completion_policy_preserves_slot_prompt_reuse():
-    policy = inference_cache_policy(require_model("bge-reranker-v2-gemma:f16"))
+@pytest.mark.parametrize("model", ("bge-reranker-v2-m3:f16", "qwen3-reranker:4b-fp16"))
+def test_reranker_policy_is_stateless_per_query_group(model):
+    policy = inference_cache_policy(require_model(model))
 
     assert policy.host_cache_ram_mib == 0
     assert policy.cache_idle_slots is False
-    assert policy.completion_cache_prompt is True
-    assert policy.slot_prompt_similarity == 0.1
-    assert policy.workload_locality == "query-adjacent-v1"
-
-
-@pytest.mark.parametrize("model", ("bge-reranker-v2-m3:f16", "qwen3-reranker:4b-fp16"))
-def test_native_rerank_policy_has_no_completion_request_setting(model):
-    policy = inference_cache_policy(require_model(model))
-
-    assert policy.completion_cache_prompt is None
-    assert policy.slot_prompt_similarity is None
     assert policy.workload_locality == "query-group-request-v1"
+    assert policy.arguments() == ("--cache-ram", "0", "--no-cache-idle-slots")
 
 
-def test_embedding_policy_has_no_completion_request_setting():
+def test_embedding_policy_is_batch_independent():
     policy = inference_cache_policy(require_model("qwen3-embedding:4b-fp16"))
 
-    assert policy.completion_cache_prompt is None
     assert policy.workload_locality == "batch-independent-v1"
 
 
@@ -174,22 +164,20 @@ def test_stateless_policy_rejects_negative_cache_limit():
     from seed_pipeline.runtime.server_policy import InferenceCachePolicy
 
     with pytest.raises(ValueError, match="cache_ram_mib"):
-        InferenceCachePolicy(-1, False, None, None, "test")
+        InferenceCachePolicy(-1, False, "test")
 
 
 def test_server_policy_fingerprint_changes_with_performance_behavior():
     from seed_pipeline.runtime.server_policy import InferenceCachePolicy
 
-    stateless = InferenceCachePolicy(0, False, True, 0.1, "query-adjacent-v1")
-    cached = InferenceCachePolicy(8192, True, True, 0.1, "query-adjacent-v1")
+    stateless = InferenceCachePolicy(0, False, "query-group-request-v1")
+    cached = InferenceCachePolicy(8192, True, "query-group-request-v1")
 
     assert stateless.to_dict() == {
-        "schema_version": 1,
+        "schema_version": 2,
         "host_cache_ram_mib": 0,
         "cache_idle_slots": False,
-        "completion_cache_prompt": True,
-        "slot_prompt_similarity": 0.1,
-        "workload_locality": "query-adjacent-v1",
+        "workload_locality": "query-group-request-v1",
     }
     assert stateless.sha256 != cached.sha256
 

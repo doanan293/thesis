@@ -98,3 +98,38 @@ def test_paths_no_longer_expose_the_unified_chunk_contract() -> None:
 )
 def test_legacy_cache_helpers_are_gone(module: str, name: str) -> None:
     assert not hasattr(importlib.import_module(module), name)
+
+
+@pytest.mark.parametrize(
+    ("module", "name"),
+    [
+        ("seed_pipeline.runtime.model_profiles", "CompletionScoring"),
+        ("seed_pipeline.runtime.model_profiles", "qwen3_rerank_contract"),
+        ("seed_pipeline.runtime.model_profiles", "bge_gemma_rerank_contract"),
+        ("seed_pipeline.runtime.model_profiles", "build_qwen3_yes_no_prompt"),
+        ("seed_pipeline.runtime.model_profiles", "build_bge_gemma_yes_no_prompt"),
+        ("seed_pipeline.evaluation.rerankers", "build_qwen_rerank_prompt"),
+        ("seed_pipeline.evaluation.rerank_contract", "prompt_contract_hash"),
+        ("seed_pipeline.runtime.client", "CompletionRerankResult"),
+        ("seed_pipeline.runtime.client", "CompletionPromptTiming"),
+        ("seed_pipeline.runtime.benchmarking", "compare_cache_arms"),
+        ("seed_pipeline.runtime.benchmarking", "CacheComparison"),
+    ],
+)
+def test_completion_logprobs_code_is_gone(module: str, name: str) -> None:
+    assert not hasattr(importlib.import_module(module), name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "completion_payload",
+        "rerank_completion",
+        "rerank_completions_async",
+        "rerank_completion_results_async",
+    ],
+)
+def test_llama_cpp_client_has_no_completion_scoring(name: str) -> None:
+    from seed_pipeline.runtime.client import LlamaCppClient
+
+    assert not hasattr(LlamaCppClient, name)

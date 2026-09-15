@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from seed_pipeline.evaluation.artifact_contracts import sha256_file
-from seed_pipeline.evaluation.rerank_contract import prompt_contract_hash
 from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.retrieval_candidate_artifact import (
     CandidateArtifactReader,
@@ -76,7 +75,8 @@ def candidate_bundle(complete_run: Path):
 def complete_rerank_cache(tmp_path: Path, candidate_bundle):
     model = "qwen3-reranker:0.6b-fp16"
     spec = require_model(model)
-    contract = prompt_contract_hash(protocol=spec.reranker_protocol or "")
+    assert spec.rerank_contract is not None
+    contract = spec.rerank_contract.sha256
     cache = RerankScoreCache(
         tmp_path / "rerank-cache.jsonl",
         model_sha256=spec.sha256,

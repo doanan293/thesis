@@ -4,59 +4,16 @@ import pytest
 
 from seed_pipeline.runtime.catalog import require_model
 from seed_pipeline.runtime.model_profiles import (
-    CompletionScoring,
     EmbeddingRuntimeProfile,
     EmbeddingWorkloadProfile,
     RerankContract,
     RerankRuntimeProfile,
-    build_qwen3_yes_no_prompt,
-    qwen3_rerank_contract,
 )
 
 
-def test_qwen_prompt_contains_canonical_instruction_and_turns():
-    prompt = build_qwen3_yes_no_prompt("thuốc gì", "tài liệu")
-
-    assert "<|im_start|>system" in prompt
-    assert "<Instruct>: Given a Vietnamese medical retrieval query" in prompt
-    assert "<Query>: thuốc gì" in prompt
-    assert "<Document>: tài liệu" in prompt
-    assert prompt.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
-
-
-def test_qwen_contract_hash_changes_for_semantic_fields():
-    contract = qwen3_rerank_contract()
-
-    assert isinstance(contract, RerankContract)
-    assert contract.scoring is not None
-    assert (
-        replace(contract, instruction=contract.instruction + " changed").sha256
-        != contract.sha256
-    )
-    assert (
-        replace(
-            contract,
-            scoring=replace(contract.scoring, n_predict=2),
-        ).sha256
-        != contract.sha256
-    )
-
-
-def test_bge_gemma_contract_builds_decoder_rerank_prompt():
-    spec = require_model("bge-reranker-v2-gemma:f16")
-    contract = spec.rerank_contract
-
-    assert isinstance(contract, RerankContract)
-    assert contract.protocol == "completion_logprobs"
-    assert contract.scoring is not None
-    assert contract.scoring.positive_token == "Yes"
-    assert contract.scoring.negative_token == "No"
-    assert contract.build_prompt("thuốc gì", "tài liệu") == (
-        "<bos>A: thuốc gì\n"
-        "B: tài liệu\n"
-        "Given a query A and a passage B, determine whether the passage contains "
-        "an answer to the query by providing a prediction of either 'Yes' or 'No'."
-    )
+def test_rerank_contract_rejects_other_protocols():
+    with pytest.raises(ValueError, match="unsupported rerank protocol"):
+        RerankContract(protocol="completion_logprobs")
 
 
 def test_runtime_changes_do_not_change_rerank_contract_hash():
@@ -124,26 +81,3 @@ def test_reranker_exposes_runtime_search_space():
 def test_rerank_runtime_rejects_invalid_concurrency(factory):
     with pytest.raises(ValueError):
         factory()
-
-
-def test_native_contract_rejects_completion_settings():
-    scoring = CompletionScoring(
-        positive_token="yes",
-        negative_token="no",
-        n_predict=1,
-        temperature=1.0,
-        samplers=("temperature",),
-        n_probs=2,
-        min_keep=2,
-        post_sampling_probs=True,
-        logit_bias=100.0,
-    )
-
-    with pytest.raises(ValueError, match="native_rerank"):
-        RerankContract(
-            protocol="native_rerank",
-            template_id=None,
-            template_version=None,
-            instruction="",
-            scoring=scoring,
-        )

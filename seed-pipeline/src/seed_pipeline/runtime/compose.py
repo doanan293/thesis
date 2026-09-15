@@ -87,10 +87,6 @@ class LlamaCppComposeManager:
         environment["GGUF_DIR"] = str(Path(gguf_root).resolve())
         environment[f"{prefix}_MODEL"] = spec.canonical_filename
         environment[f"{prefix}_PARALLEL"] = str(spec.local_parallel)
-        if role == "reranker":
-            # llama-server serves /v1/rerank only with LLAMA_ARG_RERANKING (--reranking).
-            native = spec.reranker_protocol == "native_rerank"
-            environment["LLAMA_RERANKER_RERANKING"] = "true" if native else "false"
         command = [
             "docker",
             "compose",

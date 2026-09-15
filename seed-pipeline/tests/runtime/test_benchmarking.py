@@ -1,7 +1,6 @@
 from seed_pipeline.runtime.benchmarking import (
     BenchmarkLevel,
     BenchmarkMeasurement,
-    compare_cache_arms,
     embedding_levels,
     recommend,
     stratified_sample,
@@ -40,30 +39,3 @@ def test_recommendation_uses_two_percent_lower_cost_tie_break():
         ]
     )
     assert result == BenchmarkLevel(concurrency=4)
-
-
-def test_recommendation_excludes_disabled_cache_control_arm():
-    result = recommend(
-        [
-            BenchmarkMeasurement(
-                BenchmarkLevel(concurrency=1), 1, 100, 1.0, cache_prompt=False
-            ),
-            BenchmarkMeasurement(
-                BenchmarkLevel(concurrency=2), 1, 90, 1.0, cache_prompt=True
-            ),
-        ]
-    )
-    assert result == BenchmarkLevel(concurrency=2)
-
-
-def test_cache_comparison_applies_score_and_performance_gates():
-    enabled = BenchmarkMeasurement(
-        BenchmarkLevel(), 10, 100, 1.0, latency_p95_seconds=1.0
-    )
-    disabled = BenchmarkMeasurement(
-        BenchmarkLevel(), 10, 100, 1.0, latency_p95_seconds=1.0
-    )
-    comparison = compare_cache_arms(
-        enabled, disabled, max_abs_score_delta=1e-5, top10_agreement=1.0
-    )
-    assert comparison.accepted is True

@@ -24,16 +24,9 @@ class HealthyClient:
         return None
 
 
-@pytest.mark.parametrize(
-    ("model", "reranking"),
-    [
-        ("bge-reranker-v2-m3:f16", "true"),
-        ("qwen3-reranker:4b-fp16", "true"),
-        ("bge-reranker-v2-gemma:f16", "false"),
-    ],
-)
-def test_reranker_service_serves_rerank_endpoint_only_for_native_protocol(
-    tmp_path: Path, model: str, reranking: str
+@pytest.mark.parametrize("model", ["bge-reranker-v2-m3:f16", "qwen3-reranker:4b-fp16"])
+def test_reranker_service_leaves_reranking_to_compose(
+    tmp_path: Path, model: str
 ) -> None:
     artifact = tmp_path / "reranker.gguf"
     artifact.write_bytes(b"gguf")
@@ -57,5 +50,5 @@ def test_reranker_service_serves_rerank_endpoint_only_for_native_protocol(
     assert command[-1] == "llama-reranker"
     assert environment is not None
     assert environment["LLAMA_RERANKER_MODEL"] == "reranker.gguf"
-    assert environment["LLAMA_RERANKER_RERANKING"] == reranking
+    assert "LLAMA_RERANKER_RERANKING" not in environment
     assert endpoint == "http://127.0.0.1:11435"

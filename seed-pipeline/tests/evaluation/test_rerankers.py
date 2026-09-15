@@ -6,28 +6,31 @@ from seed_pipeline.runtime.catalog import require_model
 from seed_pipeline.runtime.client import LlamaCppClient
 
 
-def test_local_completion_reranker_executes_catalog_contract():
-    spec = require_model("bge-reranker-v2-gemma:f16")
-    client = create_autospec(LlamaCppClient, instance=True)
-    client.rerank_completions_async.return_value = [0.8]
-    reranker = LlamaCppReranker(spec, client)
-    candidate = RetrievalCandidate(
-        chunk_id="chunk-1",
+def _candidate(chunk_id: str, text: str, rank: int) -> RetrievalCandidate:
+    return RetrievalCandidate(
+        chunk_id=chunk_id,
         score=0.5,
-        rank=1,
+        rank=rank,
         source="test",
-        payload={"chunk_text": "tài liệu"},
+        payload={"chunk_text": text},
     )
 
-    result = reranker.rerank("thuốc gì", [candidate])
 
-    call = client.rerank_completions_async.call_args
-    prompts = call.args[0] if call.args else call.kwargs["prompts"]
-    assert prompts == [
-        "<bos>A: thuốc gì\n"
-        "B: tài liệu\n"
-        "Given a query A and a passage B, determine whether the passage contains "
-        "an answer to the query by providing a prediction of either 'Yes' or 'No'."
+def test_local_reranker_scores_every_candidate_in_one_native_request():
+    spec = require_model("qwen3-reranker:4b-fp16")
+    client = create_autospec(LlamaCppClient, instance=True)
+    client.rerank_native.return_value = [0.2, 0.9]
+    reranker = LlamaCppReranker(spec, client)
+
+    result = reranker.rerank(
+        "thuốc gì",
+        [_candidate("a", "tài liệu a", 1), _candidate("b", "tài liệu b", 2)],
+    )
+
+    client.rerank_native.assert_called_once_with(
+        "thuốc gì", ["tài liệu a", "tài liệu b"], spec.name
+    )
+    assert [(item.chunk_id, item.rerank_score, item.rank) for item in result] == [
+        ("b", 0.9, 1),
+        ("a", 0.2, 2),
     ]
-    assert call.kwargs["contract"] is spec.rerank_contract
-    assert result[0].rerank_score == 0.8

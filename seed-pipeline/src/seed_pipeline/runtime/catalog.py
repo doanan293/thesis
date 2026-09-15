@@ -4,13 +4,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from seed_pipeline.runtime.model_profiles import (
+    NATIVE_RERANK_PROTOCOL,
     EmbeddingRuntimeProfile,
     EmbeddingWorkloadProfile,
     RerankContract,
     RerankRuntimeProfile,
-    bge_gemma_rerank_contract,
     native_rerank_contract,
-    qwen3_rerank_contract,
 )
 from seed_pipeline.runtime.runtime_profiles import (
     EmbeddingRuntimeSearchSpaces,
@@ -139,22 +138,12 @@ def _reranker(
     size: int,
     sha256: str,
     topology: ModelTopology,
-    protocol: str,
     parallel: int = 1,
     batch: int = 1,
     context_per_slot: int = 4096,
     logical_batch_size: int = 4096,
     physical_batch_size: int = 2048,
-    contract: RerankContract | None = None,
 ) -> ModelSpec:
-    if contract is None:
-        contract = (
-            qwen3_rerank_contract()
-            if protocol == "completion_logprobs"
-            else native_rerank_contract()
-        )
-    if contract.protocol != protocol:
-        raise ValueError("reranker protocol must match its request contract")
     runtime = RerankRuntimeProfile(
         server_slots_per_gpu=parallel,
         concurrency_per_gpu=parallel,
@@ -192,8 +181,8 @@ def _reranker(
         kaggle_context_per_slot=context_per_slot,
         kaggle_logical_batch_size=logical_batch_size,
         kaggle_physical_batch_size=physical_batch_size,
-        reranker_protocol=protocol,
-        rerank_contract=contract,
+        reranker_protocol=NATIVE_RERANK_PROTOCOL,
+        rerank_contract=native_rerank_contract(),
         rerank_runtime=runtime,
         rerank_search_space=search_space,
     )
@@ -260,7 +249,6 @@ RERANKER_MODELS = {
         1_197_634_304,
         "fa726a72c1afafe42ae6ca6059c9a78a43f18db7389a8fa04f88bb7f37d0a8aa",
         ModelTopology.REPLICATED_2X1,
-        "native_rerank",
         parallel=4,
         batch=16,
     ),
@@ -270,7 +258,6 @@ RERANKER_MODELS = {
         8_049_922_912,
         "c4de2e3e4179d5bca95a2e960e07d225a565018e3bbb5e073f1777809091f117",
         ModelTopology.REPLICATED_2X1,
-        "native_rerank",
         parallel=2,
         batch=8,
     ),
@@ -280,7 +267,6 @@ RERANKER_MODELS = {
         15_141_207_744,
         "a53322f7936010458424a12f0f6d22291547e42fa85c16dd4730244d659cea96",
         ModelTopology.SHARDED_1X2,
-        "native_rerank",
         parallel=2,
         batch=4,
     ),
@@ -290,20 +276,8 @@ RERANKER_MODELS = {
         1_159_774_912,
         "3c2de408d2c0a85a9472dc09f9d5a22c9b73743c6343952c15053299c777c298",
         ModelTopology.REPLICATED_2X1,
-        "native_rerank",
         parallel=2,
         batch=16,
-    ),
-    "bge-reranker-v2-gemma:f16": _reranker(
-        "bge-reranker-v2-gemma:f16",
-        "bge-reranker-v2-gemma-f16.gguf",
-        5_018_535_968,
-        "640562faf67b49777bd06869a9a915906067a330ffe382825844f226bbf1939c",
-        ModelTopology.REPLICATED_2X1,
-        "completion_logprobs",
-        parallel=2,
-        batch=8,
-        contract=bge_gemma_rerank_contract(),
     ),
 }
 

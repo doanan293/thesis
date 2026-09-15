@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -16,123 +15,37 @@ def _canonical_sha256(payload: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-QWEN3_SYSTEM_PROMPT = (
-    "Judge whether the Document meets the requirements based on the Query and the Instruct provided. "
-    'Note that the answer can only be "yes" or "no".'
-)
-DEFAULT_RERANK_INSTRUCTION = (
-    "Given a Vietnamese medical retrieval query, retrieve relevant passages "
-    "that answer the query"
-)
-BGE_GEMMA_RERANK_PROMPT = (
-    "Given a query A and a passage B, determine whether the passage contains "
-    "an answer to the query by providing a prediction of either 'Yes' or 'No'."
-)
-
-
-def build_qwen3_yes_no_prompt(
-    query: str,
-    document: str,
-    instruction: str = DEFAULT_RERANK_INSTRUCTION,
-) -> str:
-    return (
-        f"<|im_start|>system\n{QWEN3_SYSTEM_PROMPT}<|im_end|>\n"
-        "<|im_start|>user\n"
-        f"<Instruct>: {instruction}\n"
-        f"<Query>: {query}\n"
-        f"<Document>: {document}<|im_end|>\n"
-        "<|im_start|>assistant\n<think>\n\n</think>\n\n"
-    )
-
-
-def build_bge_gemma_yes_no_prompt(query: str, document: str, instruction: str) -> str:
-    return f"<bos>A: {query}\nB: {document}\n{instruction}"
-
-
-@dataclass(frozen=True)
-class CompletionScoring:
-    positive_token: str
-    negative_token: str
-    n_predict: int
-    temperature: float
-    samplers: tuple[str, ...]
-    n_probs: int
-    min_keep: int
-    post_sampling_probs: bool
-    logit_bias: float
-
-    def __post_init__(self) -> None:
-        if not self.positive_token or not self.negative_token:
-            raise ValueError("completion candidate tokens must not be empty")
-        if self.positive_token == self.negative_token:
-            raise ValueError("completion candidate tokens must differ")
-        if self.n_predict < 1 or self.n_probs < 1 or self.min_keep < 1:
-            raise ValueError("completion scoring counts must be positive")
-        if self.temperature < 0:
-            raise ValueError("completion temperature must be non-negative")
-
-    def canonical_payload(self) -> dict[str, object]:
-        return {
-            "positive_token": self.positive_token,
-            "negative_token": self.negative_token,
-            "n_predict": self.n_predict,
-            "temperature": self.temperature,
-            "samplers": list(self.samplers),
-            "n_probs": self.n_probs,
-            "min_keep": self.min_keep,
-            "post_sampling_probs": self.post_sampling_probs,
-            "logit_bias": self.logit_bias,
-        }
-
-
-PromptBuilder = Callable[[str, str, str], str]
+NATIVE_RERANK_PROTOCOL = "native_rerank"
 
 
 @dataclass(frozen=True)
 class RerankContract:
-    protocol: str
-    template_id: str | None
-    template_version: str | None
-    instruction: str
-    scoring: CompletionScoring | None = None
+    """How a reranker is called: POST /v1/rerank with the template inside the GGUF.
+
+    The model sha256 already covers that template, so the contract names only the
+    protocol.
+    """
+
+    protocol: str = NATIVE_RERANK_PROTOCOL
 
     def __post_init__(self) -> None:
-        if self.protocol == "completion_logprobs":
-            if not self.template_id or not self.template_version:
-                raise ValueError(
-                    "completion_logprobs requires a prompt template and version"
-                )
-            if self.scoring is None:
-                raise ValueError("completion_logprobs requires completion scoring")
-        elif self.protocol == "native_rerank":
-            if self.template_id or self.template_version or self.instruction:
-                raise ValueError("native_rerank must not declare a prompt")
-            if self.scoring is not None:
-                raise ValueError("native_rerank must not declare completion scoring")
-        else:
+        if self.protocol != NATIVE_RERANK_PROTOCOL:
             raise ValueError(f"unsupported rerank protocol: {self.protocol}")
 
     def canonical_payload(self) -> dict[str, object]:
+        # Score caches and rerank variant identities hash this payload, so it keeps the
+        # shape it had when contracts also described completion prompts.
         return {
             "protocol": self.protocol,
-            "template_id": self.template_id,
-            "template_version": self.template_version,
-            "instruction": self.instruction,
-            "scoring": (
-                self.scoring.canonical_payload() if self.scoring is not None else None
-            ),
+            "template_id": None,
+            "template_version": None,
+            "instruction": "",
+            "scoring": None,
         }
 
     @property
     def sha256(self) -> str:
         return _canonical_sha256(self.canonical_payload())
-
-    def build_prompt(self, query: str, document: str) -> str:
-        if self.template_id == "qwen3_yes_no_v1":
-            return build_qwen3_yes_no_prompt(query, document, self.instruction)
-        if self.template_id == "bge_gemma_yes_no_v1":
-            return build_bge_gemma_yes_no_prompt(query, document, self.instruction)
-        raise ValueError(f"unsupported prompt template: {self.template_id}")
 
 
 @dataclass(frozen=True)
@@ -200,50 +113,5 @@ class EmbeddingRuntimeProfile:
             raise ValueError("embedding runtime values must be positive")
 
 
-def qwen3_rerank_contract() -> RerankContract:
-    return RerankContract(
-        protocol="completion_logprobs",
-        template_id="qwen3_yes_no_v1",
-        template_version="1",
-        instruction=DEFAULT_RERANK_INSTRUCTION,
-        scoring=CompletionScoring(
-            positive_token="yes",
-            negative_token="no",
-            n_predict=1,
-            temperature=1.0,
-            samplers=("temperature",),
-            n_probs=2,
-            min_keep=2,
-            post_sampling_probs=True,
-            logit_bias=100.0,
-        ),
-    )
-
-
-def bge_gemma_rerank_contract() -> RerankContract:
-    return RerankContract(
-        protocol="completion_logprobs",
-        template_id="bge_gemma_yes_no_v1",
-        template_version="1",
-        instruction=BGE_GEMMA_RERANK_PROMPT,
-        scoring=CompletionScoring(
-            positive_token="Yes",
-            negative_token="No",
-            n_predict=1,
-            temperature=1.0,
-            samplers=("temperature",),
-            n_probs=2,
-            min_keep=2,
-            post_sampling_probs=True,
-            logit_bias=100.0,
-        ),
-    )
-
-
 def native_rerank_contract() -> RerankContract:
-    return RerankContract(
-        protocol="native_rerank",
-        template_id=None,
-        template_version=None,
-        instruction="",
-    )
+    return RerankContract()

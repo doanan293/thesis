@@ -61,11 +61,6 @@ def _load_benchmark_selection(
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"invalid benchmark artifact: {data_path}") from exc
     recommendation = (manifest.get("runtime") or {}).get("recommendation")
-    comparison = (manifest.get("runtime") or {}).get("cache_comparison")
-    if comparison is not None and (
-        not isinstance(comparison, dict) or comparison.get("accepted") is not True
-    ):
-        raise RuntimeError("benchmark cache comparison did not pass acceptance gates")
     if not isinstance(recommendation, dict):
         raise RuntimeError("benchmark has no runtime recommendation")
     try:

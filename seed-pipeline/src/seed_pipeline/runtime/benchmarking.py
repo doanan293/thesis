@@ -37,7 +37,6 @@ class BenchmarkMeasurement:
     status: str = "ok"
     error_category: str | None = None
     warmup: bool = False
-    cache_prompt: bool | None = None
     latency_p95_seconds: float | None = None
 
     def __post_init__(self) -> None:
@@ -89,46 +88,6 @@ class BenchmarkReport:
         )
 
 
-@dataclass(frozen=True)
-class CacheComparison:
-    enabled_rate: float
-    disabled_rate: float
-    enabled_latency_p95_seconds: float | None
-    disabled_latency_p95_seconds: float | None
-    max_abs_score_delta: float
-    top10_agreement: float
-    accepted: bool
-
-
-def compare_cache_arms(
-    enabled: BenchmarkMeasurement,
-    disabled: BenchmarkMeasurement,
-    *,
-    max_abs_score_delta: float,
-    top10_agreement: float,
-) -> CacheComparison:
-    performance_ok = (
-        enabled.characters_per_second >= disabled.characters_per_second * 0.97
-        or (
-            enabled.latency_p95_seconds is not None
-            and disabled.latency_p95_seconds is not None
-            and enabled.latency_p95_seconds <= disabled.latency_p95_seconds * 1.03
-        )
-    )
-    accepted = (
-        performance_ok and max_abs_score_delta <= 1e-4 and top10_agreement >= 0.99
-    )
-    return CacheComparison(
-        enabled.characters_per_second,
-        disabled.characters_per_second,
-        enabled.latency_p95_seconds,
-        disabled.latency_p95_seconds,
-        max_abs_score_delta,
-        top10_agreement,
-        accepted,
-    )
-
-
 def stratified_sample(items, count: int, key, length) -> tuple:
     if count < 1:
         raise ValueError("sample count must be positive")
@@ -178,7 +137,6 @@ def recommend(
         for item in measurements
         if item.status == "ok"
         and not item.warmup
-        and item.cache_prompt is not False
         and math.isfinite(item.characters_per_second)
     ]
     if not valid:

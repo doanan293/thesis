@@ -173,7 +173,7 @@ def test_inference_cache_policy_change_invalidates_cached_profile(
     monkeypatch.setattr(
         auto_profile,
         "inference_cache_policy",
-        lambda _spec: InferenceCachePolicy(8192, True, True, 0.1, "query-adjacent-v1"),
+        lambda _spec: InferenceCachePolicy(8192, True, "query-adjacent-v1"),
     )
     ensure_runtime_profile(
         **common,

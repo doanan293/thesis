@@ -8,16 +8,10 @@ from seed_pipeline.evaluation.rerank_score_cache import RerankScoreCache
 from seed_pipeline.evaluation.retrieval_types import RetrievalCandidate
 from seed_pipeline.runtime.catalog import ModelSpec
 from seed_pipeline.runtime.client import LlamaCppClient
-from seed_pipeline.runtime.model_profiles import (
-    DEFAULT_RERANK_INSTRUCTION,
-    QWEN3_SYSTEM_PROMPT,
-    build_qwen3_yes_no_prompt,
-)
 
 DEFAULT_RERANK_MAX_RETRIES = 3
 DEFAULT_RERANK_RETRY_SLEEP_SECONDS = 5.0
 RERANK_TRANSIENT_HTTP_STATUS_CODES = {408, 429, 500, 502, 503, 504}
-QWEN_RERANK_SYSTEM_PROMPT = QWEN3_SYSTEM_PROMPT
 
 
 class Reranker(Protocol):
@@ -49,14 +43,6 @@ class CachedReranker:
         ]
 
 
-def build_qwen_rerank_prompt(
-    query: str,
-    document: str,
-    instruction: str = DEFAULT_RERANK_INSTRUCTION,
-) -> str:
-    return build_qwen3_yes_no_prompt(query, document, instruction)
-
-
 def _exception_chain(exc: BaseException):
     seen = set()
     current = exc
@@ -83,6 +69,8 @@ def _is_transient(exc: BaseException) -> bool:
 
 
 class LlamaCppReranker:
+    """Scores every candidate of a query in one llama.cpp /v1/rerank request."""
+
     def __init__(
         self,
         spec: ModelSpec,
@@ -114,42 +102,13 @@ class LlamaCppReranker:
             candidate.document_text or candidate_document_text(candidate.payload)
             for candidate in candidates
         ]
-        if self.spec.reranker_protocol == "native_rerank":
-            scores = self._call(
-                lambda: self.client.rerank_native(query, documents, self.spec.name)
-            )
-        elif self.spec.reranker_protocol == "completion_logprobs":
-            contract = self.spec.rerank_contract
-            if contract is None:
-                raise ValueError(f"Reranker {self.spec.name} has no scoring contract")
-            prompts = [contract.build_prompt(query, document) for document in documents]
-            if hasattr(self.client, "rerank_completions_async"):
-                import asyncio
-
-                scores = self._call(
-                    lambda: asyncio.run(
-                        self.client.rerank_completions_async(
-                            prompts, self.spec.name, contract=contract
-                        )
-                    )
-                )
-            else:
-                scores = [
-                    self._call(
-                        lambda prompt=prompt: self.client.rerank_completion(
-                            prompt, self.spec.name, contract=contract
-                        )
-                    )
-                    for prompt in prompts
-                ]
-        else:
-            raise ValueError(
-                f"Unsupported reranker protocol for {self.spec.name}: {self.spec.reranker_protocol}"
-            )
+        scores = self._call(
+            lambda: self.client.rerank_native(query, documents, self.spec.name)
+        )
         scored = [
             (score, original_index, candidate)
             for original_index, (score, candidate) in enumerate(
-                zip(scores, candidates, strict=False)
+                zip(scores, candidates, strict=True)
             )
         ]
         scored.sort(key=lambda item: (-item[0], item[1]))

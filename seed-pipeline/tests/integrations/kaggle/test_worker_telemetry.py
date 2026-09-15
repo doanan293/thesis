@@ -64,7 +64,7 @@ def test_telemetry_report_aggregates_operations_and_gpu_samples(tmp_path: Path):
         ),
         process_sampler=FakeProcessSampler(),
     )
-    telemetry.record_operation(0, 1, 321, 1.2, "success", 0, 120, 30)
+    telemetry.record_operation(0, 1, 321, 1.2, "success", 0)
     telemetry.record_operation(0, 1, 500, 2.0, "retry_success", 1)
 
     path = telemetry.write_report()
@@ -74,9 +74,7 @@ def test_telemetry_report_aggregates_operations_and_gpu_samples(tmp_path: Path):
     assert report["operations"]["count"] == 2
     assert report["operations"]["retries"] == 1
     assert report["operations"]["latency_p95_seconds"] == pytest.approx(1.96)
-    assert report["operations"]["prompt_tokens_cached"] == 120
-    assert report["operations"]["prompt_tokens_evaluated"] == 30
-    assert report["operations"]["prompt_cache_hit_ratio"] == pytest.approx(0.8)
+    assert "prompt_cache_hit_ratio" not in report["operations"]
     assert report["gpu"]["0"]["utilization_gpu_mean"] == pytest.approx(85.0)
     assert report["servers"]["0"]["rss_mib_start"] == pytest.approx(100.0)
     assert report["servers"]["0"]["rss_mib_peak"] == pytest.approx(112.0)
@@ -107,11 +105,3 @@ def test_process_rss_parser_converts_kib_to_mib():
     assert parse_process_rss_mib(
         "Name:\tllama-server\nVmRSS:\t2048 kB\n"
     ) == pytest.approx(2.0)
-
-
-def test_embedding_summary_has_no_prompt_cache_ratio(tmp_path: Path):
-    telemetry = RuntimeTelemetry(
-        "query_embed", "qwen3-embedding:4b-fp16", tmp_path, sampler=FakeSampler()
-    )
-
-    assert telemetry.summary()["operations"]["prompt_cache_hit_ratio"] is None

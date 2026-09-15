@@ -30,8 +30,6 @@ class OperationSample:
     latency_seconds: float
     status: str
     retries: int
-    prompt_tokens_cached: int | None = None
-    prompt_tokens_evaluated: int | None = None
 
 
 @dataclass(frozen=True)
@@ -261,14 +259,9 @@ class RuntimeTelemetry:
         latency_seconds: float,
         status: str,
         retries: int,
-        prompt_tokens_cached: int | None = None,
-        prompt_tokens_evaluated: int | None = None,
     ) -> None:
         if item_count < 0 or input_characters < 0 or latency_seconds < 0 or retries < 0:
             raise ValueError("telemetry operation values must be non-negative")
-        for value in (prompt_tokens_cached, prompt_tokens_evaluated):
-            if value is not None and (isinstance(value, bool) or value < 0):
-                raise ValueError("prompt timing values must be non-negative integers")
         self.operations.append(
             OperationSample(
                 server_index,
@@ -277,8 +270,6 @@ class RuntimeTelemetry:
                 float(latency_seconds),
                 status,
                 retries,
-                prompt_tokens_cached,
-                prompt_tokens_evaluated,
             )
         )
 
@@ -312,23 +303,6 @@ class RuntimeTelemetry:
         statuses: dict[str, int] = defaultdict(int)
         for operation in self.operations:
             statuses[operation.status] += 1
-        cached_values = [
-            item.prompt_tokens_cached
-            for item in self.operations
-            if item.prompt_tokens_cached is not None
-        ]
-        evaluated_values = [
-            item.prompt_tokens_evaluated
-            for item in self.operations
-            if item.prompt_tokens_evaluated is not None
-        ]
-        cached_total = sum(cached_values) if cached_values else None
-        evaluated_total = sum(evaluated_values) if evaluated_values else None
-        timing_total = (
-            cached_total + evaluated_total
-            if cached_total is not None and evaluated_total is not None
-            else None
-        )
         rss_by_server: dict[int, list[ProcessRssSample]] = defaultdict(list)
         for sample in self.process_rss_samples:
             rss_by_server[sample.server_index].append(sample)
@@ -347,13 +321,6 @@ class RuntimeTelemetry:
                 "retries": sum(item.retries for item in self.operations),
                 "latency_p50_seconds": _percentile(latency, 0.50),
                 "latency_p95_seconds": _percentile(latency, 0.95),
-                "prompt_tokens_cached": cached_total,
-                "prompt_tokens_evaluated": evaluated_total,
-                "prompt_cache_hit_ratio": (
-                    cached_total / timing_total
-                    if cached_total is not None and timing_total
-                    else None
-                ),
                 "statuses": dict(sorted(statuses.items())),
             },
             "gpu": gpu,

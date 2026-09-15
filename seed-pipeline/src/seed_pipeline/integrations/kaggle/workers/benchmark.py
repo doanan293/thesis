@@ -182,7 +182,6 @@ def _measure_level(
     sample_count: int,
     output_dir: Path,
     clock,
-    cache_prompt: bool | None = None,
 ) -> BenchmarkMeasurement:
     spec = require_model(str(config["model"]))
     candidates = [dict(item) for item in config.get("benchmark_candidates", ())]
@@ -212,43 +211,23 @@ def _measure_level(
             ]
             recording = False
             if "rerank" in str(config.get("stage", "")):
-                contract = spec.rerank_contract
-                if contract is None:
-                    raise ValueError("reranker has no request contract")
-                if contract.protocol == "native_rerank":
-                    items = samples
-                else:
-                    items = [
-                        contract.build_prompt(query, document)
-                        for query, document in samples
-                    ]
+                items = samples
 
                 async def operation(resource, _index, item):
                     server_index, client = resource
                     started = time.monotonic()
-                    if contract.protocol == "native_rerank":
-                        query, document = item
-                        await asyncio.to_thread(
-                            client.rerank_native,
-                            query,
-                            [document],
-                            str(config["model"]),
-                        )
-                        input_size = len(query) + len(document)
-                    else:
-                        await client.rerank_completions_async(
-                            [item],
-                            str(config["model"]),
-                            concurrency=1,
-                            contract=contract,
-                            cache_prompt=True if cache_prompt is None else cache_prompt,
-                        )
-                        input_size = len(item)
+                    query, document = item
+                    await asyncio.to_thread(
+                        client.rerank_native,
+                        query,
+                        [document],
+                        str(config["model"]),
+                    )
                     if recording:
                         telemetry.record_operation(
                             server_index,
                             1,
-                            input_size,
+                            len(query) + len(document),
                             time.monotonic() - started,
                             "ok",
                             0,
@@ -300,7 +279,6 @@ def _measure_level(
                 input_characters,
                 max(clock() - started_total, 0.0),
                 status="ok",
-                cache_prompt=cache_prompt,
                 latency_p95_seconds=summary["operations"].get("latency_p95_seconds"),
             )
     finally:
