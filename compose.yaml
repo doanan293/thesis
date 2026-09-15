@@ -84,8 +84,8 @@ services:
     environment:
       <<: *llama-env
       LLAMA_ARG_MODEL: "/models/${LLAMA_RERANKER_MODEL:-qwen3-reranker-4b-f16.gguf}"
-      # true serves /v1/rerank (native_rerank, classifier GGUF); set false only for completion_logprobs.
-      LLAMA_ARG_RERANKING: "${LLAMA_RERANKER_RERANKING:-true}"
+      # /v1/rerank needs a classifier GGUF (tensor cls.output.weight).
+      LLAMA_ARG_RERANKING: "true"
       # One slot keeps the shared system/instruction/query prefix cached between candidates.
       LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-1}"
       LLAMA_ARG_KV_UNIFIED_PER_SLOT: "${LLAMA_RERANKER_CONTEXT_PER_SLOT:-4096}"

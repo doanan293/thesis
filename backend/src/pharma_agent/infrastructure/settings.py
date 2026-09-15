@@ -97,7 +97,7 @@ class EmbeddingSettings(BaseModel):
 
 
 class RerankSettings(BaseModel):
-    protocol: Literal["completion_logprobs", "native_rerank", "none"] = "native_rerank"
+    protocol: Literal["native_rerank", "none"] = "native_rerank"
     base_url: str = "http://localhost:11435"
     api_key: str | None = None
     model: str = "qwen3-reranker:4b-fp16"

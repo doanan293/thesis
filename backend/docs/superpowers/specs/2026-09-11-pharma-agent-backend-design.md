@@ -85,7 +85,7 @@ backend/
     infrastructure/
       llm/openai/            # OpenAiLlmAdapter (chat.completions.parse, stream), bọc langfuse.openai
       retrieval/qdrant/      # QdrantHybridRetriever, QdrantHydrator, embedder qua OpenAI SDK
-      retrieval/llama_cpp/   # LlamaCppCompletionReranker, NativeRerankClient
+      retrieval/llama_cpp/   # NativeReranker, NoopReranker
       persistence/postgres/  # SQLAlchemy models, repositories, UnitOfWork
       langgraph/             # AsyncPostgresSaver setup, cleanup checkpoint
       auth/                  # fastapi-users: User model, UserManager, JWT, Google OAuth
@@ -320,7 +320,7 @@ dưới 0,01 USD mỗi lượt với giá hiện tại của `gpt-5-nano` và `g
 | `retrieval.embedding.base_url` | llama.cpp embedding server (`/v1/embeddings`, gọi bằng OpenAI SDK, không prefix) |
 | `retrieval.mode` | `hybrid` (`dense` cũng hỗ trợ) |
 | `retrieval.prefetch_k` / `rrf_k` / `candidate_k` | 50 / 2 / 30 |
-| `retrieval.rerank.protocol` | `native_rerank` (`completion_logprobs`, `none` cũng hỗ trợ) |
+| `retrieval.rerank.protocol` | `native_rerank` (`none` tắt rerank) |
 | `retrieval.rerank.model` | `qwen3-reranker:4b-fp16` |
 | `retrieval.rerank.top_n` | 8 |
 | `retrieval.rerank.max_candidates` | 40 ứng viên được chấm mỗi vòng search |
@@ -346,16 +346,10 @@ size khác `dimension` cấu hình. Tên vector: dense `dense_vector` theo
    được chấm đủ như lúc đánh giá. Chunk đã có điểm rerank ở vòng trước của cùng lượt
    (cùng `standalone_query`) dùng lại điểm đó, không gửi lại cho reranker.
 4. Rerank theo `standalone_query` trên `embedding_text`, protocol:
-   - `completion_logprobs`: prompt `qwen3_yes_no_v1` (system "Judge whether the
-     Document meets the requirements...", `<Instruct>` = "Given a Vietnamese medical
-     retrieval query, retrieve relevant passages that answer the query", `<Query>`,
-     `<Document>`, assistant `<think>\n\n</think>\n\n`), gọi llama.cpp `/completion`
-     với `n_predict=1, n_probs=2, temperature=1.0, samplers=["temperature"],
-     post_sampling_probs=true, logit_bias +100 cho token "yes"/"no"`, điểm =
-     p(yes) / (p(yes) + p(no)). Template và scoring copy nguyên từ
-     `corpus_pipeline.runtime.model_profiles`, có test so sánh chuỗi prompt để không
-     lệch nhau.
-   - `native_rerank`: POST `/v1/rerank` `{model, query, documents}` → `results[].relevance_score`.
+   - `native_rerank`: POST `/v1/rerank` `{model, query, documents, top_n}` →
+     `results[].relevance_score`, một request chứa mọi ứng viên của vòng search. Template
+     `rerank` nằm trong file GGUF bản convert classifier (có `cls.output.weight`), nên backend
+     và seed-pipeline chấm cùng một phép tính mà không chép prompt.
    - `none`: giữ thứ tự RRF, `rerank_score = None`.
 5. Giữ `top_n`, hydrate theo `hydrate_strategy` (scroll filter `section_id`, sort
    `chunk_index`), pack theo `max_evidence_chars`.
@@ -512,8 +506,7 @@ JSON (structlog hoặc logging chuẩn với formatter JSON) có `run_id`,
   budget, abstain khi search lỗi, timeout, persist lỗi.
 - `tests/infrastructure`: Qdrant adapter và Postgres repository trên container thật
   qua testcontainers (mark `integration`, skip nếu không có Docker); OpenAI adapter
-  và llama.cpp reranker qua `respx`; test prompt reranker bằng chuỗi kỳ vọng copy từ
-  pipeline.
+  và llama.cpp reranker (`/v1/rerank`) qua `respx`.
 - `tests/api`: `TestClient`, app.state giả, kiểm tra SSE frame theo thứ tự, mã lỗi
   401/404/413/503.
 - Lệnh: `uv run ruff check`, `uv run ruff format --check`, `uv run pyrefly check`,
@@ -533,10 +526,11 @@ production, frontend, ingest corpus (thuộc corpus-pipeline).
    function calling 2 tool (`search`, `finish`) nếu sau này dùng model mạnh hơn.
 3. Lần retrieve đầu tự động, hydrate tự động: giảm quyết định cho model yếu.
 4. Chat Completions thay vì Responses API: tương thích self-host.
-5. Reranker mặc định qwen3-4b vì eval tốt nhất, chấp nhận chậm hơn trên CPU. Gọi qua
-   `native_rerank` (`/v1/rerank`, GGUF convert classifier) vì llama.cpp, vLLM, TEI và các
-   nhà host đều có endpoint rerank; `completion_logprobs` chỉ để dự phòng cho GGUF không có
-   classifier head.
+5. Reranker mặc định qwen3-4b vì eval tốt nhất, chấp nhận chậm hơn trên CPU. Chỉ gọi qua
+   `native_rerank` (`/v1/rerank`, GGUF convert classifier): llama.cpp, vLLM, TEI và các nhà
+   host đều có endpoint rerank, và phép softmax trên logit "yes"/"no" qua `cls.output.weight`
+   đúng với model card. `completion_logprobs` đã bỏ: nó chấm sai bản 8b (llama.cpp lấy nhầm
+   `token_embd.weight` làm lớp đầu ra) và buộc chép prompt giữa hai project.
 6. fastapi-users thay vì better-auth-server (mới 1 tuần tuổi) hay Authlib tự viết.
 7. Langfuse thay vì tracing tự viết.
 8. Không disclaimer y tế trong mọi prompt và template.

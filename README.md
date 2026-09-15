@@ -48,10 +48,9 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   tên máy khác (ví dụ IP LAN) thì đặt `COOKIE_SECURE=false` trong `.env` ở root.
 - Đổi sang GGUF nhẹ hơn: đặt `LLAMA_EMBEDDING_MODEL` hoặc `LLAMA_RERANKER_MODEL` là tên file trong
   `ai-models/gguf`, rồi `docker compose up -d`. Embedding phải là model đã dùng khi import corpus;
-  `/health` báo `CORPUS_NOT_READY` nếu metadata collection không khớp. Reranker mặc định chạy
-  `native_rerank` (`/v1/rerank`), nên file GGUF phải là bản convert classifier (có tensor
-  `cls.output.weight`); với GGUF thường thì đặt `LLAMA_RERANKER_PROTOCOL=completion_logprobs` và
-  `LLAMA_RERANKER_RERANKING=false`.
+  `/health` báo `CORPUS_NOT_READY` nếu metadata collection không khớp. Reranker chỉ chạy qua
+  `/v1/rerank`, nên file GGUF phải là bản convert classifier (có tensor `cls.output.weight`);
+  đặt `LLAMA_RERANKER_PROTOCOL=none` để bỏ rerank.
 - Dùng OpenAI cloud hoặc server OpenAI-compatible khác thay cho proxy: đặt `LLM_BASE_URL` trong
   `.env` ở root.
 - Lần đầu cần nạp corpus vào container: `docker compose cp seed-pipeline/data/corpus/formulary backend:/tmp/bundle` rồi

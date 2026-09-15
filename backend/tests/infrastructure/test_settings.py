@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from pharma_agent.domain.llm.models import LlmRole
 from pharma_agent.infrastructure.settings import Settings
@@ -35,7 +36,7 @@ def test_role_override_and_nested_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("PHARMA_LLM__ROLES__ANSWER__API_KEY", "local")
     monkeypatch.setenv("PHARMA_LLM__ROLES__ANSWER__MODEL", "qwen3-8b")
-    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "completion_logprobs")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "none")
     monkeypatch.setenv("PHARMA_QDRANT__URL", "http://qdrant:6333")
     monkeypatch.setenv("PHARMA_RETRIEVAL__COLLECTIONS", '["formulary", "leaflets"]')
     monkeypatch.setenv("PHARMA_RETRIEVAL__MODE", "bm25")
@@ -52,7 +53,7 @@ def test_role_override_and_nested_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "sk-cloud",
         "gpt-5-mini",
     )
-    assert settings.retrieval.rerank.protocol == "completion_logprobs"
+    assert settings.retrieval.rerank.protocol == "none"
     assert settings.qdrant.url == "http://qdrant:6333"
     assert settings.retrieval.collections == ["formulary", "leaflets"]
     assert settings.retrieval.mode == "bm25"
@@ -190,4 +191,14 @@ def test_short_csrf_secret_and_tiny_session_are_rejected(
     monkeypatch.delenv("PHARMA_AUTH__CSRF_SECRET")
     monkeypatch.setenv("PHARMA_AUTH__SESSION_LIFETIME_SECONDS", "10")
     with pytest.raises(ValueError, match="session_lifetime_seconds"):
+        Settings(_env_file=None)
+
+
+def test_rerank_protocol_rejects_completion_logprobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_LLM__DEFAULT__API_KEY", "sk-test")
+    monkeypatch.setenv("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "completion_logprobs")
+
+    with pytest.raises(ValidationError, match="protocol"):
         Settings(_env_file=None)

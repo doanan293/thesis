@@ -127,7 +127,7 @@ async def test_rerank_is_a_retriever_observation_inside_the_turn_trace(
         LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
     )
     reranker = LangfuseTracedReranker(
-        FakeReranker(), client, protocol="completion_logprobs", model="qwen3-reranker"
+        FakeReranker(), client, protocol="native_rerank", model="qwen3-reranker"
     )
     runner = ChatTurnRunner(
         build_chat_graph(),
