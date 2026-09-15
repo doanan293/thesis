@@ -1,0 +1,20 @@
+{
+  "candidates_dir": "candidates",
+  "identity": {
+    "candidate_k": 30,
+    "chunker_version": "chunker-v1",
+    "collection_name": "eval_bge_m3_567m_fp16",
+    "embedding_model": "bge-m3:567m-fp16",
+    "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "limit": null,
+    "prefetch_k": null,
+    "query_embeddings_sha256": "80cad8320fdea1919c87a22a553c515ed0f16b9399f2279b2804c3a9b450b1d2",
+    "release_id": "e20902d9-7b4f-4f2c-af2b-3ae7941769b3",
+    "retriever": "dense",
+    "rrf_k": 2
+  },
+  "origin": "backend",
+  "rerank_variants": {},
+  "schema_version": 3
+}

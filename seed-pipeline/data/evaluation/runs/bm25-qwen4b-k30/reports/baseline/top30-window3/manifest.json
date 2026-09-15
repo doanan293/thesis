@@ -1,0 +1,21 @@
+{
+  "artifact_type": "metrics_report",
+  "complete": 10000,
+  "created_at": "2026-09-14T17:23:02.402311+00:00",
+  "data_filename": "metrics.jsonl",
+  "data_sha256": "f5a1a764907f1e7327406387e827132b811e3e34866f26a38cabbbca397d65b3",
+  "identity": {
+    "candidate_data_sha256": "186b770362e7756e82176de1d879ea1b1f9d1089481cceedfcc415f67cbec9c6",
+    "contract_version": 1,
+    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "metrics_sha256": "a5e445aedcf1419f531b76dc2c81da688b13b37605375f116dd4823b79ca54a6",
+    "model": null,
+    "top_k": 30,
+    "variant_sha256": null,
+    "window_size": 3
+  },
+  "missing": 0,
+  "record_count": 10000,
+  "schema_version": 1,
+  "total": 10000
+}

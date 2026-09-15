@@ -1,0 +1,23 @@
+{
+  "artifact_type": "retrieval_candidates",
+  "created_at": "2026-09-14T15:27:10.892743+00:00",
+  "data_filename": "candidates.jsonl",
+  "data_sha256": "af77ac10a61405eca8998999af2a78988526e04c718fc1d2213805db4453a75b",
+  "identity": {
+    "candidate_k": 30,
+    "chunker_version": "chunker-v1",
+    "collection_name": "eval_embeddinggemma_300m",
+    "embedding_model": "embeddinggemma:300m",
+    "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "limit": null,
+    "pair_count": 300000,
+    "prefetch_k": null,
+    "query_embeddings_sha256": "c05b2c79df475493aaf061db1b756a2c23bb8bf05f78d15c1e4af7ac719e6f34",
+    "release_id": "32f2b02d-cfc1-464f-a7c1-5f9342d2c453",
+    "retriever": "dense",
+    "rrf_k": 2
+  },
+  "record_count": 10000,
+  "schema_version": 1
+}

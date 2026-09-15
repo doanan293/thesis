@@ -1,0 +1,20 @@
+{
+  "candidates_dir": "candidates",
+  "identity": {
+    "candidate_k": 30,
+    "chunker_version": null,
+    "collection_name": "thesis_chunks_openai_text_embedding_3_large",
+    "embedding_model": "text-embedding-3-large",
+    "evaluation_path": "evaluation/gold/section_retrieval_eval.jsonl",
+    "evaluation_sha256": "5b0ed3d6d6711c88e2c7752abb864127bb975907d83cafe29c7dba712aabe537",
+    "limit": null,
+    "prefetch_k": null,
+    "query_embeddings_sha256": null,
+    "release_id": null,
+    "retriever": "dense",
+    "rrf_k": 60
+  },
+  "origin": "imported",
+  "rerank_variants": {},
+  "schema_version": 3
+}
