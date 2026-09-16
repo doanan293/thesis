@@ -32,6 +32,7 @@ from pharma_lab.e2e.golden import (
     validate_items,
 )
 from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
+from pharma_lab.e2e.judging.service import JudgeRequest, run_judge
 from pharma_lab.e2e.sampling import (
     sample_answerable,
     sample_multi_turn,
@@ -196,6 +197,46 @@ def run(
             CommandStatus.INCOMPLETE if summary.errors else CommandStatus.COMPLETE,
             request.run_root / str(config),
             {"items": summary.total, "ran": summary.ran, "errors": summary.errors},
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@e2e_app.command("judge")
+def judge(
+    ctx: typer.Context,
+    run_name: Annotated[str, typer.Option("--run")],
+    config: Annotated[E2EConfig, typer.Option("--config")],
+    golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
+    concurrency: Annotated[int, typer.Option("--concurrency", min=1)] = 4,
+    force: Annotated[
+        bool, typer.Option("--force", help="Judge every answer again")
+    ] = False,
+    backend_env_file: Annotated[
+        Path, typer.Option("--backend-env-file", dir_okay=False)
+    ] = BACKEND_ENV_FILE,
+) -> None:
+    """Score one configuration's answers with RAGAS and the structured judges."""
+    request = JudgeRequest(
+        run_root=e2e_run_dir(run_name),
+        config=config,
+        golden_path=golden,
+        backend_env_file=backend_env_file,
+        concurrency=concurrency,
+        force=force,
+    )
+
+    def handler() -> CommandResult:
+        summary = run_judge(request)
+        return CommandResult(
+            "e2e judge",
+            CommandStatus.INCOMPLETE if summary.errors else CommandStatus.COMPLETE,
+            request.run_root / str(config),
+            {
+                "answers": summary.total,
+                "judged": summary.judged,
+                "errors": summary.errors,
+            },
         )
 
     run_handler(state_from_context(ctx), handler)

@@ -1,0 +1,173 @@
+"""Judge every answer of one run/config (spec §7)."""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
+
+from pharma_agent.infrastructure.settings import Settings
+
+from pharma_lab.e2e.configs import E2EConfig
+from pharma_lab.e2e.golden import Category, ExpectedBehavior, GoldenItem, load_golden
+from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
+from pharma_lab.e2e.judging.code_metrics import (
+    behaviour_correct,
+    citation_scores,
+    context_blocks,
+)
+from pharma_lab.e2e.judging.ragas_scorer import RagasScores, build_ragas_scorer
+from pharma_lab.e2e.judging.structured import StructuredJudge, judge_llm
+from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+
+JUDGMENTS_FILE = "judgments.jsonl"
+
+
+class Scorer(Protocol):
+    async def score(
+        self,
+        *,
+        question: str,
+        answer: str,
+        contexts: list[str],
+        reference: str | None,
+    ) -> RagasScores: ...
+
+
+async def judge_record(
+    item: GoldenItem, record: AnswerRecord, judge: StructuredJudge, ragas: Scorer
+) -> Judgement:
+    base = Judgement(
+        item_id=item.item_id,
+        config=record.config,
+        category=item.category.value,
+        behaviour_correct=False,
+    )
+    try:
+        injection_followed = (
+            await judge.injection(item, record.answer_text)
+            if item.category is Category.INJECTION
+            else None
+        )
+        update: dict[str, object] = {
+            "injection_followed": injection_followed,
+            "behaviour_correct": behaviour_correct(
+                item, record, injection_followed=injection_followed
+            ),
+        }
+        if item.expected_behavior is ExpectedBehavior.GROUNDED:
+            precision, recall = citation_scores(item, record)
+            update |= {"citation_precision": precision, "citation_recall": recall}
+            if record.answer_mode == ExpectedBehavior.GROUNDED.value:
+                verdicts = await judge.key_facts(item, record.answer_text)
+                update |= {
+                    "key_fact_verdicts": verdicts,
+                    "key_fact_recall": verdicts.count("supported") / len(verdicts),
+                    "contradiction": "contradicted" in verdicts,
+                    "citation_support": await judge.citation_support(
+                        record.answer_text, record.context_text
+                    ),
+                }
+                scores = await ragas.score(
+                    question=item.question,
+                    answer=record.answer_text,
+                    contexts=list(context_blocks(record.context_text).values()),
+                    reference=item.reference.answer or None,
+                )
+                update |= {
+                    "faithfulness": scores.faithfulness,
+                    "factual_correctness": scores.factual_correctness,
+                    "answer_relevancy": scores.answer_relevancy,
+                }
+            else:
+                # No answer was given: nothing of the reference is covered.
+                update |= {"key_fact_recall": 0.0, "contradiction": False}
+        return base.model_copy(update=update)
+    except Exception as error:  # one bad item must not stop the judging run
+        return base.model_copy(
+            update={"error": f"{type(error).__name__}: {error}"[:500]}
+        )
+
+
+@dataclass(frozen=True)
+class JudgeRequest:
+    run_root: Path
+    config: E2EConfig
+    golden_path: Path
+    backend_env_file: Path
+    concurrency: int = 4
+    force: bool = False
+
+
+@dataclass(frozen=True)
+class JudgeSummary:
+    total: int
+    judged: int
+    errors: int
+
+
+async def judge_records(
+    items: dict[str, GoldenItem],
+    answers: JsonlStore[AnswerRecord],
+    judgments: JsonlStore[Judgement],
+    judge: StructuredJudge,
+    ragas: Scorer,
+    *,
+    concurrency: int,
+    force: bool,
+) -> JudgeSummary:
+    records = answers.latest()
+    retryable = sorted(k for k, record in records.items() if record.retryable)
+    if retryable:
+        raise ValueError(
+            f"{len(retryable)} answers failed (e.g. {retryable[0]}); "
+            "re-run `pharma-lab e2e run --retry-errors` first"
+        )
+    unknown = sorted(set(records) - set(items))
+    if unknown:
+        raise ValueError(f"answers for items outside the golden set: {unknown[:3]}")
+    done = judgments.latest()
+    pending = [
+        record
+        for key, record in sorted(records.items())
+        if force or key not in done or done[key].error is not None
+    ]
+    semaphore = asyncio.Semaphore(concurrency)
+    lock = asyncio.Lock()
+
+    async def one(record: AnswerRecord) -> None:
+        async with semaphore:
+            judgement = await judge_record(items[record.item_id], record, judge, ragas)
+        async with lock:
+            judgments.append(judgement)
+
+    await asyncio.gather(*(one(record) for record in pending))
+    final = judgments.latest()
+    return JudgeSummary(
+        total=len(records),
+        judged=len(pending),
+        errors=sum(1 for judgement in final.values() if judgement.error is not None),
+    )
+
+
+def run_judge(request: JudgeRequest) -> JudgeSummary:
+    if request.concurrency < 1:
+        raise ValueError("--concurrency must be >= 1")
+    directory = config_dir(request.run_root, request.config)
+    answers_path = directory / ANSWERS_FILE
+    if not answers_path.is_file():
+        raise ValueError(f"no answers to judge: {answers_path}")
+    settings = Settings(_env_file=request.backend_env_file)
+    items = {item.item_id: item for item in load_golden(request.golden_path)}
+    return asyncio.run(
+        judge_records(
+            items,
+            JsonlStore(answers_path, AnswerRecord),
+            JsonlStore(directory / JUDGMENTS_FILE, Judgement),
+            StructuredJudge(judge_llm(settings)),
+            build_ragas_scorer(settings),
+            concurrency=request.concurrency,
+            force=request.force,
+        )
+    )
