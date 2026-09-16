@@ -43,7 +43,7 @@ from pharma_agent.infrastructure.settings import RetrievalSettings, Settings
 @dataclass
 class RetrievalStack:
     """Retrieval over Postgres (schema `corpus`) and Qdrant. Public entry point for the
-    seed-pipeline evaluation (spec C §4); release everything with `aclose`."""
+    pharma-lab evaluation (spec C §4); release everything with `aclose`."""
 
     settings: RetrievalSettings
     service: RetrievalService

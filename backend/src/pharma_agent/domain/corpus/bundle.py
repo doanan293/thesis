@@ -1,6 +1,6 @@
 """Knowledge bundle ``knowledge-bundle/v1`` (spec C §5): models, file IO and validation.
 
-Public API: seed-pipeline builds a ``KnowledgeBundle``, calls ``write_bundle`` and then adds
+Public API: pharma-lab builds a ``KnowledgeBundle``, calls ``write_bundle`` and then adds
 each model's vectors with ``write_bundle_embeddings``; the backend import calls
 ``read_bundle`` and loads the vectors of its model with ``read_bundle_embeddings``. Both
 sides run the same checks. Embedding files are streamed line by line, so memory holds at

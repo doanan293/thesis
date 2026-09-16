@@ -1,6 +1,6 @@
 """Rerankers over an OpenAI-style `/v1/rerank` endpoint (llama.cpp, TEI, vLLM).
 
-The rerank template ships inside the GGUF, so the agent and the seed-pipeline evaluation
+The rerank template ships inside the GGUF, so the agent and the pharma-lab evaluation
 score candidates with the same computation without copying prompts."""
 
 import asyncio

@@ -2,7 +2,7 @@
 # Run from the repository root. Ports, model files and CPU tuning come from the root .env
 # (see .env.example). Services reach each other by service name on the default network; host
 # ports are published only for the browser (nginx) and for tools that run on the host
-# (backend via `uv run`, seed-pipeline).
+# (backend via `uv run`, pharma-lab).
 name: thesis
 
 x-llama-server: &llama-server
@@ -20,7 +20,7 @@ x-llama-server: &llama-server
   restart: unless-stopped
 
 # llama-server reads its options from LLAMA_ARG_* variables (listed in `llama-server --help`).
-# The cache policy matches seed-pipeline's runtime (server_policy.inference_cache_policy).
+# The cache policy matches pharma-lab's runtime (server_policy.inference_cache_policy).
 x-llama-env: &llama-env
   LLAMA_ARG_OFFLINE: "true"
   LLAMA_ARG_UI: "false"
@@ -94,7 +94,7 @@ services:
       # unified KV until its next document enters a batch, so -c = -ub + -np x 2048.
       LLAMA_ARG_KV_UNIFIED: "true"
       # Measured on an Intel i5-13420H (12 threads, 23 GB RAM, llama.cpp server-b10920) with
-      # `seed rerank --backend local --benchmark --model qwen3-reranker:4b-fp16`:
+      # `pharma-lab rerank --backend local --benchmark --model qwen3-reranker:4b-fp16`:
       # p95 448.7 s per 15-document request, 0.05 pairs/s. That run used -ub 2048, which
       # rejects the longest prompt of the corpus (2,074 tokens), so the sizes below come
       # from the -ub 4096 level; rerun the benchmark to measure it. Other machines:

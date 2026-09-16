@@ -2,7 +2,7 @@
 
 | Thư mục | Nội dung |
 | --- | --- |
-| `seed-pipeline/` | Công cụ offline: nguồn nội bộ (Dược thư Quốc gia, tờ hướng dẫn sử dụng thuốc) → knowledge bundle, embedding trên Kaggle, đánh giá retrieval |
+| `pharma-lab/` | Công cụ offline: nguồn nội bộ (Dược thư Quốc gia, tờ hướng dẫn sử dụng thuốc) → knowledge bundle, embedding trên Kaggle, đánh giá retrieval |
 | `backend/` | Backend AI agent (LangGraph, OpenAI SDK, Qdrant, llama.cpp) |
 | `frontend/` | Web app (React Router, SSR) |
 | `devops/` | Cấu hình cho image bên thứ ba mà compose dùng: nginx, CLIProxyAPI |
@@ -56,18 +56,18 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   `-ub` nhân số slot cộng một) và
   `LLAMA_RERANKER_THREADS` trong `.env` ở root; `RERANK_TIMEOUT_SECONDS` là timeout của backend cho một
   request rerank.
-  Đo lại cho máy khác trong `seed-pipeline/`:
-  `uv run seed rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16`,
+  Đo lại cho máy khác trong `pharma-lab/`:
+  `uv run pharma-lab rerank --run hybrid-qwen4b-p50-k30-rrf2 --backend local --benchmark --model qwen3-reranker:4b-fp16`,
   rồi chép dòng `env=` lệnh in ra vào `.env` và đặt `RERANK_TIMEOUT_SECONDS` ít nhất gấp đôi `latency_p95_seconds`.
 - Dùng OpenAI cloud hoặc server OpenAI-compatible khác thay cho proxy: đặt `LLM_BASE_URL` trong
   `.env` ở root.
-- Lần đầu cần nạp corpus vào container: `docker compose cp seed-pipeline/data/corpus/formulary backend:/tmp/bundle` rồi
+- Lần đầu cần nạp corpus vào container: `docker compose cp pharma-lab/data/corpus/formulary backend:/tmp/bundle` rồi
   `docker compose exec backend pharma-agent corpus import /tmp/bundle --collection formulary --publish`.
 
 ## Môi trường Python
 
-`backend` và `seed-pipeline` là member của một uv workspace (`pyproject.toml` ở root): chung một
-`uv.lock` và một `.venv` ở root. Runtime chỉ là `backend`; `seed-pipeline` là công cụ nội bộ nên
+`backend` và `pharma-lab` là member của một uv workspace (`pyproject.toml` ở root): chung một
+`uv.lock` và một `.venv` ở root. Runtime chỉ là `backend`; `pharma-lab` là công cụ nội bộ nên
 mọi thư viện của nó nằm trong dev group, image Docker của backend không chứa chúng.
 
 Cài một lần ở root:

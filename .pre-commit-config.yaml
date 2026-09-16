@@ -1,4 +1,4 @@
-# Shared hooks for every project in this repo (seed-pipeline, backend, frontend).
+# Shared hooks for every project in this repo (pharma-lab, backend, frontend).
 # Install once from the repo root: `uv run pre-commit install`.
 # Frontend hooks need `npm ci` in frontend/ first.
 # Specs and plans under backend/docs/superpowers are immutable records; hooks never rewrite them.
@@ -28,11 +28,11 @@ repos:
 
   - repo: local
     hooks:
-      - id: pyrefly-seed-pipeline
-        name: pyrefly check (seed-pipeline)
-        entry: uv run --directory seed-pipeline pyrefly check --min-severity warn
+      - id: pyrefly-pharma-lab
+        name: pyrefly check (pharma-lab)
+        entry: uv run --directory pharma-lab pyrefly check --min-severity warn
         language: system
-        files: ^seed-pipeline/.*\.(py|pyi|toml)$
+        files: ^pharma-lab/.*\.(py|pyi|toml)$
         pass_filenames: false
         require_serial: true
       - id: pyrefly-backend
@@ -95,4 +95,4 @@ repos:
     hooks:
       # One lock for the whole workspace, so a change to any member's pyproject.toml relocks it.
       - id: uv-lock
-        files: ^(uv\.lock|pyproject\.toml|(backend|seed-pipeline)/pyproject\.toml)$
+        files: ^(uv\.lock|pyproject\.toml|(backend|pharma-lab)/pyproject\.toml)$

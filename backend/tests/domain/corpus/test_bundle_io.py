@@ -55,7 +55,7 @@ def make_bundle() -> KnowledgeBundle:
             schema_version=BUNDLE_SCHEMA_VERSION,
             collection=BundleCollection(key="formulary", title="Dược thư Quốc gia"),
             generator=BundleGenerator(
-                name="seed-pipeline", version="0.1.0", build_id="build-test"
+                name="pharma-lab", version="0.1.0", build_id="build-test"
             ),
             source_digests={"source_pdf_sha256": "0" * 64},
             document_count=0,

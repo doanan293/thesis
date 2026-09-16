@@ -1,6 +1,6 @@
 """The single corpus chunker (spec C §7.1).
 
-Public API. Splitting is ported from seed-pipeline ``build_final_chunk_records``,
+Public API. Splitting is ported from pharma-lab ``build_final_chunk_records``,
 ``split_lines_without_breaking_entries`` and ``split_long_text``; tables follow the leaflet
 ``split_table`` header rule, which also reproduces every formulary table. The splitter is
 chosen only by ``BlockRecord.kind``.

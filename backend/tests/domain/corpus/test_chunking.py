@@ -233,7 +233,7 @@ def test_table_key_is_kept_only_for_table_blocks() -> None:
 @pytest.mark.parametrize(
     "module", list(PUBLIC_API), ids=[module.__name__ for module in PUBLIC_API]
 )
-def test_public_api_for_seed_pipeline_is_documented(module: ModuleType) -> None:
+def test_public_api_for_pharma_lab_is_documented(module: ModuleType) -> None:
     assert "Public API" in (module.__doc__ or "")
     for name in PUBLIC_API[module]:
         assert hasattr(module, name), f"{module.__name__}.{name}"

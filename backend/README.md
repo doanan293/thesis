@@ -17,7 +17,7 @@ index (alias `chunks_current`). Nạp một knowledge bundle và publish trướ
 
 ```bash
 uv run pharma-agent migrate
-uv run pharma-agent corpus import ../seed-pipeline/data/corpus/formulary --collection formulary --publish
+uv run pharma-agent corpus import ../pharma-lab/data/corpus/formulary --collection formulary --publish
 ```
 
 LLM, embedding và reranker đổi được sang OpenAI cloud hoặc server tự host chỉ bằng

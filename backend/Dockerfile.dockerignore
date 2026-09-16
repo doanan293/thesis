@@ -2,7 +2,7 @@
 *
 !pyproject.toml
 !uv.lock
-!seed-pipeline/pyproject.toml
+!pharma-lab/pyproject.toml
 !backend/pyproject.toml
 !backend/README.md
 !backend/src

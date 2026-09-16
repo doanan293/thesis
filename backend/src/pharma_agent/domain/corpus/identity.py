@@ -1,6 +1,6 @@
 """Deterministic identities for section revisions and chunk versions (spec C §6.1).
 
-Public API: seed-pipeline uses ``sha256_hex`` to key precomputed embeddings.
+Public API: pharma-lab uses ``sha256_hex`` to key precomputed embeddings.
 """
 
 import hashlib

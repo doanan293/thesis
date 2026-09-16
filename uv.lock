@@ -19,7 +19,7 @@ resolution-markers = [
 [manifest]
 members = [
     "pharma-agent",
-    "seed-pipeline",
+    "pharma-lab",
 ]
 
 [manifest.dependency-groups]
@@ -2200,6 +2200,67 @@ dev = [
 ]
 
 [[package]]
+name = "pharma-lab"
+version = "0.2.0"
+source = { editable = "pharma-lab" }
+dependencies = [
+    { name = "pharma-agent" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "beautifulsoup4" },
+    { name = "docling-ibm-models" },
+    { name = "docling-parse" },
+    { name = "docling-slim" },
+    { name = "kaggle" },
+    { name = "lxml" },
+    { name = "mail-parser" },
+    { name = "marko" },
+    { name = "openpyxl" },
+    { name = "pylatexenc" },
+    { name = "pymupdf" },
+    { name = "pypdfium2" },
+    { name = "python-docx" },
+    { name = "python-pptx" },
+    { name = "qdrant-client" },
+    { name = "requests" },
+    { name = "torch", version = "2.12.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.12.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torchvision", version = "0.27.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
+    { name = "torchvision", version = "0.27.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "typer" },
+    { name = "zstandard" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pharma-agent", editable = "backend" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "beautifulsoup4", specifier = "==4.15.0" },
+    { name = "docling-ibm-models", specifier = "==3.13.3" },
+    { name = "docling-parse", specifier = "==6.2.0" },
+    { name = "docling-slim", specifier = "==2.102.1" },
+    { name = "kaggle", specifier = "==2.2.3" },
+    { name = "lxml", specifier = "==6.1.1" },
+    { name = "mail-parser", specifier = "==4.4.0" },
+    { name = "marko", specifier = "==2.2.3" },
+    { name = "openpyxl", specifier = "==3.1.5" },
+    { name = "pylatexenc", specifier = "==2.10" },
+    { name = "pymupdf", specifier = "==1.27.2.3" },
+    { name = "pypdfium2", specifier = "==5.10.1" },
+    { name = "python-docx", specifier = "==1.2.0" },
+    { name = "python-pptx", specifier = "==1.0.2" },
+    { name = "qdrant-client", specifier = ">=1.19,<2" },
+    { name = "requests", specifier = "==2.34.2" },
+    { name = "torch", specifier = "==2.12.1", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torchvision", specifier = "==0.27.1", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "typer", specifier = ">=0.21" },
+    { name = "zstandard", specifier = "==0.25.0" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3181,67 +3242,6 @@ torch = [
     { name = "numpy" },
     { name = "torch", version = "2.12.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.12.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
-]
-
-[[package]]
-name = "seed-pipeline"
-version = "0.2.0"
-source = { editable = "seed-pipeline" }
-dependencies = [
-    { name = "pharma-agent" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "beautifulsoup4" },
-    { name = "docling-ibm-models" },
-    { name = "docling-parse" },
-    { name = "docling-slim" },
-    { name = "kaggle" },
-    { name = "lxml" },
-    { name = "mail-parser" },
-    { name = "marko" },
-    { name = "openpyxl" },
-    { name = "pylatexenc" },
-    { name = "pymupdf" },
-    { name = "pypdfium2" },
-    { name = "python-docx" },
-    { name = "python-pptx" },
-    { name = "qdrant-client" },
-    { name = "requests" },
-    { name = "torch", version = "2.12.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.12.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
-    { name = "torchvision", version = "0.27.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
-    { name = "torchvision", version = "0.27.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
-    { name = "typer" },
-    { name = "zstandard" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pharma-agent", editable = "backend" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "beautifulsoup4", specifier = "==4.15.0" },
-    { name = "docling-ibm-models", specifier = "==3.13.3" },
-    { name = "docling-parse", specifier = "==6.2.0" },
-    { name = "docling-slim", specifier = "==2.102.1" },
-    { name = "kaggle", specifier = "==2.2.3" },
-    { name = "lxml", specifier = "==6.1.1" },
-    { name = "mail-parser", specifier = "==4.4.0" },
-    { name = "marko", specifier = "==2.2.3" },
-    { name = "openpyxl", specifier = "==3.1.5" },
-    { name = "pylatexenc", specifier = "==2.10" },
-    { name = "pymupdf", specifier = "==1.27.2.3" },
-    { name = "pypdfium2", specifier = "==5.10.1" },
-    { name = "python-docx", specifier = "==1.2.0" },
-    { name = "python-pptx", specifier = "==1.0.2" },
-    { name = "qdrant-client", specifier = ">=1.19,<2" },
-    { name = "requests", specifier = "==2.34.2" },
-    { name = "torch", specifier = "==2.12.1", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torchvision", specifier = "==0.27.1", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "typer", specifier = ">=0.21" },
-    { name = "zstandard", specifier = "==0.25.0" },
 ]
 
 [[package]]

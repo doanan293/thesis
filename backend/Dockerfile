@@ -16,11 +16,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=backend/pyproject.toml,target=backend/pyproject.toml \
-    --mount=type=bind,source=seed-pipeline/pyproject.toml,target=seed-pipeline/pyproject.toml \
+    --mount=type=bind,source=pharma-lab/pyproject.toml,target=pharma-lab/pyproject.toml \
     uv sync --locked --no-dev --package pharma-agent --no-install-workspace
 
 COPY pyproject.toml uv.lock ./
-COPY seed-pipeline/pyproject.toml seed-pipeline/
+COPY pharma-lab/pyproject.toml pharma-lab/
 COPY backend/pyproject.toml backend/README.md backend/
 COPY backend/src backend/src
 RUN --mount=type=cache,target=/root/.cache/uv \

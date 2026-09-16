@@ -1,6 +1,6 @@
 """Hydrate policy for a section revision (spec C §7.2).
 
-Public API: seed-pipeline imports ``hydrate_strategy_for``.
+Public API: pharma-lab imports ``hydrate_strategy_for``.
 """
 
 from pharma_agent.domain.corpus.bundle import RetrievalMode, SectionRecord

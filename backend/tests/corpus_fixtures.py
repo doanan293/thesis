@@ -1,4 +1,4 @@
-"""The small knowledge bundle shared by the backend tests and seed-pipeline's contract test.
+"""The small knowledge bundle shared by the backend tests and pharma-lab's contract test.
 
 `build_small_bundle()` and `build_small_embeddings()` are the source of truth. After changing
 them, or after P1's chunker or enrichment changes, regenerate the committed copy with
