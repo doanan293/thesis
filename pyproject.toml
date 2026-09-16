@@ -6,6 +6,9 @@ members = ["backend", "pharma-lab"]
 [tool.uv]
 # One uv version for local runs, the backend image and the uv-lock pre-commit hook.
 required-version = "==0.12.13"
+# ragas needs instructor, which still caps jiter<0.15 (instructor 1.17), while openai
+# >=3.3.1 needs jiter>=0.16. The jiter API instructor uses is unchanged in 0.16+.
+override-dependencies = ["jiter>=0.16.0,<1"]
 
 # Development tools shared by every project, pinned once.
 [dependency-groups]
