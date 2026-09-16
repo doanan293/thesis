@@ -69,6 +69,18 @@ class SessionRunResult:
     quota_table: tuple[str, ...] = ()
 
 
+# Kaggle runs two batch GPU sessions per account and rejects the next kernel push.
+SESSION_CAPACITY_MARKER = "maximum batch gpu session count"
+
+
+class KaggleSessionCapacityReached(Exception):
+    """An account already runs its two Kaggle GPU sessions."""
+
+    def __init__(self, profile: str) -> None:
+        super().__init__(f"account {profile} has no free Kaggle GPU session")
+        self.profile = profile
+
+
 def _profile_name(context: KaggleExecutionContext) -> str:
     if context.profile is None:
         raise ValueError("Kaggle sessions need account profiles (acc1, acc2, ...)")
@@ -112,8 +124,9 @@ def _lock_best(
     stack: ExitStack,
     locker: AccountLock,
     log: SessionLog,
+    unavailable: frozenset[str] = frozenset(),
 ) -> SessionAccount:
-    busy: set[str] = set()
+    busy: set[str] = set(unavailable)
     while True:
         choice = select_session_account(
             quotas,
@@ -140,8 +153,13 @@ def reserve_session_account(
     read_quota: QuotaReader | None = None,
     account_lock: AccountLock | None = None,
     preferred_profile: str | None = None,
+    unavailable: frozenset[str] = frozenset(),
 ) -> Generator[ReservedAccount, None, None]:
-    """Read every account's GPU quota, then lock one account for one session."""
+    """Read every account's GPU quota, then lock one account for one session.
+
+    `unavailable` holds accounts a caller already found unusable, for example one whose
+    Kaggle GPU sessions are all taken.
+    """
     reader = read_quota or read_account_quota
     locker = account_lock or kaggle_account_lock
     by_profile = {_profile_name(context): context for context in contexts}
@@ -161,6 +179,7 @@ def reserve_session_account(
             stack=stack,
             locker=locker,
             log=log,
+            unavailable=unavailable,
         )
         quota = next(item for item in quotas if item.profile == choice.profile)
         log(
@@ -181,6 +200,7 @@ def _run_one_session(
     reader: QuotaReader,
     account_lock: AccountLock | None,
     preferred_profile: str | None,
+    unavailable: frozenset[str] = frozenset(),
 ) -> PipelineResult:
     with reserve_session_account(
         contexts,
@@ -189,6 +209,7 @@ def _run_one_session(
         read_quota=reader,
         account_lock=account_lock,
         preferred_profile=preferred_profile,
+        unavailable=unavailable,
     ) as reserved:
         log(
             f"session={index} start account={reserved.profile} "
@@ -198,6 +219,8 @@ def _run_one_session(
             result = run_session(reserved, index)
         except BaseException as error:
             log(f"session={index} error={type(error).__name__}: {error}")
+            if SESSION_CAPACITY_MARKER in f"{error}".casefold():
+                raise KaggleSessionCapacityReached(reserved.profile) from error
             raise
         for action in result.actions:
             log(
@@ -244,25 +267,33 @@ def run_account_sessions(
     last: PipelineResult | None = None
     while max_sessions is None or sessions < max_sessions:
         index = sessions + 1
-        try:
-            result = _run_one_session(
-                contexts,
-                run_session,
-                index,
-                requested_budget_seconds=requested_budget_seconds,
-                check_only=check_only,
-                log=log,
-                reader=reader,
-                account_lock=account_lock,
-                preferred_profile=preferred_profile if index == 1 else None,
-            )
-        except QuotaExhausted as exhausted:
-            log(f"stop=quota-exhausted sessions={sessions}; GPU quota per account:")
-            for row in exhausted.table:
-                log(row)
-            return SessionRunResult(
-                last, sessions, StopReason.QUOTA_EXHAUSTED, exhausted.table
-            )
+        unavailable: frozenset[str] = frozenset()
+        while True:
+            try:
+                result = _run_one_session(
+                    contexts,
+                    run_session,
+                    index,
+                    requested_budget_seconds=requested_budget_seconds,
+                    check_only=check_only,
+                    log=log,
+                    reader=reader,
+                    account_lock=account_lock,
+                    preferred_profile=preferred_profile if index == 1 else None,
+                    unavailable=unavailable,
+                )
+            except QuotaExhausted as exhausted:
+                log(f"stop=quota-exhausted sessions={sessions}; GPU quota per account:")
+                for row in exhausted.table:
+                    log(row)
+                return SessionRunResult(
+                    last, sessions, StopReason.QUOTA_EXHAUSTED, exhausted.table
+                )
+            except KaggleSessionCapacityReached as capped:
+                log(f"account={capped.profile} has no free Kaggle GPU session; skipped")
+                unavailable = unavailable | {capped.profile}
+                continue
+            break
         sessions = index
         previous = last
         last = result

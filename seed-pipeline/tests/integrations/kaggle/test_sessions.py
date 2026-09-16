@@ -7,6 +7,7 @@ from tests.integrations.kaggle.factories import owners, stage_job
 from seed_pipeline.artifacts.manifest import Completion
 from seed_pipeline.integrations.kaggle.api import KaggleCommandRunner
 from seed_pipeline.integrations.kaggle.config import KaggleAccountProfile
+from seed_pipeline.integrations.kaggle.errors import KaggleCommandError
 from seed_pipeline.integrations.kaggle.job_lock import (
     KaggleAccountBusy,
     kaggle_account_lock,
@@ -188,6 +189,43 @@ def test_sessions_skip_an_account_held_by_another_job(tmp_path):
 
     assert [profile for profile, _budget in sessions.accounts] == ["acc1"]
     assert any("account=acc3 is locked by another local job" in line for line in log)
+
+
+def test_sessions_skip_an_account_with_no_free_kaggle_gpu_session(tmp_path):
+    """Kaggle runs two batch GPU sessions per account and rejects the third push."""
+    book = QuotaBook(acc1=27.58, acc3=30.0)
+    sessions = ScriptedSessions(tmp_path, book, [10])
+    rejected: list[str] = []
+    log: list[str] = []
+
+    def run_session(reserved: ReservedAccount, index: int) -> PipelineResult:
+        if reserved.profile == "acc3":
+            rejected.append(reserved.profile)
+            raise KaggleCommandError(
+                operation="kernels push",
+                target="user-acc3/rerank",
+                returncode=1,
+                stdout=(
+                    "Kernel push error: Maximum batch GPU session count of 2 reached."
+                ),
+                stderr="",
+            )
+        return sessions(reserved, index)
+
+    result = run_account_sessions(
+        _contexts("acc1", "acc3"),
+        run_session,
+        requested_budget_seconds=21_600,
+        max_sessions=1,
+        check_only=False,
+        log=log.append,
+        read_quota=book,
+    )
+
+    assert rejected == ["acc3"]
+    assert [profile for profile, _budget in sessions.accounts] == ["acc1"]
+    assert any("account=acc3 has no free Kaggle GPU session" in line for line in log)
+    assert result.sessions == 1
 
 
 def test_the_account_stays_locked_for_the_whole_session(tmp_path):
