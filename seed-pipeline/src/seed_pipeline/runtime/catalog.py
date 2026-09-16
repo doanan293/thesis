@@ -14,7 +14,6 @@ from seed_pipeline.runtime.runtime_profiles import (
     EmbeddingRuntimeSearchSpaces,
     RuntimeCandidate,
     RuntimeSearchSpace,
-    rerank_concurrency,
     reranker_candidate,
 )
 
@@ -36,10 +35,20 @@ LOCAL_RERANK_REQUEST_BATCH_SIZE = 15
 # On a T4 (14,806 MiB free) compute takes about 0.6 MiB per ubatch token and KV
 # 0.11 MiB (0.6b) or 0.14 MiB (4b, 8b) per -c token, so the larger models take fewer
 # slots.
-SMALL_RERANK_LEVELS = ((2, 4096), (4, 4096))
-SMALL_MODEL_KAGGLE_RERANK_LEVELS = ((4, 4096), (8, 4096))
+# A batch carries at most -np whole documents, so a level with too few slots leaves the
+# ubatch (and the GPU) half empty; the levels below sweep slots and requests in flight so
+# the benchmark can measure which one actually wins.
+SMALL_RERANK_LEVELS = ((2, 4096, 2), (4, 4096, 2), (4, 4096, 4))
+SMALL_MODEL_KAGGLE_RERANK_LEVELS = (
+    (4, 4096, 2),
+    (8, 4096, 2),
+    (8, 4096, 4),
+    (16, 4096, 4),
+)
+# The 8b model is sharded over both T4s, so its KV costs half as much per GPU.
+SHARDED_RERANK_LEVELS = ((2, 4096, 2), (4, 4096, 4), (8, 4096, 4))
 # The local CPU machine serves one request of at most 15 candidates at a time.
-LOCAL_RERANK_LEVELS = ((4, 4096),)
+LOCAL_RERANK_LEVELS = ((4, 4096, 1),)
 # Local CPU llama-reranker levels. The backend sends one request with at most 15
 # candidates at a time, so a level has a single client request in flight.
 LOCAL_RERANK_SEARCH_SPACE = RuntimeSearchSpace(
@@ -48,10 +57,10 @@ LOCAL_RERANK_SEARCH_SPACE = RuntimeSearchSpace(
             server_slots=server_slots,
             ubatch=ubatch,
             request_batch_size=LOCAL_RERANK_REQUEST_BATCH_SIZE,
-            concurrency=1,
+            concurrency=concurrency,
             threads=threads,
         )
-        for server_slots, ubatch in LOCAL_RERANK_LEVELS
+        for server_slots, ubatch, concurrency in LOCAL_RERANK_LEVELS
         for threads in (8, 12)
     )
 )
@@ -167,7 +176,7 @@ def _reranker(
     sha256: str,
     topology: ModelTopology,
     *,
-    levels: tuple[tuple[int, int], ...],
+    levels: tuple[tuple[int, int, int], ...],
 ) -> ModelSpec:
     search_space = RuntimeSearchSpace(
         tuple(
@@ -175,11 +184,9 @@ def _reranker(
                 server_slots=server_slots,
                 ubatch=ubatch,
                 request_batch_size=KAGGLE_RERANK_REQUEST_BATCH_SIZE,
-                concurrency=rerank_concurrency(
-                    server_slots, KAGGLE_RERANK_REQUEST_BATCH_SIZE
-                ),
+                concurrency=concurrency,
             )
-            for server_slots, ubatch in levels
+            for server_slots, ubatch, concurrency in levels
         )
     )
     smallest = search_space.candidates[0]
@@ -281,7 +288,7 @@ RERANKER_MODELS = {
         15_141_207_776,
         "c6516333e32d4f1d8aad8325d5d5bdb8165f9778e892eed4ca8b0eaf3339a810",
         ModelTopology.SHARDED_1X2,
-        levels=SMALL_RERANK_LEVELS,
+        levels=SHARDED_RERANK_LEVELS,
     ),
     # XLM-R cross-encoder (568M, 8,192 positions) in the 0.6b size class; its inputs carry
     # no chat template, so it takes the 0.6b levels.

@@ -83,10 +83,12 @@ class ScoringClient:
         threads = int(level["LLAMA_RERANKER_THREADS"])
         # More threads score faster, so the 12-thread level wins.
         self.clock.now += 8 / threads
-        drift = (
-            0.01 if level["LLAMA_RERANKER_THREADS"] == self.drifting_threads else 0.0
-        )
-        return [len(document) / 1000 + drift for document in documents]
+        scores = [len(document) / 1000 for document in documents]
+        if level["LLAMA_RERANKER_THREADS"] == self.drifting_threads:
+            # Only a level that reorders candidates is rejected, not one that shifts
+            # every score by the same amount.
+            scores.reverse()
+        return scores
 
 
 @dataclass(frozen=True)
@@ -215,7 +217,7 @@ def test_levels_whose_scores_drift_are_invalid(bench: Bench):
 
     assert [item.error_category for item in result.measurements] == [
         None,
-        "score_mismatch",
+        "rank_mismatch",
     ]
 
 

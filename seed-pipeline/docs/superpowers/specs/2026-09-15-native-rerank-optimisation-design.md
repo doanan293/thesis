@@ -118,7 +118,7 @@ Mọi server reranker, trên Kaggle lẫn trong compose, chạy với:
   - `physical_batch_size = logical_batch_size` là `-ub`.
   - `context_per_slot` là 2048 token mỗi slot giữ.
   - `request_batch_size` là số tài liệu mỗi request.
-- **`concurrency` không quét** mà tính bằng `ceil(server_slots / request_batch_size) + 1` cho mỗi server, để slot luôn đầy.
+- **`concurrency` được quét cùng số slot.** Một batch chỉ gom tối đa `-np` tài liệu, nên ít slot thì ubatch và GPU đều bỏ trống; số request đồng thời quyết định slot có luôn đầy hay không. Đo trên Kaggle cho thấy GPU chỉ chạy ~30% ở mức ít slot, nên cả hai chiều đều phải đo thay vì suy ra bằng công thức.
 
 Bộ nhớ đo bằng `llama-server` `b10920` trên CPU. Compute buffer ở `-ub 32768` ra 21.135 MiB, khớp lần cấp phát lỗi trên T4.
 - Compute buffer khoảng 0,6 MiB mỗi token `-ub` với cả 0.6b, 4b và 8b. Phần theo `-c` chỉ là mask 2 byte cho mỗi ô `ub × c`.
@@ -131,10 +131,10 @@ Các mức được quét, ghi dạng (`-np`, `-ub`):
 
 | Nơi chạy | Mức | Tài liệu mỗi request | Tham số khác |
 | --- | --- | ---: | --- |
-| Kaggle T4, 0.6b (2 server) | (4, 4096) / (8, 4096) | 30 | |
-| Kaggle T4, 4b (2 server) | (2, 4096) / (4, 4096) | 30 | |
-| Kaggle T4, 8b (1 server, 2 GPU) | (2, 4096) / (4, 4096) | 30 | |
-| CPU local, 4b | (4, 4096) | 15 | `--threads` 8 / 12 |
+| Kaggle T4, 0.6b (2 server) | (4, 4096, 2) / (8, 4096, 2) / (8, 4096, 4) / (16, 4096, 4) | 30 | |
+| Kaggle T4, 4b (2 server) | (2, 4096, 2) / (4, 4096, 2) / (4, 4096, 4) | 30 | |
+| Kaggle T4, 8b (1 server, 2 GPU) | (2, 4096, 2) / (4, 4096, 4) / (8, 4096, 4) | 30 | |
+| CPU local, 4b | (4, 4096, 1) | 15 | `--threads` 8 / 12 |
 
 ### 4.3 Benchmark đầu-cuối
 
@@ -144,7 +144,7 @@ Các mức được quét, ghi dạng (`-np`, `-ub`):
   - CPU: 6 nhóm × 15 tài liệu mỗi mức.
   - Mỗi mức chạy khởi động một nhóm không tính giờ, và khởi động lại server khi đổi mức.
 - **Mỗi mức ghi:** số cặp/giây, p50 và p95 thời gian mỗi request, trạng thái, loại lỗi, và đuôi log server khi lỗi.
-- **Kiểm tra điểm:** mức hợp lệ đầu tiên là mốc. Mỗi mức sau so điểm của cùng mẫu với mốc; nếu `max_abs_score_delta` lớn hơn `1e-3` thì mức đó ghi `invalid` với lỗi `score_mismatch`. Việc này bảo đảm đổi cấu hình không đổi điểm, là tiền đề của mục 4.4.
+- **Kiểm tra thứ hạng:** mức hợp lệ đầu tiên là mốc. Mỗi mức sau xếp lại ứng viên của từng câu hỏi theo điểm; nếu thứ tự khác mốc thì mức đó ghi `invalid` với lỗi `rank_mismatch`, còn chấm thiếu hoặc thừa cặp thì ghi `score_mismatch`. `max_abs_score_delta` vẫn được ghi cho mọi mức để đưa vào báo cáo. Lý do không so điểm tuyệt đối: điểm phụ thuộc cách llama.cpp gom tài liệu vào batch nên hai mức của cùng model lệch 0,02–0,07 trên T4, trong khi pipeline chỉ dùng điểm để xếp hạng.
 - **Chọn cấu hình:** Kaggle chọn số cặp/giây cao nhất. CPU chọn p95 thấp nhất; nếu bằng nhau thì chọn số cặp/giây cao hơn. Mọi mức đều lỗi thì stage dừng và in đuôi log.
 - **Lưu profile:**
   - Kaggle giữ `data/cache/kaggle_profiles/rerank/<slug>.json`; identity có sha của search space mới nên profile cũ tự hết hiệu lực.
@@ -225,9 +225,9 @@ Các mức được quét, ghi dạng (`-np`, `-ub`):
 
 Unit test seed-pipeline:
 - **Catalog:** mọi reranker là `native_rerank`; không còn `bge-reranker-v2-gemma:f16`; model thử nghiệm (nếu còn) trỏ đúng file và sha256.
-- **Lệnh server:** reranker có đủ `--reranking --kv-unified -np -c -b -ub`, với `-b` bằng `-ub` và `-c` bằng `-ub` cộng 2048 cho mỗi slot.
+- **Lệnh server:** reranker có đủ `--reranking --kv-unified -np -c -b -ub`, với `-b` bằng `-ub` và `-c` bằng `-ub` nhân (số slot + 1).
 - **`inference_cache_policy`:** không còn trường dành cho completion.
-- **Benchmark:** mức mang đủ candidate; chọn theo số cặp/giây (Kaggle) và p95 (local); bỏ qua mức `invalid`; phát hiện `score_mismatch`; báo lỗi khi mọi mức lỗi.
+- **Benchmark:** mức mang đủ candidate; chọn theo số cặp/giây (Kaggle) và p95 (local); bỏ qua mức `invalid`; phát hiện `rank_mismatch` và `score_mismatch`; báo lỗi khi mọi mức lỗi.
 - **Worker native:** request theo nhóm câu hỏi; số request đồng thời theo công thức mục 4.2; đóng artifact dở dang khi server rớt.
 - **`JobIdentity`:** đổi `runtime_profile` giữ nguyên `reuse_sha256` nhưng đổi `sha256`.
 - **Local:** chấm theo nhóm; lệnh benchmark truyền đúng biến môi trường cho từng mức, kiểm bằng runner giả.
@@ -271,6 +271,6 @@ Lệnh bắt buộc: `pytest` (warning coi là lỗi), `ruff check`, `ruff forma
 - **Phép đo instruction có nhiễu** trên 1.000 câu: quy tắc bootstrap chốt trước; nếu không rõ thì giữ template gốc.
 - **Quota bản 8b:** có thể cần nhiều tuần. Checkpoint dùng lại được qua phiên và qua tài khoản, nhờ `reuse_sha256` không phụ thuộc cấu hình và nhờ dataset do `acc1` sở hữu.
 - **Hai phiên bản llama.cpp:** số tốc độ Kaggle (`b9637`) và CPU (`b10920`) được báo cáo riêng, không so với nhau.
-- **Chênh lệch số thực khi gom khối:** giới hạn bằng kiểm tra `score_mismatch` trong benchmark (mục 4.3).
+- **Chênh lệch số thực khi gom khối:** không chặn được, chỉ kiểm soát bằng kiểm tra thứ hạng trong benchmark (mục 4.3) và bằng việc mỗi run chấm trọn ở một mức duy nhất.
 - **Số quota Kaggle cập nhật trễ:** quota được đọc lại trước mỗi phiên và có 0,5 giờ dự phòng. Nếu Kaggle vẫn cắt phiên vì hết quota, artifact dở dang được gộp như khi hết ngân sách.
 - **Giới hạn phiên GPU đồng thời của mỗi tài khoản:** khoá tài khoản bảo đảm mỗi tài khoản chỉ chạy một phiên từ pipeline.

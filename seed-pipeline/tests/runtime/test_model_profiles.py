@@ -37,14 +37,20 @@ def test_embedding_model_exposes_separate_runtime_search_spaces():
 @pytest.mark.parametrize(
     ("model", "levels"),
     [
-        ("qwen3-reranker:0.6b-fp16", ((4, 4096), (8, 4096))),
-        ("qwen3-reranker:4b-fp16", ((2, 4096), (4, 4096))),
-        ("qwen3-reranker:8b-fp16", ((2, 4096), (4, 4096))),
-        ("bge-reranker-v2-m3:f16", ((4, 4096), (8, 4096))),
+        (
+            "qwen3-reranker:0.6b-fp16",
+            ((4, 4096, 2), (8, 4096, 2), (8, 4096, 4), (16, 4096, 4)),
+        ),
+        ("qwen3-reranker:4b-fp16", ((2, 4096, 2), (4, 4096, 2), (4, 4096, 4))),
+        ("qwen3-reranker:8b-fp16", ((2, 4096, 2), (4, 4096, 4), (8, 4096, 4))),
+        (
+            "bge-reranker-v2-m3:f16",
+            ((4, 4096, 2), (8, 4096, 2), (8, 4096, 4), (16, 4096, 4)),
+        ),
     ],
 )
 def test_kaggle_rerank_search_space_pairs_slots_with_the_ubatch(
-    model: str, levels: tuple[tuple[int, int], ...]
+    model: str, levels: tuple[tuple[int, int, int], ...]
 ):
     spec = require_model(model)
     space = spec.rerank_search_space
@@ -52,19 +58,16 @@ def test_kaggle_rerank_search_space_pairs_slots_with_the_ubatch(
     assert space is not None
     assert (
         tuple(
-            (item.server_slots, item.physical_batch_size) for item in space.candidates
+            (item.server_slots, item.physical_batch_size, item.concurrency)
+            for item in space.candidates
         )
         == levels
     )
     for item in space.candidates:
-        assert (item.request_batch_size, item.concurrency, item.threads) == (
-            30,
-            2,
-            None,
-        )
+        assert (item.request_batch_size, item.threads) == (30, None)
         assert item.context_per_slot == item.physical_batch_size
         assert item.logical_batch_size == item.physical_batch_size
-    slots, ubatch = levels[0]
+    slots, ubatch, _concurrency = levels[0]
     assert (
         spec.kaggle_parallel,
         spec.kaggle_context_per_slot,

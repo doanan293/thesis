@@ -12,7 +12,6 @@ from seed_pipeline.runtime.runtime_profiles import RuntimeCandidate
 
 KAGGLE_RERANK_BENCHMARK_GROUPS = 32
 LOCAL_RERANK_BENCHMARK_GROUPS = 6
-SCORE_MISMATCH_TOLERANCE = 1e-3
 LOG_TAIL_CHARACTERS = 16_000
 
 BenchmarkObjective = Literal["throughput", "latency"]
@@ -251,11 +250,34 @@ def _max_abs_delta(
     return max((abs(scores[key] - baseline[key]) for key in baseline), default=0.0)
 
 
+def _ranking(scores: Mapping[str, float]) -> dict[str, tuple[str, ...]]:
+    """Candidate order per query: best score first, ties broken by chunk id."""
+    grouped: dict[str, list[tuple[float, str]]] = {}
+    for key, score in scores.items():
+        query_id, _, chunk_id = key.partition("\x1f")
+        grouped.setdefault(query_id, []).append((score, chunk_id))
+    return {
+        query_id: tuple(
+            chunk_id
+            for _score, chunk_id in sorted(items, key=lambda item: (-item[0], item[1]))
+        )
+        for query_id, items in grouped.items()
+    }
+
+
 def check_score_consistency(
-    results: Sequence[LevelResult], *, tolerance: float = SCORE_MISMATCH_TOLERANCE
+    results: Sequence[LevelResult],
 ) -> tuple[BenchmarkMeasurement, ...]:
-    """Mark levels whose scores drift from the first valid level as score_mismatch."""
+    """Mark levels that rank the benchmark candidates differently from the first level.
+
+    A score depends on how llama.cpp groups documents into a batch, so two levels of one
+    model differ by far more than float noise (0.02 to 0.07 measured on a T4). The
+    pipeline only uses the scores to order the candidates of a query, so a level is
+    rejected when that order changes, and the largest score difference is recorded either
+    way. A level that scored other pairs than the first level is rejected as well.
+    """
     baseline: Mapping[str, float] | None = None
+    baseline_ranking: dict[str, tuple[str, ...]] = {}
     checked: list[BenchmarkMeasurement] = []
     for result in results:
         measurement = result.measurement
@@ -264,15 +286,25 @@ def check_score_consistency(
             continue
         if baseline is None:
             baseline = result.scores
+            baseline_ranking = _ranking(baseline)
             checked.append(replace(measurement, max_abs_score_delta=0.0))
             continue
         delta = _max_abs_delta(baseline, result.scores)
-        if delta is None or delta > tolerance:
+        if delta is None:
             checked.append(
                 replace(
                     measurement,
                     status="invalid",
                     error_category="score_mismatch",
+                    max_abs_score_delta=None,
+                )
+            )
+        elif _ranking(result.scores) != baseline_ranking:
+            checked.append(
+                replace(
+                    measurement,
+                    status="invalid",
+                    error_category="rank_mismatch",
                     max_abs_score_delta=delta,
                 )
             )

@@ -131,12 +131,13 @@ def test_recommend_skips_invalid_levels_and_needs_one_valid_level():
     assert recommend([invalid], objective="latency") is None
 
 
-def test_score_check_compares_every_level_with_the_first_valid_level():
+def test_score_check_keeps_levels_that_rank_the_candidates_the_same():
+    """Scores shift with the batch shape on a GPU; only the ranking has to hold."""
     results = [
         LevelResult(BenchmarkMeasurement.invalid(LEVELS[0], "RuntimeError"), {}),
         LevelResult(_measurement(1), {"q\x1fa": 0.9, "q\x1fb": 0.1}),
         LevelResult(_measurement(2), {"q\x1fa": 0.9005, "q\x1fb": 0.1}),
-        LevelResult(_measurement(0), {"q\x1fa": 0.902, "q\x1fb": 0.1}),
+        LevelResult(_measurement(0), {"q\x1fa": 0.82, "q\x1fb": 0.16}),
     ]
 
     checked = check_score_consistency(results)
@@ -145,11 +146,26 @@ def test_score_check_compares_every_level_with_the_first_valid_level():
         ("invalid", "RuntimeError"),
         ("ok", None),
         ("ok", None),
-        ("invalid", "score_mismatch"),
+        ("ok", None),
     ]
     assert checked[1].max_abs_score_delta == 0.0
     assert checked[2].max_abs_score_delta == pytest.approx(5e-4)
-    assert checked[3].max_abs_score_delta == pytest.approx(2e-3)
+    assert checked[3].max_abs_score_delta == pytest.approx(8e-2)
+
+
+def test_score_check_rejects_a_level_that_reorders_candidates():
+    results = [
+        LevelResult(_measurement(1), {"q\x1fa": 0.51, "q\x1fb": 0.49}),
+        LevelResult(_measurement(2), {"q\x1fa": 0.49, "q\x1fb": 0.51}),
+    ]
+
+    checked = check_score_consistency(results)
+
+    assert [(item.status, item.error_category) for item in checked] == [
+        ("ok", None),
+        ("invalid", "rank_mismatch"),
+    ]
+    assert checked[1].max_abs_score_delta == pytest.approx(2e-2)
 
 
 def test_score_check_rejects_levels_that_scored_different_pairs():

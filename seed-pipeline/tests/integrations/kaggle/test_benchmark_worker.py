@@ -14,9 +14,10 @@ MODEL = "qwen3-reranker:0.6b-fp16"
 
 
 def _levels() -> tuple[RuntimeCandidate, ...]:
+    """Two real catalog levels: the worker must not depend on how many the catalog has."""
     space = require_model(MODEL).rerank_search_space
     assert space is not None
-    return space.candidates
+    return space.candidates[:2]
 
 
 def _config(tmp_path: Path, **extra: object) -> dict:
@@ -89,14 +90,16 @@ def test_benchmark_worker_rejects_a_level_whose_scores_drift(tmp_path):
     levels = _levels()
 
     def measure(index, candidate):
-        drift = 0.01 if index == 1 else 0.0
-        return _ok(candidate, 10.0 - index, {"q\x1fc": 0.5 + drift})
+        scores = {"q\x1fc1": 0.51, "q\x1fc2": 0.49}
+        if index == 1:
+            scores = {"q\x1fc1": 0.49, "q\x1fc2": 0.51}
+        return _ok(candidate, 10.0 - index, scores)
 
     artifact = run_benchmark_worker(config, measure_level=measure)
 
     rows = _rows(config)
     assert [row["status"] for row in rows] == ["ok", "invalid"]
-    assert rows[1]["error_category"] == "score_mismatch"
+    assert rows[1]["error_category"] == "rank_mismatch"
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
     assert manifest["runtime"]["recommendation"] == levels[0].to_dict()
 
