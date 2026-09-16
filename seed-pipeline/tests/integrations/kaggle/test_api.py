@@ -65,6 +65,29 @@ def test_run_result_retries_a_failed_connection(tmp_path):
     assert sleeps == [2.0, 4.0]
 
 
+def test_run_result_waits_longer_for_a_longer_network_outage(tmp_path):
+    """The delay doubles and stops growing at a minute."""
+    marker = tmp_path / "attempts"
+    sleeps: list[float] = []
+    runner = KaggleCommandRunner(executable=sys.executable, sleep=sleeps.append)
+
+    result = runner.run_result(_flaky_command(marker, 7, TRANSIENT_ERROR))
+
+    assert result.stdout == "ok\n"
+    assert marker.read_text() == "8"
+    assert sleeps == [2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0]
+
+
+def test_run_result_gives_up_after_the_last_attempt(tmp_path):
+    marker = tmp_path / "attempts"
+    runner = KaggleCommandRunner(executable=sys.executable, sleep=lambda _s: None)
+
+    with pytest.raises(KaggleCommandError):
+        runner.run_result(_flaky_command(marker, 99, TRANSIENT_ERROR))
+
+    assert marker.read_text() == "8"
+
+
 def test_run_result_does_not_retry_a_real_kaggle_error(tmp_path):
     marker = tmp_path / "attempts"
     sleeps: list[float] = []

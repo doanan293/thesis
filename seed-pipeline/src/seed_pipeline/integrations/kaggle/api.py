@@ -13,8 +13,11 @@ from typing import TextIO
 
 from seed_pipeline.integrations.kaggle.errors import KaggleCommandError
 
-KAGGLE_COMMAND_ATTEMPTS = 3
+# WSL drops its network for tens of seconds at a time, so a transient failure is
+# retried with a doubling delay (2 s, 4 s, ... capped at 60 s), about four minutes in all.
+KAGGLE_COMMAND_ATTEMPTS = 8
 KAGGLE_RETRY_DELAY_SECONDS = 2.0
+KAGGLE_RETRY_MAX_DELAY_SECONDS = 60.0
 # Network failures of the Kaggle API, as the CLI reports them.
 TRANSIENT_COMMAND_MARKERS = (
     "remotedisconnected",
@@ -299,7 +302,12 @@ class KaggleCommandRunner:
             except KaggleCommandError as error:
                 if attempt == KAGGLE_COMMAND_ATTEMPTS or not _is_transient(error):
                     raise
-                self.sleep(KAGGLE_RETRY_DELAY_SECONDS * attempt)
+                self.sleep(
+                    min(
+                        KAGGLE_RETRY_DELAY_SECONDS * 2 ** (attempt - 1),
+                        KAGGLE_RETRY_MAX_DELAY_SECONDS,
+                    )
+                )
         raise AssertionError("unreachable")
 
     def _run_result_once(
