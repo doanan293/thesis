@@ -18,6 +18,10 @@ KAGGLE_RETRY_DELAY_SECONDS = 2.0
 # Network failures of the Kaggle API, as the CLI reports them.
 TRANSIENT_COMMAND_MARKERS = (
     "remotedisconnected",
+    "failed to establish a new connection",
+    "nameresolutionerror",
+    "network is unreachable",
+    "connection timed out",
     "connection aborted",
     "connection reset",
     "connection refused",

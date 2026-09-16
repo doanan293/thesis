@@ -48,6 +48,23 @@ def test_run_result_retries_a_dropped_kaggle_connection(tmp_path):
     assert sleeps == [2.0]
 
 
+def test_run_result_retries_a_failed_connection(tmp_path):
+    """A WSL network blip shows up as NewConnectionError, not as a dropped socket."""
+    marker = tmp_path / "attempts"
+    sleeps: list[float] = []
+    runner = KaggleCommandRunner(executable=sys.executable, sleep=sleeps.append)
+    message = (
+        "urllib3.exceptions.NewConnectionError: HTTPSConnection(host='api.kaggle.com',"
+        " port=443): Failed to establish a new connection: [Errno 22] Invalid argument"
+    )
+
+    result = runner.run_result(_flaky_command(marker, 2, message))
+
+    assert result.stdout == "ok\n"
+    assert marker.read_text() == "3"
+    assert sleeps == [2.0, 4.0]
+
+
 def test_run_result_does_not_retry_a_real_kaggle_error(tmp_path):
     marker = tmp_path / "attempts"
     sleeps: list[float] = []
