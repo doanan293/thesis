@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +14,50 @@ from seed_pipeline.integrations.kaggle.errors import KaggleCommandError
 
 def _python_command(source: str) -> list[str]:
     return ["kaggle", "-c", source]
+
+
+TRANSIENT_ERROR = (
+    "http.client.RemoteDisconnected: Remote end closed connection without response"
+)
+
+
+def _flaky_command(marker: Path, failures: int, message: str) -> list[str]:
+    """A command that fails `failures` times with `message`, then prints ok."""
+    return _python_command(
+        "import pathlib, sys\n"
+        f"marker = pathlib.Path({str(marker)!r})\n"
+        "attempt = int(marker.read_text()) + 1 if marker.exists() else 1\n"
+        "marker.write_text(str(attempt))\n"
+        f"if attempt <= {failures}:\n"
+        f"    sys.stderr.write({message!r})\n"
+        "    sys.exit(1)\n"
+        "print('ok')\n"
+    )
+
+
+def test_run_result_retries_a_dropped_kaggle_connection(tmp_path):
+    """Kaggle drops connections; one blip must not end a scoring run."""
+    marker = tmp_path / "attempts"
+    sleeps: list[float] = []
+    runner = KaggleCommandRunner(executable=sys.executable, sleep=sleeps.append)
+
+    result = runner.run_result(_flaky_command(marker, 1, TRANSIENT_ERROR))
+
+    assert result.stdout == "ok\n"
+    assert marker.read_text() == "2"
+    assert sleeps == [2.0]
+
+
+def test_run_result_does_not_retry_a_real_kaggle_error(tmp_path):
+    marker = tmp_path / "attempts"
+    sleeps: list[float] = []
+    runner = KaggleCommandRunner(executable=sys.executable, sleep=sleeps.append)
+
+    with pytest.raises(KaggleCommandError):
+        runner.run_result(_flaky_command(marker, 3, "404 - Not Found"))
+
+    assert marker.read_text() == "1"
+    assert sleeps == []
 
 
 def test_run_result_keeps_default_output_silent(capsys):

@@ -5,11 +5,34 @@ import os
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
 from seed_pipeline.integrations.kaggle.errors import KaggleCommandError
+
+KAGGLE_COMMAND_ATTEMPTS = 3
+KAGGLE_RETRY_DELAY_SECONDS = 2.0
+# Network failures of the Kaggle API, as the CLI reports them.
+TRANSIENT_COMMAND_MARKERS = (
+    "remotedisconnected",
+    "connection aborted",
+    "connection reset",
+    "connection refused",
+    "read timed out",
+    "max retries exceeded",
+    "temporary failure in name resolution",
+    "502 bad gateway",
+    "503 service",
+    "504 gateway",
+)
+
+
+def _is_transient(error: KaggleCommandError) -> bool:
+    text = f"{error}".casefold()
+    return any(marker in text for marker in TRANSIENT_COMMAND_MARKERS)
 
 
 def dataset_metadata(owner: str, slug: str, title: str, public: bool = False) -> dict:
@@ -223,6 +246,7 @@ class KaggleCommandRunner:
     executable: str = "kaggle"
     environment: dict[str, str] | None = None
     dry_run: bool = False
+    sleep: Callable[[float], None] = field(default=time.sleep)
 
     def start(
         self, args: list[str], *, capture_output: bool = False
@@ -249,6 +273,32 @@ class KaggleCommandRunner:
         return _redact(value, environment)
 
     def run_result(
+        self,
+        args: list[str],
+        *,
+        operation: str = "command",
+        target: str | None = None,
+        live_output: bool = False,
+    ) -> KaggleCommandResult:
+        """Run a Kaggle command, retrying a dropped connection.
+
+        Kaggle closes connections under load. One such blip used to end a scoring run
+        that had a GPU session in flight, so a transient failure is retried before the
+        error reaches the caller; a real error (a missing dataset, a rejected push) is
+        raised on the first attempt.
+        """
+        for attempt in range(1, KAGGLE_COMMAND_ATTEMPTS + 1):
+            try:
+                return self._run_result_once(
+                    args, operation=operation, target=target, live_output=live_output
+                )
+            except KaggleCommandError as error:
+                if attempt == KAGGLE_COMMAND_ATTEMPTS or not _is_transient(error):
+                    raise
+                self.sleep(KAGGLE_RETRY_DELAY_SECONDS * attempt)
+        raise AssertionError("unreachable")
+
+    def _run_result_once(
         self,
         args: list[str],
         *,
