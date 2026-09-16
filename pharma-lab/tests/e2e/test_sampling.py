@@ -107,7 +107,15 @@ def test_batches_carry_rows_and_section_texts(tmp_path: Path) -> None:
     answerable = source[:40]
     pairs = [(source[0], source[3])]
 
-    paths = write_authoring_batches(tmp_path, answerable, pairs, text, batch_size=35)
+    answerable[0]["expected_chunk_id"] = "doc0:s0:chunk-001"
+    paths = write_authoring_batches(
+        tmp_path,
+        answerable,
+        pairs,
+        text,
+        batch_size=35,
+        chunks={"doc0:s0:chunk-001": "focus text"},
+    )
 
     assert [path.name for path in paths] == [
         "answerable-01.todo.jsonl",
@@ -118,6 +126,8 @@ def test_batches_carry_rows_and_section_texts(tmp_path: Path) -> None:
     assert [slot["slot_id"] for slot in slots] == [
         f"e2e-ans-{n:04d}" for n in range(36, 41)
     ]
+    first = json.loads(paths[0].read_text("utf-8").splitlines()[0])
+    assert first["focus_chunks"] == {"doc0:s0:chunk-001": "focus text"}
     dialogue = json.loads(paths[2].read_text("utf-8"))
     assert dialogue["slot_id"] == "e2e-mt-0001"
     assert set(dialogue["sections"]) == {

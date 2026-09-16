@@ -114,8 +114,13 @@ def write_authoring_batches(
     *,
     batch_size: int = 35,
     force: bool = False,
+    chunks: dict[str, str] | None = None,
 ) -> list[Path]:
-    """Write `*.todo.jsonl` slots carrying the source rows and their section texts."""
+    """Write `*.todo.jsonl` slots carrying the source rows and their section texts.
+
+    `chunks` (gold chunk label -> text) adds each row's expected chunk as
+    `focus_chunks`, the part of a long section the question is about.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     existing = sorted(output_dir.glob("*.todo.jsonl"))
     if existing and not force:
@@ -133,12 +138,21 @@ def write_authoring_batches(
             for section in _sections(row)
         }
 
+    def focus(*source_rows: Row) -> dict[str, str]:
+        known = chunks or {}
+        return {
+            str(row["expected_chunk_id"]): known[str(row["expected_chunk_id"])]
+            for row in source_rows
+            if str(row.get("expected_chunk_id")) in known
+        }
+
     answerable_slots = [
         {
             "slot_id": _slot(Category.ANSWERABLE, number),
             "category": str(Category.ANSWERABLE),
             "source_rows": [row],
             "sections": texts(row),
+            "focus_chunks": focus(row),
         }
         for number, row in enumerate(answerable, start=1)
     ]
@@ -148,6 +162,7 @@ def write_authoring_batches(
             "category": str(Category.MULTI_TURN),
             "source_rows": [first, second],
             "sections": texts(first, second),
+            "focus_chunks": focus(first, second),
         }
         for number, (first, second) in enumerate(pairs, start=1)
     ]

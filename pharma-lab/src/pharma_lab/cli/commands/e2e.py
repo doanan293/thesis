@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pharma_agent.domain.corpus.bundle import read_bundle
 
 from pharma_lab.cli.runtime import (
     CommandResult,
@@ -17,7 +18,7 @@ from pharma_lab.config.paths import (
     GOLD_DIR,
     GOLDEN_E2E_PATH,
 )
-from pharma_lab.e2e.corpus_text import load_corpus_text
+from pharma_lab.e2e.corpus_text import corpus_text, load_corpus_text
 from pharma_lab.e2e.golden import (
     ANSWERABLE_PER_GROUP,
     QUOTAS,
@@ -64,7 +65,8 @@ def golden_sample(
     """Pick the gold queries to author from and write *.todo.jsonl batches."""
 
     def handler() -> CommandResult:
-        corpus = load_corpus_text(bundle)
+        knowledge = read_bundle(bundle)
+        corpus = corpus_text(knowledge)
         rows = load_query_rows(evaluation)
         answerable = sample_answerable(
             rows, per_group=ANSWERABLE_PER_GROUP, seed=seed, corpus=corpus

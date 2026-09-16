@@ -4,11 +4,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pharma_agent.domain.corpus.bundle import read_bundle
 from typer.testing import CliRunner
 
 from pharma_lab.bundle.export import ExportRequest, export_bundle
 from pharma_lab.cli.app import app
-from pharma_lab.e2e.corpus_text import CorpusText, load_corpus_text
+from pharma_lab.e2e.corpus_text import CorpusText, chunk_texts, load_corpus_text
 from pharma_lab.e2e.golden import (
     ANSWERABLE_PER_GROUP,
     EVAL_GROUPS,
@@ -263,6 +264,9 @@ def test_corpus_text_reads_sections_and_titles_from_a_bundle(tmp_path: Path) -> 
     assert corpus.section_documents[section_id] in corpus.titles
     assert corpus.contains(text.split()[0])
     assert not corpus.contains("zzzz-not-a-drug")
+    chunks = chunk_texts(read_bundle(tmp_path / "bundle"), [section_id])
+    assert chunks
+    assert all(label.startswith(f"{section_id}:chunk-") for label in chunks)
 
 
 def test_cli_builds_the_golden_set(tmp_path: Path) -> None:
