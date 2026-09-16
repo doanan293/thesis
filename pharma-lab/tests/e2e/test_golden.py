@@ -300,3 +300,35 @@ def test_cli_builds_the_golden_set(tmp_path: Path) -> None:
     assert (
         "gold section drug:paracetamol:lieu-dung is not in the bundle" in result.output
     )
+
+
+def test_cli_checks_one_batch(tmp_path: Path) -> None:
+    export_bundle(
+        ExportRequest(
+            rag_final_dir=FIXTURE,
+            glossary_path=FIXTURE / "term_glossary.json",
+            mappings_path=FIXTURE / "colloquial_mappings.json",
+            output_dir=tmp_path / "bundle",
+        )
+    )
+    corpus = load_corpus_text(tmp_path / "bundle")
+    section, text = next(iter(corpus.sections.items()))
+    fact = {
+        "fact": "f",
+        "evidence_quote": text.split("\n")[0][:30],
+        "section_id": section,
+    }
+    good = answerable(
+        gold_section_ids=[section],
+        gold_chunk_ids=[],
+        reference={"answer": "a", "key_facts": [fact]},
+    )
+    batch = write_batch(tmp_path / "a.authored.jsonl", [good])
+
+    result = CliRunner().invoke(
+        app,
+        ["e2e", "golden", "check", str(batch), "--bundle", str(tmp_path / "bundle")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "items=1" in result.output

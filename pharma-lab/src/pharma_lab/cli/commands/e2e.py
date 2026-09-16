@@ -24,6 +24,8 @@ from pharma_lab.e2e.golden import (
     Category,
     build_golden,
     manifest_path,
+    read_items,
+    validate_items,
 )
 from pharma_lab.e2e.sampling import (
     sample_answerable,
@@ -84,6 +86,28 @@ def golden_sample(
                 "answerable": len(answerable),
                 "multi_turn": len(pairs),
             },
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@golden_app.command("check")
+def golden_check(
+    ctx: typer.Context,
+    batch: Annotated[Path, typer.Argument(dir_okay=False, exists=True)],
+    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False)] = BUNDLE_DIR,
+) -> None:
+    """Validate one authored batch without the set-wide quotas."""
+
+    def handler() -> CommandResult:
+        items, problems = read_items(batch)
+        problems += validate_items(items, load_corpus_text(bundle), complete=False)
+        if problems:
+            raise ValueError(
+                f"{batch} has {len(problems)} problem(s):\n" + "\n".join(problems)
+            )
+        return CommandResult(
+            "e2e golden check", CommandStatus.COMPLETE, batch, {"items": len(items)}
         )
 
     run_handler(state_from_context(ctx), handler)
