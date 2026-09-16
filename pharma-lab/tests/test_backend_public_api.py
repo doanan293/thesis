@@ -2,6 +2,8 @@ import importlib
 import inspect
 
 import pytest
+from pharma_agent.application.chat.context import PipelineOptions
+from pharma_agent.application.chat.runner import ChatTurnRunner, TurnOutcome
 from pharma_agent.domain.corpus.bundle import BUNDLE_SCHEMA_VERSION, model_slug
 from pharma_agent.domain.corpus.chunking import (
     CHUNKER_VERSION,
@@ -20,6 +22,11 @@ PUBLIC_MODULES = (
     "pharma_agent.domain.corpus.enrichment",
     "pharma_agent.domain.corpus.hydrate",
     "pharma_agent.infrastructure.composition",
+    # The E2E harness runs the chat graph in-process (docs/superpowers/specs/
+    # 2026-09-16-e2e-golden-evaluation-design.md §4).
+    "pharma_agent.application.chat.context",
+    "pharma_agent.application.chat.graph",
+    "pharma_agent.application.chat.runner",
 )
 
 
@@ -36,3 +43,9 @@ def test_pinned_backend_names_have_expected_values() -> None:
     assert callable(chunk_section)
     assert "embedder" in inspect.signature(build_retrieval_service).parameters
     assert RetrievalStack.__name__ == "RetrievalStack"
+
+
+def test_chat_runner_accepts_pipeline_options() -> None:
+    assert "pipeline" in inspect.signature(ChatTurnRunner).parameters
+    assert PipelineOptions() == PipelineOptions(rephrase=True, judge_refine=True)
+    assert "context_text" in TurnOutcome.model_fields

@@ -13,11 +13,14 @@ from pharma_lab.cli.runtime import (
     state_from_context,
 )
 from pharma_lab.config.paths import (
+    BACKEND_ENV_FILE,
     BUNDLE_DIR,
     E2E_AUTHORING_DIR,
     GOLD_DIR,
     GOLDEN_E2E_PATH,
+    e2e_run_dir,
 )
+from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.corpus_text import chunk_texts, corpus_text, load_corpus_text
 from pharma_lab.e2e.golden import (
     ANSWERABLE_PER_GROUP,
@@ -28,6 +31,7 @@ from pharma_lab.e2e.golden import (
     read_items,
     validate_items,
 )
+from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
 from pharma_lab.e2e.sampling import (
     sample_answerable,
     sample_multi_turn,
@@ -153,6 +157,45 @@ def golden_build(
             CommandStatus.COMPLETE,
             output,
             {"manifest": str(manifest_path(output)), **manifest.counts},
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@e2e_app.command("run")
+def run(
+    ctx: typer.Context,
+    run_name: Annotated[str, typer.Option("--run")],
+    config: Annotated[E2EConfig, typer.Option("--config")],
+    golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", min=1, help="Only N items spread across the set"),
+    ] = None,
+    concurrency: Annotated[int, typer.Option("--concurrency", min=1)] = 4,
+    retry_errors: Annotated[bool, typer.Option("--retry-errors")] = False,
+    backend_env_file: Annotated[
+        Path, typer.Option("--backend-env-file", dir_okay=False)
+    ] = BACKEND_ENV_FILE,
+) -> None:
+    """Answer the golden set with one configuration; re-run to resume."""
+    request = E2ERunRequest(
+        run_root=e2e_run_dir(run_name),
+        config=config,
+        golden_path=golden,
+        backend_env_file=backend_env_file,
+        concurrency=concurrency,
+        retry_errors=retry_errors,
+        limit=limit,
+    )
+
+    def handler() -> CommandResult:
+        summary = run_e2e(request)
+        return CommandResult(
+            "e2e run",
+            CommandStatus.INCOMPLETE if summary.errors else CommandStatus.COMPLETE,
+            request.run_root / str(config),
+            {"items": summary.total, "ran": summary.ran, "errors": summary.errors},
         )
 
     run_handler(state_from_context(ctx), handler)
