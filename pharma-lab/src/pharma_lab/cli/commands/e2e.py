@@ -255,6 +255,13 @@ def run(
     ] = None,
     concurrency: Annotated[int, typer.Option("--concurrency", min=1)] = 4,
     retry_errors: Annotated[bool, typer.Option("--retry-errors")] = False,
+    deadline_seconds: Annotated[
+        float | None,
+        typer.Option(
+            "--deadline-seconds",
+            help="Turn deadline for this run instead of the backend budget",
+        ),
+    ] = None,
     backend_env_file: Annotated[
         Path, typer.Option("--backend-env-file", dir_okay=False)
     ] = BACKEND_ENV_FILE,
@@ -268,6 +275,7 @@ def run(
         concurrency=concurrency,
         retry_errors=retry_errors,
         limit=limit,
+        deadline_seconds=deadline_seconds,
     )
 
     def handler() -> CommandResult:

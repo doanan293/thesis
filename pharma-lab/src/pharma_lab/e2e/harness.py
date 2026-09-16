@@ -93,6 +93,17 @@ class E2ERunRequest:
     concurrency: int = 4
     retry_errors: bool = False
     limit: int | None = None
+    # Evaluation may wait longer than the production turn deadline; recorded in run.json.
+    deadline_seconds: float | None = None
+
+
+def with_deadline(settings: Settings, seconds: float | None) -> Settings:
+    if seconds is None:
+        return settings
+    if seconds <= 0:
+        raise ValueError("--deadline-seconds must be positive")
+    budget = settings.budget.model_copy(update={"deadline_seconds": seconds})
+    return settings.model_copy(update={"budget": budget})
 
 
 def config_dir(run_root: Path, config: E2EConfig | str) -> Path:
@@ -104,6 +115,7 @@ def run_e2e(request: E2ERunRequest) -> RunSummary:
     settings = settings_for(
         Settings(_env_file=request.backend_env_file), request.config
     )
+    settings = with_deadline(settings, request.deadline_seconds)
     pipeline = pipeline_for(request.config)
     directory = config_dir(request.run_root, request.config)
     probe = next(

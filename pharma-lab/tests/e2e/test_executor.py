@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 
+import pytest
 from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.agent.schemas import (
@@ -14,6 +15,7 @@ from pharma_agent.domain.agent.schemas import (
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
 from pharma_agent.domain.llm.port import LlmError
+from pharma_agent.infrastructure.settings import Settings
 from tests.e2e.factories import (
     FakeRetriever,
     ScriptedLlm,
@@ -24,7 +26,7 @@ from tests.e2e.factories import (
 from pharma_lab.e2e.configs import E2EConfig, pipeline_for
 from pharma_lab.e2e.executor import BackendTurnExecutor, conversation_for
 from pharma_lab.e2e.golden import GoldenItem
-from pharma_lab.e2e.harness import run_items, spread
+from pharma_lab.e2e.harness import run_items, spread, with_deadline
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore
 
 SECTION = "drug:paracetamol:lieu-dung"
@@ -194,3 +196,14 @@ def test_spread_takes_items_across_the_set() -> None:
     assert [i.item_id[-2:] for i in spread(items, 3)] == ["01", "05", "09"]
     assert spread(items, None) == items
     assert spread(items, 50) == items
+
+
+def test_deadline_override_changes_only_the_budget() -> None:
+    base = Settings(_env_file=None)
+    assert with_deadline(base, None) is base
+    longer = with_deadline(base, 600)
+    assert longer.budget.deadline_seconds == 600
+    assert base.budget.deadline_seconds == 90
+    assert longer.budget.max_llm_calls == base.budget.max_llm_calls
+    with pytest.raises(ValueError, match="positive"):
+        with_deadline(base, 0)
