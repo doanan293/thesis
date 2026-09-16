@@ -7,9 +7,11 @@ import pytest
 from pharma_lab.e2e.corpus_text import CorpusText
 from pharma_lab.e2e.golden import EVAL_GROUPS
 from pharma_lab.e2e.sampling import (
+    replacement_candidates,
     sample_answerable,
     sample_multi_turn,
     write_authoring_batches,
+    write_replacement_batch,
 )
 
 
@@ -139,3 +141,44 @@ def test_batches_carry_rows_and_section_texts(tmp_path: Path) -> None:
     assert write_authoring_batches(tmp_path, answerable[:1], [], text, force=True) == [
         tmp_path / "answerable-01.todo.jsonl"
     ]
+
+
+def test_replacements_come_from_the_slot_stratum_and_are_unused(tmp_path: Path) -> None:
+    text = corpus()
+    source = rows(text)
+    slot_row = source[0]
+    used = {row["query_id"] for row in source[:300]}
+
+    candidates = replacement_candidates(
+        source,
+        {"e2e-ans-0002": source[6], "e2e-ans-0001": slot_row},
+        used=used,
+        per_slot=3,
+        seed=0,
+        corpus=text,
+    )
+
+    offered = [row for group in candidates.values() for row in group]
+    assert len({row["query_id"] for row in offered}) == 6
+    assert all(row["query_id"] not in used for row in offered)
+    assert all(
+        (row["eval_group"], row["difficulty"]) == (slot_row["eval_group"], "hard")
+        for row in candidates["e2e-ans-0001"]
+    )
+    path = write_replacement_batch(tmp_path, candidates, text)
+    assert path.name == "replacement-01.todo.jsonl"
+    first = json.loads(path.read_text("utf-8").splitlines()[0])
+    assert first["slot_id"] == "e2e-ans-0001"
+    assert len(first["candidates"]) == 3
+    assert write_replacement_batch(tmp_path, candidates, text).name == (
+        "replacement-02.todo.jsonl"
+    )
+    with pytest.raises(ValueError, match="only"):
+        replacement_candidates(
+            source,
+            {"e2e-ans-0001": slot_row},
+            used=used,
+            per_slot=500,
+            seed=0,
+            corpus=text,
+        )

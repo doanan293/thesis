@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -37,9 +38,11 @@ from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
 from pharma_lab.e2e.judging.service import JudgeRequest, run_judge
 from pharma_lab.e2e.report import write_report
 from pharma_lab.e2e.sampling import (
+    replacement_candidates,
     sample_answerable,
     sample_multi_turn,
     write_authoring_batches,
+    write_replacement_batch,
 )
 from pharma_lab.evaluation.artifact_contracts import sha256_file
 from pharma_lab.evaluation.backend_retrieval import load_query_rows
@@ -111,6 +114,75 @@ def golden_sample(
                 "answerable": len(answerable),
                 "multi_turn": len(pairs),
             },
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@golden_app.command("resample")
+def golden_resample(
+    ctx: typer.Context,
+    slots: Annotated[
+        str, typer.Option("--slots", help="Comma-separated answerable slot ids")
+    ],
+    evaluation: Annotated[
+        Path, typer.Option("--evaluation", dir_okay=False)
+    ] = GOLD_PATH,
+    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False)] = BUNDLE_DIR,
+    authoring: Annotated[
+        Path, typer.Option("--authoring", file_okay=False)
+    ] = E2E_AUTHORING_DIR,
+    per_slot: Annotated[int, typer.Option("--per-slot", min=1)] = 4,
+    seed: Annotated[int, typer.Option("--seed")] = 0,
+) -> None:
+    """Offer unused same-stratum questions for slots whose gold section is off."""
+
+    def handler() -> CommandResult:
+        wanted = {slot.strip() for slot in slots.split(",") if slot.strip()}
+        todo = [
+            json.loads(line)
+            for path in sorted(authoring.glob("*.todo.jsonl"))
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        used = {
+            row["query_id"]
+            for slot in todo
+            for option in [slot, *slot.get("candidates", [])]
+            for row in option.get("source_rows", [])
+        }
+        sources = {
+            slot["slot_id"]: slot["source_rows"][0]
+            for slot in todo
+            if slot["slot_id"] in wanted and slot.get("source_rows")
+        }
+        missing = sorted(wanted - set(sources))
+        if missing:
+            raise ValueError(f"unknown answerable slots: {', '.join(missing)}")
+        knowledge = read_bundle(bundle)
+        corpus = corpus_text(knowledge)
+        candidates = replacement_candidates(
+            load_query_rows(evaluation),
+            sources,
+            used=used,
+            per_slot=per_slot,
+            seed=seed,
+            corpus=corpus,
+        )
+        sections = {
+            section
+            for rows in candidates.values()
+            for row in rows
+            for section in row["expected_section_ids"]
+        }
+        path = write_replacement_batch(
+            authoring, candidates, corpus, chunks=chunk_texts(knowledge, sections)
+        )
+        return CommandResult(
+            "e2e golden resample",
+            CommandStatus.COMPLETE,
+            path,
+            {"slots": len(candidates)},
         )
 
     run_handler(state_from_context(ctx), handler)

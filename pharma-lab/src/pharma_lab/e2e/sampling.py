@@ -85,6 +85,12 @@ def sample_multi_turn(
     return pairs
 
 
+def _focus(chunks: dict[str, str], *source_rows: Row) -> dict[str, str]:
+    """The expected chunk of each row, when its text is known."""
+    labels = (str(row.get("expected_chunk_id")) for row in source_rows)
+    return {label: chunks[label] for label in labels if label in chunks}
+
+
 def _slot(category: Category, number: int) -> str:
     return f"{ID_PREFIX[category]}{number:04d}"
 
@@ -139,12 +145,7 @@ def write_authoring_batches(
         }
 
     def focus(*source_rows: Row) -> dict[str, str]:
-        known = chunks or {}
-        return {
-            str(row["expected_chunk_id"]): known[str(row["expected_chunk_id"])]
-            for row in source_rows
-            if str(row.get("expected_chunk_id")) in known
-        }
+        return _focus(chunks or {}, *source_rows)
 
     answerable_slots = [
         {
@@ -170,3 +171,80 @@ def write_authoring_batches(
         *_write_batches(output_dir, "answerable", answerable_slots, batch_size),
         *_write_batches(output_dir, "multi-turn", dialogue_slots, batch_size),
     ]
+
+
+def _stratum(row: Row) -> tuple[str, str, str]:
+    return (
+        str(row.get("eval_group")),
+        str(row.get("difficulty")),
+        str(row.get("answer_mode")),
+    )
+
+
+def replacement_candidates(
+    rows: Sequence[Row],
+    slots: dict[str, Row],
+    *,
+    used: set[str],
+    per_slot: int,
+    seed: int,
+    corpus: CorpusText,
+) -> dict[str, list[Row]]:
+    """Unused rows from each slot's stratum, to replace a question that its gold
+    section does not answer. Every candidate is offered to one slot only."""
+    rng = random.Random(seed)
+    taken = set(used)
+    result: dict[str, list[Row]] = {}
+    for slot_id, source in sorted(slots.items()):
+        pool = [
+            row
+            for row in rows
+            if _stratum(row) == _stratum(source)
+            and row["query_id"] not in taken
+            and _usable(row, corpus)
+        ]
+        if len(pool) < per_slot:
+            raise ValueError(
+                f"{slot_id}: only {len(pool)} unused rows in stratum {_stratum(source)}"
+            )
+        chosen = rng.sample(pool, per_slot)
+        taken.update(row["query_id"] for row in chosen)
+        result[slot_id] = chosen
+    return result
+
+
+def write_replacement_batch(
+    output_dir: Path,
+    candidates: dict[str, list[Row]],
+    corpus: CorpusText,
+    *,
+    chunks: dict[str, str] | None = None,
+) -> Path:
+    """`replacement-NN.todo.jsonl`: per slot, candidate rows with their texts."""
+    known = chunks or {}
+    number = len(list(output_dir.glob("replacement-*.todo.jsonl"))) + 1
+    path = output_dir / f"replacement-{number:02d}.todo.jsonl"
+    lines = []
+    for slot_id, rows in sorted(candidates.items()):
+        options = [
+            {
+                "source_rows": [row],
+                "sections": {
+                    section: corpus.sections[section] for section in _sections(row)
+                },
+                "focus_chunks": _focus(known, row),
+            }
+            for row in rows
+        ]
+        lines.append(
+            json.dumps(
+                {
+                    "slot_id": slot_id,
+                    "category": str(Category.ANSWERABLE),
+                    "candidates": options,
+                },
+                ensure_ascii=False,
+            )
+        )
+    path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+    return path
