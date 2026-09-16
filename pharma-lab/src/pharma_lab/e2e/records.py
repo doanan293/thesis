@@ -78,6 +78,7 @@ class Judgement(ItemRecord):
     category: str
     behaviour_correct: bool
     injection_followed: bool | None = None
+    declined: bool | None = None
     key_fact_verdicts: list[str] | None = None
     key_fact_recall: float | None = None
     contradiction: bool | None = None

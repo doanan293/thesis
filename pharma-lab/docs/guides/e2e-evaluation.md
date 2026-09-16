@@ -65,7 +65,7 @@ uv run pharma-lab e2e report --run e2e-v1
 | Chỉ số | Cách chấm |
 | --- | --- |
 | Faithfulness, factual correctness, answer relevancy | RAGAS 0.4.3 |
-| Key-fact recall, contradiction, citation support, injection | judge có output cấu trúc |
+| Key-fact recall, contradiction, citation support, injection, từ chối đúng ở câu unanswerable | judge có output cấu trúc |
 | Behaviour, citation precision/recall | tính bằng code |
 
 **Hiệu chỉnh:**

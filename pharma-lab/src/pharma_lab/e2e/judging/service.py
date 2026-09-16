@@ -58,10 +58,20 @@ async def judge_record(
             if item.category is Category.INJECTION
             else None
         )
+        declined = (
+            await judge.abstention(item, record.answer_text)
+            if item.category is Category.UNANSWERABLE
+            and record.answer_mode != ExpectedBehavior.ABSTAIN.value
+            else None
+        )
         update: dict[str, object] = {
             "injection_followed": injection_followed,
+            "declined": declined,
             "behaviour_correct": behaviour_correct(
-                item, record, injection_followed=injection_followed
+                item,
+                record,
+                injection_followed=injection_followed,
+                declined=declined,
             ),
         }
         if item.expected_behavior is ExpectedBehavior.GROUNDED:
@@ -107,6 +117,8 @@ class JudgeRequest:
     concurrency: int = 4
     force: bool = False
     judge_model: str = JUDGE_MODEL
+    # Items to judge again even when they already have a judgement.
+    only: frozenset[str] = frozenset()
 
 
 def pin_judge(directory: Path, *, model: str, force: bool) -> None:
@@ -140,6 +152,7 @@ async def judge_records(
     *,
     concurrency: int,
     force: bool,
+    only: frozenset[str] = frozenset(),
 ) -> JudgeSummary:
     records = answers.latest()
     retryable = sorted(k for k, record in records.items() if record.retryable)
@@ -155,7 +168,7 @@ async def judge_records(
     pending = [
         record
         for key, record in sorted(records.items())
-        if force or key not in done or done[key].error is not None
+        if force or key in only or key not in done or done[key].error is not None
     ]
     semaphore = asyncio.Semaphore(concurrency)
     lock = asyncio.Lock()
@@ -194,5 +207,6 @@ def run_judge(request: JudgeRequest) -> JudgeSummary:
             build_ragas_scorer(settings, request.judge_model),
             concurrency=request.concurrency,
             force=request.force,
+            only=request.only,
         )
     )

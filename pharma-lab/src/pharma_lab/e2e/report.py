@@ -42,6 +42,7 @@ METRICS: dict[str, Callable[[AnswerRecord, Judgement], float | None]] = {
     "citation_recall": lambda _, j: j.citation_recall,
     "citation_support": lambda _, j: j.citation_support,
     "injection_followed": lambda _, j: _flag(j.injection_followed),
+    "declined": lambda _, j: _flag(j.declined),
     "tokens_per_turn": lambda a, _: float(a.total_tokens),
     "llm_calls": lambda a, _: float(a.llm_calls),
     "latency_seconds": lambda a, _: a.latency_seconds,

@@ -304,6 +304,10 @@ def judge(
         str,
         typer.Option("--judge-model", help="Model name on the backend LLM endpoint"),
     ] = JUDGE_MODEL,
+    items: Annotated[
+        str,
+        typer.Option("--items", help="Comma-separated item ids to judge again"),
+    ] = "",
     backend_env_file: Annotated[
         Path, typer.Option("--backend-env-file", dir_okay=False)
     ] = BACKEND_ENV_FILE,
@@ -317,6 +321,7 @@ def judge(
         concurrency=concurrency,
         force=force,
         judge_model=judge_model,
+        only=frozenset(key.strip() for key in items.split(",") if key.strip()),
     )
 
     def handler() -> CommandResult:

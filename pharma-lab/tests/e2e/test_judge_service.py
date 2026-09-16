@@ -14,6 +14,7 @@ from pharma_lab.e2e.judging.ragas_scorer import (
 )
 from pharma_lab.e2e.judging.service import judge_record, judge_records, pin_judge
 from pharma_lab.e2e.judging.structured import (
+    AbstentionJudgement,
     CitationCheck,
     CitationSupportJudgement,
     FactCheck,
@@ -254,3 +255,53 @@ def test_one_judge_model_per_configuration(tmp_path: Path) -> None:
         pin_judge(tmp_path, model="other-model", force=False)
     pin_judge(tmp_path, model="other-model", force=True)
     assert "other-model" in (tmp_path / "judge.json").read_text("utf-8")
+
+
+def unanswerable() -> GoldenItem:
+    return GoldenItem.model_validate(
+        {
+            "item_id": "e2e-una-0001",
+            "category": "unanswerable",
+            "turns": [{"role": "user", "text": "Liều Zolgensma cho trẻ?"}],
+            "expected_behavior": "abstain",
+            "absent_terms": ["Zolgensma"],
+        }
+    )
+
+
+async def test_unanswerable_declined_in_text_counts_as_correct() -> None:
+    llm = ScriptedLlm()
+    llm.script(LlmRole.JUDGE, AbstentionJudgement(declined=True, reason="nói không có"))
+    record = answer("e2e-una-0001", citations=[])
+
+    judgement = await judge_record(
+        unanswerable(), record, StructuredJudge(llm), FixedScorer()
+    )
+
+    assert judgement.declined is True
+    assert judgement.behaviour_correct
+    abstained = answer("e2e-una-0001", citations=[], answer_mode="abstain")
+    direct = await judge_record(
+        unanswerable(), abstained, StructuredJudge(ScriptedLlm()), FixedScorer()
+    )
+    assert direct.declined is None and direct.behaviour_correct
+
+
+async def test_listed_items_are_judged_again(tmp_path: Path) -> None:
+    answers = JsonlStore(tmp_path / "answers.jsonl", AnswerRecord)
+    judgments = JsonlStore(tmp_path / "judgments.jsonl", Judgement)
+    answers.append(answer("e2e-ans-0001"))
+    items = {"e2e-ans-0001": grounded("e2e-ans-0001")}
+    for _ in range(2):
+        summary = await judge_records(
+            items,
+            answers,
+            judgments,
+            StructuredJudge(judge_for_grounded()),
+            FixedScorer(),
+            concurrency=1,
+            force=False,
+            only=frozenset({"e2e-ans-0001"}),
+        )
+        assert summary.judged == 1
+    assert len((tmp_path / "judgments.jsonl").read_text("utf-8").splitlines()) == 2
