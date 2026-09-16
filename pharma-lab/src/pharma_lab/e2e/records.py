@@ -16,6 +16,7 @@ class TokenUsage(BaseModel):
     calls: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    seconds: float = 0.0
 
 
 class CitedSection(BaseModel):
@@ -50,7 +51,8 @@ class AnswerRecord(ItemRecord):
     llm_calls: int = 0
     usage_by_role: dict[str, TokenUsage] = Field(default_factory=dict)
     latency_seconds: float = 0.0
-    step_seconds: dict[str, float] = Field(default_factory=dict)
+    # Wall time outside LLM calls: retrieval, reranking and graph overhead.
+    non_llm_seconds: float = 0.0
     error: str | None = None
     retryable: bool = False
 

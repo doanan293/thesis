@@ -119,6 +119,9 @@ async def test_full_agent_record_maps_citations_to_gold_labels() -> None:
     assert record.llm_calls == 4
     assert sorted(record.usage_by_role) == ["answer", "guardrail", "judge", "rephrase"]
     assert record.usage_by_role["answer"].prompt_tokens == 100
+    llm_seconds = sum(entry.seconds for entry in record.usage_by_role.values())
+    assert 0 <= record.non_llm_seconds <= record.latency_seconds
+    assert llm_seconds <= record.latency_seconds + 0.01
     assert not record.retryable
     assert "Người lớn uống tối đa" in fake.calls[1][1][-1].content
 

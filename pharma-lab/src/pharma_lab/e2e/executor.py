@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import time
-from collections import defaultdict
 
 from pharma_agent.application.chat.context import PipelineOptions, TurnDeps
 from pharma_agent.application.chat.graph import ChatGraph
 from pharma_agent.application.chat.runner import ChatTurnRunner, TurnOutcome
 from pharma_agent.domain.agent.actions import ActionKind
 from pharma_agent.domain.agent.budget import BudgetLimits
-from pharma_agent.domain.agent.run import AgentRun, RunStatus
+from pharma_agent.domain.agent.run import RunStatus
 from pharma_agent.domain.conversation.models import ConversationContext, Turn
 from pharma_agent.domain.guardrail.service import GuardrailService
 from pharma_agent.domain.llm.port import LlmPort
@@ -32,15 +31,6 @@ def conversation_for(item: GoldenItem) -> ConversationContext:
             for user, assistant in item.history
         ]
     )
-
-
-def _step_seconds(run: AgentRun) -> dict[str, float]:
-    seconds: dict[str, float] = defaultdict(float)
-    previous = run.started_at
-    for action in run.actions.entries:
-        seconds[action.kind.value] += (action.at - previous).total_seconds()
-        previous = action.at
-    return {kind: round(value, 3) for kind, value in seconds.items()}
 
 
 def answer_record(
@@ -94,7 +84,9 @@ def answer_record(
         llm_calls=run.usage.llm_calls,
         usage_by_role=usage,
         latency_seconds=round(latency, 3),
-        step_seconds=_step_seconds(run),
+        non_llm_seconds=round(
+            max(0.0, latency - sum(entry.seconds for entry in usage.values())), 3
+        ),
         error=(
             f"{run.error_code.value}: {run.error_detail}".strip()
             if run.error_code is not None

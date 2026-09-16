@@ -89,10 +89,14 @@ async def test_recording_llm_counts_calls_per_role() -> None:
     text = "".join([delta.text async for delta in llm.stream(LlmRole.ANSWER, [])])
 
     assert text == "Trả lời [1]."
-    assert llm.usage_by_role() == {
-        "judge": TokenUsage(calls=2, prompt_tokens=20, completion_tokens=4),
-        "answer": TokenUsage(calls=1, prompt_tokens=100, completion_tokens=20),
-    }
+    usage = llm.usage_by_role()
+    assert usage["judge"].model_copy(update={"seconds": 0.0}) == TokenUsage(
+        calls=2, prompt_tokens=20, completion_tokens=4
+    )
+    assert usage["answer"].model_copy(update={"seconds": 0.0}) == TokenUsage(
+        calls=1, prompt_tokens=100, completion_tokens=20
+    )
+    assert all(entry.seconds >= 0 for entry in usage.values())
 
 
 def identity(settings: Settings, **changes: str) -> RunIdentity:
