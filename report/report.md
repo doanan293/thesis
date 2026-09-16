@@ -224,8 +224,9 @@ START → guard ─(tấn công)──────► answer[blocked]
 Thiết kế cho LLM rẻ:
 
 - Mỗi bước là một lời gọi nhỏ với structured output; routing, ngân sách, chống lặp nằm trong code.
-- Ngân sách mỗi lượt: 3 vòng search, 10 lời gọi LLM, 40.000 token, 24.000 ký tự evidence, 90 giây;
-  ước tính 5–9 lời gọi LLM.
+- Giới hạn mỗi lượt: tối đa 3 vòng search, 10 lời gọi LLM, 40.000 token, 24.000 ký tự evidence
+  và 90 giây. Với câu hỏi thông thường, hệ thống thường dùng 1 vòng search và khoảng 4–5 lời gọi
+  LLM; trường hợp phải dùng đủ 3 vòng cần khoảng 8–9 lời gọi.
 - Mỗi role một model; đổi OpenAI cloud / vLLM / Ollama / llama.cpp chỉ bằng `base_url`, `api_key`, `model`.
 
 ### 6.2 Retrieval trong production
@@ -250,22 +251,16 @@ Thiết kế cho LLM rẻ:
 | API | Stream AI SDK UI Message Stream, lịch sử hội thoại, xem citation, feedback, auth |
 | Triển khai | `docker compose` đủ Postgres, Qdrant, llama.cpp (CPU), proxy LLM, backend; `pharma-agent ask "..." --json` |
 
-### 6.4 Kiểm thử
-
-| Project | Test | Nội dung |
-| --- | ---: | --- |
-| backend | 477 (60 integration) | Domain, graph với LLM giả, API, Postgres và Qdrant thật, contract stream, server E2E |
-| seed-pipeline | 469 | Crawl, build, bundle, embedding cache, retrieve, rerank, metrics, archive dữ liệu |
-
-Các test kiểm tra tính đúng của code; **chất lượng câu trả lời của agent chưa được đo.**
 
 ## 7. Định hướng tiếp theo
 
-- **Bộ test end-to-end:** lấy mẫu phân tầng từ bộ gold 10.000 câu, bổ sung hội thoại nhiều lượt, câu
-  ngoài phạm vi, tấn công và câu không có đáp án trong corpus.
-- **Đánh giá câu trả lời:** độ đúng, bám evidence, citation chính xác, hành vi (trả lời / từ chối / chặn)
-  so với nhãn mong đợi.
-- **Chi phí và độ trễ:** token, USD, p50/p95 mỗi lượt theo role và phase, lấy từ trace Langfuse sẵn có.
-- **Ablation agent:** bỏ judge/refine, rerank, skills, rephrase; so sánh các model rẻ cho từng role.
-- **Hoàn thiện retrieval:** ablation từng lớp enrichment, chấm lại `qwen3-reranker:8b` bằng native rerank, đo tốc độ
-  `qwen3-reranker:4b`, thêm khoảng tin cậy bootstrap.
+- **Bộ test end-to-end:** lấy mẫu phân tầng từ bộ gold, bổ sung hội thoại nhiều lượt, câu không có đáp án,
+  ngoài phạm vi và prompt injection.
+- **Baseline RAG:** so sánh agentic RAG với RAG một bước khi dùng cùng retriever, model và context.
+- **Đánh giá tự động:** dùng RAGAS/LLM-as-judge đo factual correctness, faithfulness, answer relevance và
+  citation correctness; chấm rule-based cho hành vi trả lời / từ chối / chặn.
+- **Đánh giá chuyên gia:** nhờ dược sĩ chấm mù một tập con và đo độ tương quan với đánh giá tự động.
+- **Ablation study:** lần lượt bỏ judge/refine, reranker, skills, rephrase và từng lớp enrichment.
+- **Tối ưu model theo role:** thử model nhỏ cho từng node và dựng đường Pareto chất lượng–chi phí–độ trễ.
+- **Phân tích lỗi:** phân nhóm lỗi retrieval, reasoning, generation và citation rồi đánh giá lại sau khi sửa.
+- **Kiểm thử ngoài phân phối:** dùng câu hỏi mới do người dùng hoặc chuyên gia viết, không sinh từ corpus.
