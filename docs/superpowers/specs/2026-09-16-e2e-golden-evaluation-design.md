@@ -11,7 +11,8 @@ answer), không chỉ riêng tầng retrieval. Kết quả là phần E2E của 
 - so sánh agentic RAG với RAG một bước (one-step), cùng retriever, model trả lời và
   ngân sách context;
 - ablation: bỏ judge/refine, bỏ rephrase, bỏ reranker;
-- chấm tự động bằng LLM-as-judge (RAGAS, gpt-5-mini, reasoning medium);
+- chấm tự động bằng LLM-as-judge (RAGAS và judge có output cấu trúc, gpt-5-mini,
+  reasoning medium);
 - hiệu chỉnh judge bằng 100 câu do một model mạnh hơn chấm mù;
 - bảng, CSV và bảng LaTeX cho `report/`.
 
@@ -105,13 +106,19 @@ class PipelineOptions:
 
 `TurnContext` có thêm trường `pipeline: PipelineOptions = PipelineOptions()`.
 
-- `rephrase_node`: khi `rephrase` tắt, ghi `record_rephrase(None, skipped=True)` và
-  search dùng câu hỏi gốc. Đây là đường đã có sẵn.
-- `route_after_search`: khi `judge_refine` tắt, đi thẳng tới `answer`, chỉ một vòng
-  search.
-- `AgentRun.decide_answer()` và `allowed_steps()` phải trả `GROUNDED` khi có bằng chứng
-  và `ABSTAIN` khi không có, kể cả khi chưa có kết quả judge. Plan kiểm lại hành vi này
-  và sửa trong domain nếu cần.
+`ChatTurnRunner` nhận thêm tham số `pipeline: PipelineOptions = PipelineOptions()` và
+đưa vào `TurnContext`. Graph và routing không đổi:
+
+- `rephrase_node`: khi `rephrase` tắt, ghi `record_rephrase(None, skipped=True)` (đường
+  đã có sẵn); search dùng câu hỏi gốc, intent giữ mặc định `pharma_question`.
+- `judge_node`: khi `judge_refine` tắt, không gọi LLM mà ghi
+  `AgentRun.skip_judge(now=...)`. Hàm domain mới này đặt `last_judge = ANSWER` và ghi
+  action `judge` với outcome `skipped`. `allowed_steps()` khi đó chỉ còn `ANSWER`, nên
+  chỉ có một vòng search. `decide_answer()` trả `GROUNDED` với `partial=False` khi có
+  bằng chứng và `ABSTAIN` khi không có, nên prompt trả lời giống hệt full agent.
+- `answer_node` ghi thêm `context_text` (đúng đoạn evidence đã đưa vào prompt trả lời)
+  vào `ChatTurnState`; `TurnOutcome` có thêm trường `context_text`. Harness dùng trường
+  này để chấm faithfulness.
 
 **Production luôn chạy full pipeline.**
 
@@ -123,8 +130,11 @@ class PipelineOptions:
 
 Test:
 
-- routing cho từng tổ hợp công tắc;
-- graph với LLM giả: one-step chỉ gọi LLM hai lần (guard + answer);
+- domain: `skip_judge` dẫn tới `ANSWER`, plan `GROUNDED` không partial, hoặc
+  `ABSTAIN` khi không có bằng chứng;
+- graph với LLM giả cho từng tổ hợp công tắc; one-step chỉ gọi LLM hai lần (guard +
+  answer);
+- `TurnOutcome.context_text` bằng đoạn context trong prompt trả lời;
 - app dựng từ `build_application` chạy đủ các bước với giá trị mặc định.
 
 ## 5. Cấu hình E2E
@@ -158,6 +168,7 @@ LLM và tổng thời gian; không báo latency rerank trên CPU vì stack CPU c
 ### 6.1 Lệnh
 
 ```text
+pharma-lab e2e golden sample                     chọn câu nguồn, ghi các lô soạn kèm text section
 pharma-lab e2e golden build                      kiểm tra và đóng băng bộ golden (§3.3)
 pharma-lab e2e run --run NAME --config CONFIG    chạy hệ thống trên bộ golden
 pharma-lab e2e judge --run NAME --config CONFIG  chấm tự động (§7)
@@ -179,7 +190,6 @@ Thư mục là `pharma-lab/data/evaluation/e2e/runs/<run>/<config>/`.
 - model và reasoning effort theo role;
 - `PipelineOptions`;
 - cấu hình retrieval và reranker (không có secret);
-- sha256 của các prompt;
 - git commit.
 
 **`answers.jsonl`**, mỗi câu một dòng:
@@ -187,9 +197,10 @@ Thư mục là `pharma-lab/data/evaluation/e2e/runs/<run>/<config>/`.
 - `item_id`, `answer_text`, `answer_mode`, `status`, `error`;
 - `citations`: chỉ số, `chunk_version_id`, và `chunk_id` / `section_id` đã quy đổi từ
   corpus store;
-- `evidence`: text của các chunk đã đưa vào prompt trả lời, theo số thứ tự;
+- `context_text`: đoạn evidence đã đưa vào prompt trả lời (`TurnOutcome.context_text`);
 - `standalone_query`, các query của từng vòng search, số vòng search, quyết định judge;
-- token theo role, số lần gọi LLM, latency tổng và theo bước.
+- token theo role (harness bọc `LlmPort` bằng một lớp đếm theo role), số lần gọi LLM,
+  latency tổng và theo bước (từ thời điểm của các action).
 
 **`judgments.jsonl`** là kết quả chấm (§7).
 
@@ -206,19 +217,39 @@ Thư mục là `pharma-lab/data/evaluation/e2e/runs/<run>/<config>/`.
 
 ## 7. Chấm tự động
 
-Judge là gpt-5-mini, reasoning medium, output có cấu trúc.
+Judge là gpt-5-mini, reasoning medium.
 
-- Dùng thư viện RAGAS (thêm vào nhóm dev của pharma-lab); chỉ tự viết phần RAGAS không
-  có.
 - Judge không biết cấu hình nào sinh ra câu trả lời.
 - Chấm lại chỉ gọi lại judge, không chạy lại agent.
 
+RAGAS chạy trong workspace, trong nhóm dev của pharma-lab:
+
+- `ragas==0.4.3` và `langchain-community==0.4.1`. langchain-community 0.4.2 đã xóa module
+  `chat_models.vertexai` mà ragas vẫn import.
+- `instructor` 1.17 (ragas cần) giới hạn `jiter<0.15`, còn openai từ 3.3.1 cần
+  `jiter>=0.16`. Root `pyproject.toml` thêm
+  `[tool.uv] override-dependencies = ["jiter>=0.16.0,<1"]`. Đã kiểm: instructor gọi qua
+  ragas `llm_factory` và `jiter.from_json(partial_mode=...)` chạy đúng với jiter 0.17.
+- Lock chỉ thêm package mới, và hạ `rich` 15.0.0 xuống 14.3.4. openai, langchain-core và
+  langgraph của backend giữ nguyên.
+
+Chấm gồm hai phần, cùng lệnh `pharma-lab e2e judge`, ghi `judgments.jsonl`:
+
+- **RAGAS** (`ragas.metrics.collections`): `Faithfulness`, `FactualCorrectness` và
+  `AnswerRelevancy`. LLM là `llm_factory("gpt-5-mini", client=AsyncOpenAI(...),
+  reasoning_effort="medium")`, dùng endpoint LLM của `backend/.env`. `AnswerRelevancy`
+  dùng qwen3-embedding local qua endpoint OpenAI-compatible.
+- **Judge có output cấu trúc** qua `OpenAiLlmAdapter` của backend: các chỉ số RAGAS
+  không có (key-fact recall, contradiction, citation support, injection success). Các
+  chỉ số còn lại tính bằng code.
+
 | Chỉ số | Cách đo | Áp dụng |
 |---|---|---|
-| Key-fact recall | Judge xét từng `key_fact` có được câu trả lời nêu đúng không. Theo kiểu RAGAS `FactualCorrectness`, dùng key facts làm reference. | answerable, multi_turn |
+| Key-fact recall | Judge xét từng `key_fact` có được câu trả lời nêu đúng không | answerable, multi_turn |
 | Contradiction rate | Judge xét câu trả lời có mâu thuẫn với key fact nào không | answerable, multi_turn |
-| Faithfulness | RAGAS `Faithfulness`: claim của câu trả lời có được `evidence` đã đọc hỗ trợ không | câu có trả lời |
-| Answer relevance | Judge chấm thang 1–5 với rubric cố định | câu có trả lời |
+| Faithfulness | RAGAS `Faithfulness`: claim của câu trả lời có được `context_text` hỗ trợ không | câu có trả lời |
+| Factual correctness | RAGAS `FactualCorrectness` (F1) so với `reference.answer` | answerable, multi_turn |
+| Answer relevance | RAGAS `AnswerRelevancy` | câu có trả lời |
 | Citation precision / recall | Tính bằng code. Precision: tỉ lệ trích dẫn trỏ vào `gold_section_ids`. Recall: có ít nhất một trích dẫn trúng section gold. | answerable, multi_turn |
 | Citation support | Judge xét câu mang [n] có được chunk [n] hỗ trợ không | câu có trích dẫn |
 | Behaviour accuracy | Tính bằng code: `answer_mode` so với `expected_behavior` | tất cả; báo riêng từng category |
@@ -235,7 +266,7 @@ Judge là gpt-5-mini, reasoning medium, output có cấu trúc.
   với `grader: claude-opus-5`.
 - **Đồng thuận:** `calibration score` tính:
   - Cohen's κ cho nhãn nhị phân (key fact, claim, citation support, injection);
-  - Spearman ρ cho relevance và cho điểm tổng từng câu;
+  - Spearman ρ cho điểm key-fact recall và faithfulness từng câu;
   - CI bootstrap cho cả hai.
 - **Ngưỡng tin cậy:** κ ≥ 0,6. Chỉ số dưới ngưỡng thì sửa rubric và chấm lại bằng
   judge. Nếu vẫn dưới ngưỡng, paper ghi là chỉ số tham khảo.
@@ -265,7 +296,7 @@ Mỗi bảng có bản CSV và bản LaTeX để đưa vào `report/`.
 - Chấm:
   - các chỉ số tính bằng code có test số liệu cố định;
   - các lời gọi judge dùng LLM giả;
-  - RAGAS được gọi qua adapter có test.
+  - adapter RAGAS có test với OpenAI giả (`httpx.MockTransport`).
 - Hiệu chỉnh: κ, ρ và bootstrap có test với dữ liệu nhỏ biết trước kết quả.
 - Backend: các test §4.
 
@@ -275,6 +306,6 @@ Mỗi bảng có bản CSV và bản LaTeX để đưa vào `report/`.
 2. `pharma_lab.e2e`: schema, `golden build`, sampler.
 3. Soạn bộ golden theo lô, đóng băng, data push.
 4. `e2e run` và chạy thử 20 câu với `full`.
-5. `e2e judge` và RAGAS adapter.
+5. `e2e judge` (RAGAS và judge cấu trúc).
 6. Chạy đủ 5 cấu hình trong tmux.
 7. Hiệu chỉnh, rồi `report`, rồi đưa bảng vào paper.
