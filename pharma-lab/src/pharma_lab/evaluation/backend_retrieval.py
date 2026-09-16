@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
-from collections.abc import Sequence
+from collections.abc import Hashable, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
@@ -204,7 +204,7 @@ def _read_query_rows(path: Path, limit: int | None) -> list[dict]:
     return rows
 
 
-def sample_quotas(counts: dict[str, int], sample: int) -> dict[str, int]:
+def sample_quotas[K: Hashable](counts: dict[K, int], sample: int) -> dict[K, int]:
     """Split `sample` over strata in proportion to their size (largest remainder).
 
     Remainder ties go to the stratum seen first (dict order is file order), so the

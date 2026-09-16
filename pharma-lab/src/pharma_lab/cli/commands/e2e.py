@@ -18,8 +18,20 @@ from pharma_lab.config.paths import (
     GOLDEN_E2E_PATH,
 )
 from pharma_lab.e2e.corpus_text import load_corpus_text
-from pharma_lab.e2e.golden import build_golden, manifest_path
+from pharma_lab.e2e.golden import (
+    ANSWERABLE_PER_GROUP,
+    QUOTAS,
+    Category,
+    build_golden,
+    manifest_path,
+)
+from pharma_lab.e2e.sampling import (
+    sample_answerable,
+    sample_multi_turn,
+    write_authoring_batches,
+)
 from pharma_lab.evaluation.artifact_contracts import sha256_file
+from pharma_lab.evaluation.backend_retrieval import load_query_rows
 
 GOLD_PATH = GOLD_DIR / "section_retrieval_eval.jsonl"
 
@@ -32,6 +44,49 @@ golden_app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="Build the golden set."
 )
 e2e_app.add_typer(golden_app, name="golden")
+
+
+@golden_app.command("sample")
+def golden_sample(
+    ctx: typer.Context,
+    evaluation: Annotated[
+        Path, typer.Option("--evaluation", dir_okay=False)
+    ] = GOLD_PATH,
+    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False)] = BUNDLE_DIR,
+    output: Annotated[
+        Path, typer.Option("--output", file_okay=False)
+    ] = E2E_AUTHORING_DIR,
+    seed: Annotated[int, typer.Option("--seed")] = 0,
+    force: Annotated[bool, typer.Option("--force")] = False,
+) -> None:
+    """Pick the gold queries to author from and write *.todo.jsonl batches."""
+
+    def handler() -> CommandResult:
+        corpus = load_corpus_text(bundle)
+        rows = load_query_rows(evaluation)
+        answerable = sample_answerable(
+            rows, per_group=ANSWERABLE_PER_GROUP, seed=seed, corpus=corpus
+        )
+        pairs = sample_multi_turn(
+            rows,
+            count=QUOTAS[Category.MULTI_TURN],
+            seed=seed,
+            corpus=corpus,
+            exclude={row["query_id"] for row in answerable},
+        )
+        paths = write_authoring_batches(output, answerable, pairs, corpus, force=force)
+        return CommandResult(
+            "e2e golden sample",
+            CommandStatus.COMPLETE,
+            output,
+            {
+                "batches": len(paths),
+                "answerable": len(answerable),
+                "multi_turn": len(pairs),
+            },
+        )
+
+    run_handler(state_from_context(ctx), handler)
 
 
 @golden_app.command("build")
