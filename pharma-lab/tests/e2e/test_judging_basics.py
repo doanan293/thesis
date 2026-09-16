@@ -98,10 +98,10 @@ def test_context_blocks_and_cited_sentences() -> None:
         2: "B\nTối đa 4 g.",
     }
     answer = "Người lớn uống 500 mg [1]. Tối đa 4 g [2][1]!\nKhông cần gì thêm."
-    assert cited_sentences(answer) == {
-        1: ["Người lớn uống 500 mg [1].", "Tối đa 4 g [2][1]!"],
-        2: ["Tối đa 4 g [2][1]!"],
-    }
+    assert cited_sentences(answer) == [
+        ("Người lớn uống 500 mg [1].", [1]),
+        ("Tối đa 4 g [2][1]!", [2, 1]),
+    ]
 
 
 async def test_key_fact_verdicts_default_to_missing() -> None:
@@ -118,21 +118,25 @@ async def test_key_fact_verdicts_default_to_missing() -> None:
     assert "1. Tối đa 4 g/ngày" in prompt and "Tối đa 8 g." in prompt
 
 
-async def test_citation_support_is_the_supported_share() -> None:
+async def test_citation_support_is_the_supported_share_of_sentences() -> None:
     llm = ScriptedLlm()
     llm.script(
         LlmRole.JUDGE,
-        CitationSupportJudgement(checks=[CitationCheck(citation=1, supported=True)]),
+        CitationSupportJudgement(checks=[CitationCheck(sentence=1, supported=True)]),
     )
     judge = StructuredJudge(llm)
     context = "[1] A\nNgười lớn 500 mg.\n\n[2] B\nTối đa 4 g."
 
     score = await judge.citation_support(
-        "500 mg [1]. Tối đa 4 g [2]. Sai [7].", context
+        "500 mg [1]. Tối đa 4 g [2][1]. Sai [7].", context
     )
 
     assert score == 0.5
-    assert "Trích dẫn [7]" not in llm.calls[0][1][-1].content
+    prompt = llm.calls[0][1][-1].content
+    assert "1. 500 mg [1]. (trích [1])" in prompt
+    assert "2. Tối đa 4 g [2][1]. (trích [2], [1])" in prompt
+    assert "Sai [7]" not in prompt
+    assert prompt.count("Đoạn [1]:") == 1
     assert await judge.citation_support("Không trích dẫn.", context) is None
 
 

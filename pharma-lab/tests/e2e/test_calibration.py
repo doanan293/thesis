@@ -89,7 +89,7 @@ def test_export_is_blind_balanced_and_reproducible(tmp_path: Path) -> None:
     rows = [json.loads(line) for line in first.splitlines()]
     assert len(rows) == 100
     assert "config" not in rows[0] and "faithfulness" not in rows[0]
-    assert rows[0]["citations"] == [1]
+    assert rows[0]["cited_sentences"] == ["Có [1]."]
     key = json.loads((calibration_dir(tmp_path) / "key.json").read_text("utf-8"))
     configs = [entry["config"] for entry in key.values()]
     assert configs.count("full") == configs.count("one-step") == 50

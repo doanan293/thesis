@@ -43,7 +43,8 @@ class BlindItem(BaseModel):
     key_facts: list[str]
     context_text: str
     answer_text: str
-    citations: list[int]
+    # Cited sentences in judge order; grades key `citation_checks` by this 1-based index.
+    cited_sentences: list[str]
 
 
 class Grade(BaseModel):
@@ -108,11 +109,11 @@ def export_calibration(
                 key_facts=[fact.fact for fact in item.reference.key_facts],
                 context_text=record.context_text,
                 answer_text=record.answer_text,
-                citations=sorted(
-                    number
-                    for number in cited_sentences(record.answer_text)
-                    if number in context_blocks(record.context_text)
-                ),
+                cited_sentences=[
+                    sentence
+                    for sentence, numbers in cited_sentences(record.answer_text)
+                    if set(numbers) & set(context_blocks(record.context_text))
+                ],
             ).model_dump_json()
         )
     path = directory / ITEMS_FILE

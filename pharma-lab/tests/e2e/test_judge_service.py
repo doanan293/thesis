@@ -117,7 +117,7 @@ def judge_for_grounded() -> ScriptedLlm:
     llm.script(
         LlmRole.JUDGE,
         KeyFactJudgement(facts=[FactCheck(index=1, verdict="supported")]),
-        CitationSupportJudgement(checks=[CitationCheck(citation=1, supported=True)]),
+        CitationSupportJudgement(checks=[CitationCheck(sentence=1, supported=True)]),
     )
     return llm
 

@@ -53,11 +53,12 @@ def context_blocks(context_text: str) -> dict[int, str]:
     return blocks
 
 
-def cited_sentences(answer_text: str) -> dict[int, list[str]]:
-    """Sentences of the answer grouped by the citation numbers they carry."""
-    by_index: dict[int, list[str]] = {}
+def cited_sentences(answer_text: str) -> list[tuple[str, list[int]]]:
+    """Sentences of the answer that carry citations, with their citation numbers."""
+    units: list[tuple[str, list[int]]] = []
     for sentence in _SENTENCE_END.split(answer_text):
         sentence = sentence.strip()
-        for number in dict.fromkeys(int(n) for n in _CITATION.findall(sentence)):
-            by_index.setdefault(number, []).append(sentence)
-    return by_index
+        numbers = list(dict.fromkeys(int(n) for n in _CITATION.findall(sentence)))
+        if numbers:
+            units.append((sentence, numbers))
+    return units
