@@ -56,6 +56,8 @@ uv run pharma-lab e2e report --run e2e-v1
 
 **`--limit N`** lấy N câu rải đều trên bộ golden.
 
+**`--deadline-seconds S`** thay deadline của một lượt (mặc định lấy từ budget của backend, 90 giây). Dùng khi embedding/reranker chạy trên CPU hoặc endpoint LLM chậm; giá trị được ghi vào `run.json`, và latency báo cáo vẫn là thời gian thật.
+
 **`e2e judge`** ghi `judgments.jsonl` và `judge.json` (model judge). Chấm lại một cấu hình bằng judge khác cần `--force`.
 
 **Chỉ số:**
