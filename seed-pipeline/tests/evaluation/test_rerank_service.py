@@ -448,7 +448,7 @@ def test_local_rerank_scores_each_query_in_one_request(two_candidate_run):
 def test_local_benchmark_reports_the_selected_level_without_registering(
     complete_run,
 ):
-    selected = LOCAL_RERANK_SEARCH_SPACE.candidates[2]
+    selected = LOCAL_RERANK_SEARCH_SPACE.candidates[1]
     measurement = BenchmarkMeasurement(
         selected, 90, 1000, 3.0, latency_p50_seconds=0.4, latency_p95_seconds=0.5
     )
@@ -491,10 +491,10 @@ def test_local_benchmark_reports_the_selected_level_without_registering(
         )
     ]
     assert result.actions == (
-        "selected=server_slots=8 ubatch=4096 threads=8",
+        "selected=server_slots=4 ubatch=4096 threads=12",
         "latency_p95_seconds=0.5",
-        "env=LLAMA_RERANKER_CONTEXT_SIZE=20480 LLAMA_RERANKER_PARALLEL=8 "
-        "LLAMA_RERANKER_THREADS=8 LLAMA_RERANKER_UBATCH_SIZE=4096",
+        "env=LLAMA_RERANKER_CONTEXT_SIZE=20480 LLAMA_RERANKER_PARALLEL=4 "
+        "LLAMA_RERANKER_THREADS=12 LLAMA_RERANKER_UBATCH_SIZE=4096",
     )
     assert (result.benchmark_levels, result.benchmark_report) == (1, report)
     assert load_run_record(complete_run / "run.json").rerank_variants == {}
@@ -502,7 +502,7 @@ def test_local_benchmark_reports_the_selected_level_without_registering(
 
 def test_local_reranker_starts_compose_with_the_stored_local_profile(monkeypatch):
     spec = require_model("qwen3-reranker:4b-fp16")
-    selected = LOCAL_RERANK_SEARCH_SPACE.candidates[2]
+    selected = LOCAL_RERANK_SEARCH_SPACE.candidates[1]
     ensured = []
 
     class FakeManager:

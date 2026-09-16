@@ -31,13 +31,15 @@ class ModelTopology(StrEnum):
 
 KAGGLE_RERANK_REQUEST_BATCH_SIZE = 30
 LOCAL_RERANK_REQUEST_BATCH_SIZE = 15
-# Reranker levels as (-np, -ub). A batch holds about ub / 512 documents (mean prompt
-# 663 tokens), so each level has that many slots; -c grows with the slots
-# (reranker_context_size).
-SMALL_RERANK_LEVELS = ((4, 2048), (8, 4096))
-# On a T4 (14,806 MiB free) compute takes about 0.6 MiB per ubatch token and KV 0.11 MiB
-# (0.6b) or 0.14 MiB (4b, 8b) per -c token, so only the 0.6b-class models reach 8192.
-SMALL_MODEL_KAGGLE_RERANK_LEVELS = (*SMALL_RERANK_LEVELS, (16, 8192))
+# Reranker levels as (-np, -ub). Every slot may hold a whole ubatch, so -c is
+# -ub x (slots + 1) and -ub alone bounds the longest prompt the server accepts.
+# On a T4 (14,806 MiB free) compute takes about 0.6 MiB per ubatch token and KV
+# 0.11 MiB (0.6b) or 0.14 MiB (4b, 8b) per -c token, so the larger models take fewer
+# slots.
+SMALL_RERANK_LEVELS = ((2, 4096), (4, 4096))
+SMALL_MODEL_KAGGLE_RERANK_LEVELS = ((4, 4096), (8, 4096))
+# The local CPU machine serves one request of at most 15 candidates at a time.
+LOCAL_RERANK_LEVELS = ((4, 4096),)
 # Local CPU llama-reranker levels. The backend sends one request with at most 15
 # candidates at a time, so a level has a single client request in flight.
 LOCAL_RERANK_SEARCH_SPACE = RuntimeSearchSpace(
@@ -49,7 +51,7 @@ LOCAL_RERANK_SEARCH_SPACE = RuntimeSearchSpace(
             concurrency=1,
             threads=threads,
         )
-        for server_slots, ubatch in SMALL_RERANK_LEVELS
+        for server_slots, ubatch in LOCAL_RERANK_LEVELS
         for threads in (8, 12)
     )
 )

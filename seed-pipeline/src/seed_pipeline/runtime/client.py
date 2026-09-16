@@ -30,6 +30,12 @@ class LlamaCppResponseError(LlamaCppError):
     pass
 
 
+# llama.cpp answers HTTP 500 when a prompt does not fit the physical batch. The same
+# input fails again on a fresh server, so such a response must never be retried: on
+# Kaggle a retry costs a server lifetime and, after the restarts, a whole GPU session.
+INPUT_TOO_LARGE = "is too large to process"
+
+
 class LlamaCppClient:
     def __init__(
         self,
@@ -191,7 +197,9 @@ class LlamaCppClient:
                 status_code = int(getattr(response, "status_code", 200))
                 if status_code >= 400:
                     body = str(getattr(response, "text", ""))[:2000]
-                    retryable = status_code in {408, 429} or status_code >= 500
+                    retryable = status_code in {408, 429} or (
+                        status_code >= 500 and INPUT_TOO_LARGE not in body
+                    )
                     detail = f": {body}" if body else ""
                     last_error = LlamaCppRequestError(
                         f"llama.cpp request failed for {path}: HTTP {status_code}{detail}",

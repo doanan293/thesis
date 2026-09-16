@@ -95,12 +95,14 @@ services:
       LLAMA_ARG_KV_UNIFIED: "true"
       # Measured on an Intel i5-13420H (12 threads, 23 GB RAM, llama.cpp server-b10920) with
       # `seed rerank --backend local --benchmark --model qwen3-reranker:4b-fp16`:
-      # p95 448.7 s per 15-document request, 0.05 pairs/s. Other machines:
+      # p95 448.7 s per 15-document request, 0.05 pairs/s. That run used -ub 2048, which
+      # rejects the longest prompt of the corpus (2,074 tokens), so the sizes below come
+      # from the -ub 4096 level; rerun the benchmark to measure it. Other machines:
       # rerun the benchmark and override these variables in .env.
       LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-4}"
-      LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-10240}"
-      LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-2048}"
-      LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-2048}"
+      LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-20480}"
+      LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"
+      LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"
       # Prompt processing dominates reranking; 12 threads measured faster than 8.
       LLAMA_ARG_THREADS: "${LLAMA_RERANKER_THREADS:-12}"
 

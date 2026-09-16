@@ -19,9 +19,10 @@ pytestmark = pytest.mark.integration
 MODEL = "qwen3-reranker:0.6b-fp16"
 PROJECT = "seed-rerank-integration"
 PORT = "18435"
-# The smallest ubatch the catalog allows: a ~1,600-token document must still fit in one pass.
+# The smallest ubatch the catalog allows: the longest prompt of the corpus is 2,074
+# tokens and must still fit in one pass.
 LEVEL = reranker_candidate(
-    server_slots=4, ubatch=2048, request_batch_size=3, concurrency=1, threads=4
+    server_slots=4, ubatch=4096, request_batch_size=3, concurrency=1, threads=4
 )
 QUERY = "Paracetamol người lớn uống tối đa bao nhiêu một ngày?"
 RELEVANT = (

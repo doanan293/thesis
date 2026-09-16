@@ -1,6 +1,10 @@
 import pytest
 
-from seed_pipeline.runtime.client import LlamaCppClient, LlamaCppResponseError
+from seed_pipeline.runtime.client import (
+    LlamaCppClient,
+    LlamaCppRequestError,
+    LlamaCppResponseError,
+)
 
 
 class JsonResponse:
@@ -77,3 +81,37 @@ def test_sync_request_retries_retryable_http_status():
 
     assert client._request("/health", {}) == {"ok": True}
     assert attempts == 2
+
+
+def test_sync_request_does_not_retry_an_input_too_large_error():
+    """llama.cpp answers 500 for a prompt larger than the physical batch.
+
+    The same input fails again on a fresh server, so a retry only wastes a server
+    lifetime and, on Kaggle, a whole GPU session.
+    """
+    attempts = 0
+
+    class Response:
+        status_code = 500
+        text = (
+            '{"error":{"code":500,"message":"input (2070 tokens) is too large to '
+            'process. increase the physical batch size (current batch size: 2048)",'
+            '"type":"server_error"}}'
+        )
+
+        def json(self):
+            return {}
+
+    def post(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        return Response()
+
+    client = LlamaCppClient(
+        "http://server", post=post, max_attempts=3, retry_delay_seconds=0
+    )
+
+    with pytest.raises(LlamaCppRequestError, match="too large to process") as raised:
+        client._request("/v1/rerank", {})
+    assert raised.value.retryable is False
+    assert attempts == 1

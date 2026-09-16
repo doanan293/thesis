@@ -188,8 +188,8 @@ def score_with_server_restarts(
                 )
             restarts += 1
             emit(
-                f"model server unavailable ({type(error).__name__}); "
-                f"restart {restarts}/{max_restarts}"
+                f"model server unavailable ({type(error).__name__}): "
+                f"{str(error)[:500]}; restart {restarts}/{max_restarts}"
             )
             continue
         return ServerLifetimes(restarts, None)

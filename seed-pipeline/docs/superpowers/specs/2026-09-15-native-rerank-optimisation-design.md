@@ -101,17 +101,18 @@ Kết quả Gemma:
 Mọi server reranker, trên Kaggle lẫn trong compose, chạy với:
 
 ```text
---reranking --kv-unified -np <slots> -c <ub + slots × 2048> -b <ub> -ub <ub>
+--reranking --kv-unified -np <slots> -c <ub × (slots + 1)> -b <ub> -ub <ub>
 ```
 
 - Flash attention để mặc định `auto`. Bản 8b giữ `--tensor-split 1,1` trên hai GPU.
-- **`-ub` tối thiểu 2048**, vì prompt dài nhất là 1.664 token và mỗi tài liệu phải nằm trọn trong một ubatch.
-- **`-c` bằng `-ub` cộng 2048 token cho mỗi slot.**
+- **`-ub` tối thiểu 4096.** Mỗi tài liệu phải nằm trọn trong một ubatch. Đo bằng `/tokenize` trên toàn bộ 300.000 cặp của `hybrid-qwen4b-p50-k30-rrf2`: prompt dài nhất 2.074 token, p99 1.335, p50 692. Đúng một cặp vượt 2.048, và khi `-ub` là 2048 thì cặp đó làm hỏng cả job (xem mục lỗi bên dưới).
+- **`-c` bằng `-ub` nhân (số slot + 1).** Mỗi slot được giữ trọn một ubatch, nên `-ub` vừa là giới hạn prompt vừa là đơn vị tính KV; không còn hằng số phụ thuộc dữ liệu.
   - Tính xong một tài liệu, llama-server vẫn giữ KV của prompt đó trong slot.
   - Slot đang chờ chỉ bỏ KV cũ khi tài liệu mới của nó được xếp vào batch. Khi hết chỗ, server chỉ dọn slot rảnh.
   - Nếu `-c` chỉ bằng `-ub`, KV cũ của các slot đang chờ lấp đầy vùng KV và server báo `Context size has been exceeded.`
   - Lỗi này đã gặp trên Kaggle ở mức `-np 64 -c 8192` và tái hiện được trên CPU với `b10920`. Mã `b9637` và `b10920` xử lý giống nhau.
-- **Số slot đi theo `-ub`.** Một batch chứa khoảng `ub / 512` tài liệu (trung bình 663 token), nên mỗi mức lấy `-np = ub / 512`. Thêm slot không làm batch lớn hơn, chỉ tốn thêm KV.
+- **Các mức chỉ khác nhau ở số slot**, `-ub` giữ 4096. Thêm slot cho phép nhiều tài liệu vào chung một batch nhưng tốn thêm KV; model càng lớn thì càng ít slot.
+- **Prompt dài hơn `-ub` là lỗi dữ liệu, không phải lỗi server.** llama-server trả HTTP 500 `input (N tokens) is too large to process`. Client đánh dấu phản hồi này là không retry được, nên worker dừng hẳn kèm thông báo thay vì restart server ba lần và mất cả phiên GPU.
 - Trong `RuntimeCandidate` của reranker:
   - `server_slots` là `-np`.
   - `physical_batch_size = logical_batch_size` là `-ub`.
@@ -130,10 +131,10 @@ Các mức được quét, ghi dạng (`-np`, `-ub`):
 
 | Nơi chạy | Mức | Tài liệu mỗi request | Tham số khác |
 | --- | --- | ---: | --- |
-| Kaggle T4, 0.6b (2 server) | (4, 2048) / (8, 4096) / (16, 8192) | 30 | |
-| Kaggle T4, 4b (2 server) | (4, 2048) / (8, 4096) | 30 | |
-| Kaggle T4, 8b (1 server, 2 GPU) | (4, 2048) / (8, 4096) | 30 | |
-| CPU local, 4b | (4, 2048) / (8, 4096) | 15 | `--threads` 8 / 12 |
+| Kaggle T4, 0.6b (2 server) | (4, 4096) / (8, 4096) | 30 | |
+| Kaggle T4, 4b (2 server) | (2, 4096) / (4, 4096) | 30 | |
+| Kaggle T4, 8b (1 server, 2 GPU) | (2, 4096) / (4, 4096) | 30 | |
+| CPU local, 4b | (4, 4096) | 15 | `--threads` 8 / 12 |
 
 ### 4.3 Benchmark đầu-cuối
 

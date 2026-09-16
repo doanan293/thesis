@@ -96,9 +96,10 @@ class RuntimeCandidate:
         return cls(**values, threads=threads)
 
 
-# Tokens of one rerank prompt: the longest is 1,664 tokens.
-RERANK_PROMPT_TOKENS = 2048
-MIN_RERANK_UBATCH = RERANK_PROMPT_TOKENS
+# A reranker slot may hold one whole ubatch, so -ub is also the longest prompt the
+# server accepts. Over the 300,000 pairs of hybrid-qwen4b-p50-k30-rrf2 the longest
+# prompt is 2,074 tokens with the Vietnamese medical instruction (p99 is 1,335).
+MIN_RERANK_UBATCH = 4096
 
 
 def rerank_concurrency(server_slots: int, request_batch_size: int) -> int:
@@ -132,7 +133,8 @@ def reranker_candidate(
     """One reranker server level: -np server_slots and -b = -ub = ubatch.
 
     Rank pooling computes each document in a single pass, so a document must fit in one
-    ubatch. context_per_slot is the prompt a slot holds; reranker_context_size gives -c.
+    ubatch. A slot may hold a whole ubatch, so context_per_slot is the ubatch and
+    reranker_context_size gives -c = -ub x (slots + 1).
     """
     if ubatch < MIN_RERANK_UBATCH:
         raise ValueError(f"reranker ubatch must be at least {MIN_RERANK_UBATCH} tokens")
@@ -140,7 +142,7 @@ def reranker_candidate(
         server_slots=server_slots,
         concurrency=concurrency,
         request_batch_size=request_batch_size,
-        context_per_slot=RERANK_PROMPT_TOKENS,
+        context_per_slot=ubatch,
         logical_batch_size=ubatch,
         physical_batch_size=ubatch,
         threads=threads,

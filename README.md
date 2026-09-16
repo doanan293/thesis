@@ -52,7 +52,8 @@ docker compose exec backend pharma-agent ask "Paracetamol người lớn uống 
   `/v1/rerank`, nên file GGUF phải là bản convert classifier (có tensor `cls.output.weight`);
   đặt `LLAMA_RERANKER_PROTOCOL=none` để bỏ rerank.
 - Reranker trên CPU: `LLAMA_RERANKER_PARALLEL` (`-np`), `LLAMA_RERANKER_UBATCH_SIZE` (dùng chung cho `-b`
-  và `-ub`, tối thiểu 2048), `LLAMA_RERANKER_CONTEXT_SIZE` (`-c`, bằng `-ub` cộng 2048 cho mỗi slot) và
+  và `-ub`, tối thiểu 4096 và phải chứa được prompt dài nhất), `LLAMA_RERANKER_CONTEXT_SIZE` (`-c`, bằng
+  `-ub` nhân số slot cộng một) và
   `LLAMA_RERANKER_THREADS` trong `.env` ở root; `RERANK_TIMEOUT_SECONDS` là timeout của backend cho một
   request rerank.
   Đo lại cho máy khác trong `seed-pipeline/`:

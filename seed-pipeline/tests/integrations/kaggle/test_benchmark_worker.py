@@ -72,13 +72,13 @@ def test_benchmark_worker_keeps_failed_levels_with_their_server_log(tmp_path):
     artifact = run_benchmark_worker(config, measure_level=measure)
 
     rows = _rows(config)
-    assert [row["status"] for row in rows] == ["ok", "invalid", "ok"]
+    assert [row["status"] for row in rows] == ["ok", "invalid"]
     assert rows[1]["error_category"] == "RuntimeError"
     assert "out of memory" in rows[1]["log_tail"]
     assert [row["candidate"] for row in rows] == [level.to_dict() for level in levels]
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
     assert manifest["runtime"] == {
-        "recommendation": levels[2].to_dict(),
+        "recommendation": levels[0].to_dict(),
         "sample_count": 960,
     }
     assert (Path(config["output_dir"]) / "benchmark_report.md").is_file()
@@ -89,16 +89,16 @@ def test_benchmark_worker_rejects_a_level_whose_scores_drift(tmp_path):
     levels = _levels()
 
     def measure(index, candidate):
-        drift = 0.01 if index == 2 else 0.0
+        drift = 0.01 if index == 1 else 0.0
         return _ok(candidate, 10.0 - index, {"q\x1fc": 0.5 + drift})
 
     artifact = run_benchmark_worker(config, measure_level=measure)
 
     rows = _rows(config)
-    assert [row["status"] for row in rows] == ["ok", "ok", "invalid"]
-    assert rows[2]["error_category"] == "score_mismatch"
+    assert [row["status"] for row in rows] == ["ok", "invalid"]
+    assert rows[1]["error_category"] == "score_mismatch"
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["runtime"]["recommendation"] == levels[1].to_dict()
+    assert manifest["runtime"]["recommendation"] == levels[0].to_dict()
 
 
 def test_benchmark_worker_records_no_recommendation_when_every_level_fails(tmp_path):
@@ -179,7 +179,6 @@ def test_rerank_level_restarts_servers_and_sends_warm_up_then_full_groups(
     assert [Path(item["output_dir"]).name for item in started_levels] == [
         "level-0",
         "level-1",
-        "level-2",
     ]
     # One untimed warm-up group, then 32 timed groups of 30 documents, per level.
     assert len(calls) == len(levels) * 33
@@ -187,7 +186,7 @@ def test_rerank_level_restarts_servers_and_sends_warm_up_then_full_groups(
     rows = _rows(config)
     assert all(row["status"] == "ok" and row["items"] == 960 for row in rows)
     assert all(row["max_abs_score_delta"] == 0.0 for row in rows)
-    assert artifact.completion.complete == 3
+    assert artifact.completion.complete == len(levels)
 
 
 def test_benchmark_worker_main_loads_config_and_invokes_worker(tmp_path, monkeypatch):

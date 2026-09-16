@@ -76,7 +76,7 @@ def test_reranker_without_runtime_keeps_the_compose_defaults(tmp_path: Path) -> 
 
 def test_reranker_runtime_recreates_the_service_with_its_level(tmp_path: Path) -> None:
     runner = RecordingRunner()
-    level = LOCAL_RERANK_SEARCH_SPACE.candidates[3]
+    level = LOCAL_RERANK_SEARCH_SPACE.candidates[1]
 
     _manager(tmp_path, runner).ensure(
         "reranker", _spec(tmp_path, "qwen3-reranker:4b-fp16"), tmp_path, runtime=level
@@ -89,7 +89,7 @@ def test_reranker_runtime_recreates_the_service_with_its_level(tmp_path: Path) -
         environment["LLAMA_RERANKER_UBATCH_SIZE"],
         environment["LLAMA_RERANKER_CONTEXT_SIZE"],
         environment["LLAMA_RERANKER_THREADS"],
-    ) == ("8", "4096", "20480", "12")
+    ) == ("4", "4096", "20480", "12")
 
 
 def test_runtime_is_rejected_for_the_embedding_service(tmp_path: Path) -> None:
@@ -130,9 +130,9 @@ def test_compose_reranker_serves_batched_unified_kv() -> None:
         'LLAMA_ARG_RERANKING: "true"',
         'LLAMA_ARG_KV_UNIFIED: "true"',
         'LLAMA_ARG_N_PARALLEL: "${LLAMA_RERANKER_PARALLEL:-4}"',
-        'LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-10240}"',
-        'LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-2048}"',
-        'LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-2048}"',
+        'LLAMA_ARG_CTX_SIZE: "${LLAMA_RERANKER_CONTEXT_SIZE:-20480}"',
+        'LLAMA_ARG_BATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"',
+        'LLAMA_ARG_UBATCH: "${LLAMA_RERANKER_UBATCH_SIZE:-4096}"',
         'LLAMA_ARG_THREADS: "${LLAMA_RERANKER_THREADS:-12}"',
     ):
         assert line in block

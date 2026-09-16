@@ -120,7 +120,7 @@ def test_rerank_concurrency_keeps_every_slot_busy(
     assert rerank_concurrency(server_slots, request_batch_size) == expected
 
 
-def test_reranker_candidate_holds_one_prompt_per_slot_beside_the_batch():
+def test_reranker_candidate_gives_every_slot_a_whole_ubatch():
     level = reranker_candidate(
         server_slots=8, ubatch=4096, request_batch_size=30, concurrency=2
     )
@@ -129,18 +129,18 @@ def test_reranker_candidate_holds_one_prompt_per_slot_beside_the_batch():
         level.context_per_slot,
         level.logical_batch_size,
         level.physical_batch_size,
-    ) == (2048, 4096, 4096)
+    ) == (4096, 4096, 4096)
 
 
 def test_reranker_context_holds_one_batch_and_the_prompt_of_every_slot():
     assert (
-        reranker_context_size(server_slots=8, ubatch=4096, context_per_slot=2048)
-        == 20480
+        reranker_context_size(server_slots=8, ubatch=4096, context_per_slot=4096)
+        == 36864
     )
 
 
 def test_reranker_candidate_rejects_ubatch_below_the_longest_prompt():
-    with pytest.raises(ValueError, match="2048"):
+    with pytest.raises(ValueError, match="4096"):
         reranker_candidate(
-            server_slots=4, ubatch=1024, request_batch_size=30, concurrency=1
+            server_slots=4, ubatch=2048, request_batch_size=30, concurrency=1
         )

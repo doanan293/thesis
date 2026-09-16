@@ -97,12 +97,12 @@ def test_resolve_input_file_does_not_accept_exact_path_with_wrong_filename(tmp_p
 
 
 RERANK_LEVEL = {
-    "server_slots": 16,
+    "server_slots": 4,
     "concurrency": 2,
     "request_batch_size": 30,
-    "context_per_slot": 2048,
-    "logical_batch_size": 8192,
-    "physical_batch_size": 8192,
+    "context_per_slot": 4096,
+    "logical_batch_size": 4096,
+    "physical_batch_size": 4096,
 }
 
 
@@ -148,10 +148,10 @@ def test_reranker_command_sizes_the_unified_kv_for_a_batch_and_every_slot_prompt
 
     assert "--reranking" in command
     assert "--kv-unified" in command
-    assert command[command.index("-np") + 1] == "16"
-    assert command[command.index("-b") + 1] == "8192"
-    assert command[command.index("-ub") + 1] == "8192"
-    assert command[command.index("-c") + 1] == str(8192 + 16 * 2048)
+    assert command[command.index("-np") + 1] == "4"
+    assert command[command.index("-b") + 1] == "4096"
+    assert command[command.index("-ub") + 1] == "4096"
+    assert command[command.index("-c") + 1] == str(4096 * (4 + 1))
 
 
 def test_sharded_reranker_splits_one_server_over_two_gpus():
@@ -175,7 +175,7 @@ def test_reranker_command_rejects_split_batch_and_ubatch():
             port=11434,
             visible_devices="0",
             spec=require_model("qwen3-reranker:0.6b-fp16"),
-            runtime_overrides={**RERANK_LEVEL, "physical_batch_size": 4096},
+            runtime_overrides={**RERANK_LEVEL, "physical_batch_size": 2048},
         )
 
 

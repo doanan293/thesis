@@ -9,8 +9,33 @@ from tests.integrations.kaggle.factories import rerank_runtime_profile
 
 import seed_pipeline.integrations.kaggle.workers.rerank as rerank_worker
 from seed_pipeline.integrations.kaggle.artifacts import sha256_file
-from seed_pipeline.integrations.kaggle.workers.rerank import run_rerank_worker
+from seed_pipeline.integrations.kaggle.workers.rerank import (
+    run_rerank_worker,
+    score_with_server_restarts,
+)
 from seed_pipeline.runtime.client import LlamaCppRequestError, LlamaCppResponseError
+
+
+def test_server_restart_message_carries_the_error_detail():
+    """The console log is the only record of why a Kaggle session restarted."""
+    messages: list[str] = []
+    attempts = 0
+
+    def score_once(_restart_index: int) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise LlamaCppRequestError("HTTP 503: server busy", retryable=True)
+
+    lifetimes = score_with_server_restarts(
+        score_once, deadline=float("inf"), emit=messages.append, clock=lambda: 0.0
+    )
+
+    assert lifetimes.restarts == 1
+    assert messages == [
+        "model server unavailable (LlamaCppRequestError): HTTP 503: server busy; "
+        "restart 1/3"
+    ]
 
 
 def _write_candidates(

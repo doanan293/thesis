@@ -35,10 +35,10 @@ class RecordingRunner:
     """docker compose stand-in: records every `up` environment, can fail some levels."""
 
     def __init__(
-        self, *, failing_ubatches: frozenset[str] = frozenset(), logs: str = ""
+        self, *, failing_threads: frozenset[str] = frozenset(), logs: str = ""
     ):
         self.ups: list[dict[str, str]] = []
-        self.failing_ubatches = failing_ubatches
+        self.failing_threads = failing_threads
         self.logs = logs
 
     def run(self, args, env=None, capture_output=False):
@@ -46,7 +46,7 @@ class RecordingRunner:
             return self.logs
         environment = dict(env or {})
         self.ups.append(environment)
-        if environment.get("LLAMA_RERANKER_UBATCH_SIZE") in self.failing_ubatches:
+        if environment.get("LLAMA_RERANKER_THREADS") in self.failing_threads:
             raise subprocess.CalledProcessError(1, list(args))
         return ""
 
@@ -67,11 +67,11 @@ class ScoringClient:
         runner: RecordingRunner,
         clock: FakeClock,
         *,
-        drifting_ubatch: str | None = None,
+        drifting_threads: str | None = None,
     ) -> None:
         self.runner = runner
         self.clock = clock
-        self.drifting_ubatch = drifting_ubatch
+        self.drifting_threads = drifting_threads
         self.calls: list[int] = []
 
     def rerank_native(
@@ -81,10 +81,11 @@ class ScoringClient:
         level = self.runner.ups[-1]
         self.calls.append(len(documents))
         threads = int(level["LLAMA_RERANKER_THREADS"])
-        ubatch = level["LLAMA_RERANKER_UBATCH_SIZE"]
-        # ubatch 4096 with 12 threads is the fastest level.
-        self.clock.now += (1.0 if ubatch == "4096" else 2.0) * 8 / threads
-        drift = 0.01 if ubatch == self.drifting_ubatch else 0.0
+        # More threads score faster, so the 12-thread level wins.
+        self.clock.now += 8 / threads
+        drift = (
+            0.01 if level["LLAMA_RERANKER_THREADS"] == self.drifting_threads else 0.0
+        )
         return [len(document) / 1000 + drift for document in documents]
 
 
@@ -167,10 +168,8 @@ def test_benchmark_recreates_the_reranker_with_each_level_environment(bench: Ben
         )
         for up in runner.ups
     ] == [
-        ("4", "2048", "10240", "8"),
-        ("4", "2048", "10240", "12"),
-        ("8", "4096", "20480", "8"),
-        ("8", "4096", "20480", "12"),
+        ("4", "4096", "20480", "8"),
+        ("4", "4096", "20480", "12"),
     ]
 
 
@@ -180,7 +179,7 @@ def test_each_level_sends_one_warm_up_and_six_full_groups(bench: Bench):
 
     bench.run(runner, client, clock)
 
-    assert client.calls == [15] * (7 * 4)
+    assert client.calls == [15] * (7 * 2)
 
 
 def test_lowest_p95_level_becomes_the_local_profile(bench: Bench):
@@ -188,7 +187,7 @@ def test_lowest_p95_level_becomes_the_local_profile(bench: Bench):
 
     result = bench.run(runner, ScoringClient(runner, clock), clock)
 
-    assert result.profile.selected == LOCAL_RERANK_SEARCH_SPACE.candidates[3]
+    assert result.profile.selected == LOCAL_RERANK_SEARCH_SPACE.candidates[1]
     assert (
         result.path
         == bench.root / "profiles" / "rerank" / "qwen3_reranker_4b_fp16.json"
@@ -211,26 +210,24 @@ def test_levels_whose_scores_drift_are_invalid(bench: Bench):
     runner, clock = RecordingRunner(), FakeClock()
 
     result = bench.run(
-        runner, ScoringClient(runner, clock, drifting_ubatch="4096"), clock
+        runner, ScoringClient(runner, clock, drifting_threads="12"), clock
     )
 
     assert [item.error_category for item in result.measurements] == [
         None,
-        None,
-        "score_mismatch",
         "score_mismatch",
     ]
 
 
 def test_a_level_that_fails_to_start_keeps_the_service_logs(bench: Bench):
     runner = RecordingRunner(
-        failing_ubatches=frozenset({"4096"}), logs="failed to allocate compute buffer"
+        failing_threads=frozenset({"8"}), logs="failed to allocate compute buffer"
     )
     clock = FakeClock()
 
     result = bench.run(runner, ScoringClient(runner, clock), clock)
 
-    failed = result.measurements[2]
+    failed = result.measurements[0]
     assert (failed.status, failed.error_category) == ("invalid", "CalledProcessError")
     assert failed.log_tail is not None
     assert "failed to allocate compute buffer" in failed.log_tail
@@ -239,7 +236,7 @@ def test_a_level_that_fails_to_start_keeps_the_service_logs(bench: Bench):
 
 def test_every_level_failing_stops_with_the_log_tails(bench: Bench):
     runner = RecordingRunner(
-        failing_ubatches=frozenset({"2048", "4096"}),
+        failing_threads=frozenset({"8", "12"}),
         logs="failed to allocate compute buffer",
     )
     clock = FakeClock()
