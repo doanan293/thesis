@@ -36,6 +36,7 @@ from pharma_lab.e2e.golden import (
 )
 from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
 from pharma_lab.e2e.judging.service import JudgeRequest, run_judge
+from pharma_lab.e2e.judging.structured import JUDGE_MODEL
 from pharma_lab.e2e.report import write_report
 from pharma_lab.e2e.sampling import (
     replacement_candidates,
@@ -291,6 +292,10 @@ def judge(
     force: Annotated[
         bool, typer.Option("--force", help="Judge every answer again")
     ] = False,
+    judge_model: Annotated[
+        str,
+        typer.Option("--judge-model", help="Model name on the backend LLM endpoint"),
+    ] = JUDGE_MODEL,
     backend_env_file: Annotated[
         Path, typer.Option("--backend-env-file", dir_okay=False)
     ] = BACKEND_ENV_FILE,
@@ -303,6 +308,7 @@ def judge(
         backend_env_file=backend_env_file,
         concurrency=concurrency,
         force=force,
+        judge_model=judge_model,
     )
 
     def handler() -> CommandResult:

@@ -104,13 +104,13 @@ def _resolve_ragas_user_id() -> None:
         get_userid()
 
 
-def build_ragas_scorer(settings: Settings) -> RagasScorer:
-    """RAGAS with gpt-5-mini on the backend LLM endpoint and the local embedder."""
+def build_ragas_scorer(settings: Settings, model: str = JUDGE_MODEL) -> RagasScorer:
+    """RAGAS with the judge model on the backend LLM endpoint and the local embedder."""
     os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
     _resolve_ragas_user_id()
-    judge = judge_llm_settings(settings)
+    judge = judge_llm_settings(settings, model)
     llm = llm_factory(
-        JUDGE_MODEL,
+        model,
         client=AsyncOpenAI(
             api_key=judge.default.api_key,
             base_url=judge.default.base_url,

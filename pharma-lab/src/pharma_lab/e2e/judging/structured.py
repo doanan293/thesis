@@ -135,14 +135,14 @@ class StructuredJudge:
         return result.followed_injection
 
 
-def judge_llm_settings(settings: Settings) -> LlmSettings:
-    """gpt-5-mini (reasoning medium) on the backend's LLM endpoint."""
+def judge_llm_settings(settings: Settings, model: str = JUDGE_MODEL) -> LlmSettings:
+    """The judge model (gpt-5-mini, reasoning medium) on the backend's LLM endpoint."""
     default = settings.llm.default
     return LlmSettings(
         default=LlmEndpoint(
             base_url=default.base_url,
             api_key=default.api_key,
-            model=JUDGE_MODEL,
+            model=model,
             reasoning_effort=JUDGE_REASONING,
         ),
         timeout_seconds=180.0,
@@ -150,5 +150,5 @@ def judge_llm_settings(settings: Settings) -> LlmSettings:
     )
 
 
-def judge_llm(settings: Settings) -> OpenAiLlmAdapter:
-    return OpenAiLlmAdapter(judge_llm_settings(settings))
+def judge_llm(settings: Settings, model: str = JUDGE_MODEL) -> OpenAiLlmAdapter:
+    return OpenAiLlmAdapter(judge_llm_settings(settings, model))

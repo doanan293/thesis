@@ -12,7 +12,7 @@ from pharma_lab.e2e.judging.ragas_scorer import (
     RagasScores,
     build_ragas_scorer,
 )
-from pharma_lab.e2e.judging.service import judge_record, judge_records
+from pharma_lab.e2e.judging.service import judge_record, judge_records, pin_judge
 from pharma_lab.e2e.judging.structured import (
     CitationCheck,
     CitationSupportJudgement,
@@ -245,3 +245,12 @@ async def test_judging_refuses_failed_answers(tmp_path: Path) -> None:
             concurrency=1,
             force=False,
         )
+
+
+def test_one_judge_model_per_configuration(tmp_path: Path) -> None:
+    pin_judge(tmp_path, model="gpt-5-mini", force=False)
+    pin_judge(tmp_path, model="gpt-5-mini", force=False)
+    with pytest.raises(ValueError, match="pass --force"):
+        pin_judge(tmp_path, model="other-model", force=False)
+    pin_judge(tmp_path, model="other-model", force=True)
+    assert "other-model" in (tmp_path / "judge.json").read_text("utf-8")

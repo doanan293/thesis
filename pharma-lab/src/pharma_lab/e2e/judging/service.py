@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -18,10 +19,17 @@ from pharma_lab.e2e.judging.code_metrics import (
     context_blocks,
 )
 from pharma_lab.e2e.judging.ragas_scorer import RagasScores, build_ragas_scorer
-from pharma_lab.e2e.judging.structured import StructuredJudge, judge_llm
+from pharma_lab.e2e.judging.structured import (
+    JUDGE_MODEL,
+    JUDGE_REASONING,
+    StructuredJudge,
+    judge_llm,
+)
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+from pharma_lab.evaluation.artifact_contracts import write_json
 
 JUDGMENTS_FILE = "judgments.jsonl"
+JUDGE_FILE = "judge.json"
 
 
 class Scorer(Protocol):
@@ -98,6 +106,22 @@ class JudgeRequest:
     backend_env_file: Path
     concurrency: int = 4
     force: bool = False
+    judge_model: str = JUDGE_MODEL
+
+
+def pin_judge(directory: Path, *, model: str, force: bool) -> None:
+    """All judgments of one configuration come from one judge model."""
+    path = directory / JUDGE_FILE
+    current = {"model": model, "reasoning_effort": JUDGE_REASONING}
+    if path.is_file() and not force:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if stored != current:
+            raise ValueError(
+                f"{directory} was judged with {stored}; pass --force to judge "
+                f"everything again with {current}"
+            )
+        return
+    write_json(path, current)
 
 
 @dataclass(frozen=True)
@@ -160,13 +184,14 @@ def run_judge(request: JudgeRequest) -> JudgeSummary:
         raise ValueError(f"no answers to judge: {answers_path}")
     settings = Settings(_env_file=request.backend_env_file)
     items = {item.item_id: item for item in load_golden(request.golden_path)}
+    pin_judge(directory, model=request.judge_model, force=request.force)
     return asyncio.run(
         judge_records(
             items,
             JsonlStore(answers_path, AnswerRecord),
             JsonlStore(directory / JUDGMENTS_FILE, Judgement),
-            StructuredJudge(judge_llm(settings)),
-            build_ragas_scorer(settings),
+            StructuredJudge(judge_llm(settings, request.judge_model)),
+            build_ragas_scorer(settings, request.judge_model),
             concurrency=request.concurrency,
             force=request.force,
         )
