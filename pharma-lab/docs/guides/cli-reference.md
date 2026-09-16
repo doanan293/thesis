@@ -23,6 +23,11 @@ pharma-lab rerank --run NAME --backend local|kaggle --model MODEL [--kaggle-acco
 pharma-lab rerank --run NAME --backend local --benchmark --model MODEL
 pharma-lab metrics --run NAME
 pharma-lab metrics compare --run NAME --baseline MODEL --candidate MODEL
+pharma-lab e2e golden sample|resample|check|build
+pharma-lab e2e run --run NAME --config CONFIG [--limit N] [--retry-errors]
+pharma-lab e2e judge --run NAME --config CONFIG [--judge-model MODEL] [--force]
+pharma-lab e2e calibration export|score --run NAME
+pharma-lab e2e report --run NAME
 ```
 
 Global `--json` in envelope máy đọc được, `--debug` bật traceback. `uv run pharma-lab COMMAND --help` cho default thực tế.
@@ -134,3 +139,19 @@ uv run pharma-lab data pull --kaggle-account acc1
 | 2 | Invalid CLI usage |
 | 3 | Resumable incomplete stage |
 | 130 | Interrupted by the operator |
+
+## Đánh giá end-to-end
+
+Chi tiết trong [e2e-evaluation.md](e2e-evaluation.md).
+
+| Command | Việc |
+| --- | --- |
+| `pharma-lab e2e golden sample [--seed S] [--force]` | Chọn 420 câu answerable (70 × 6 nhóm, phân tầng theo độ khó và answer mode) và 50 cặp multi-turn, ghi `data/evaluation/e2e/authoring/*.todo.jsonl` kèm text section và chunk trọng tâm |
+| `pharma-lab e2e golden resample --slots IDS [--per-slot N]` | Đưa N câu chưa dùng cùng tầng cho các slot mà section gold không trả lời câu hỏi, ghi `replacement-NN.todo.jsonl` |
+| `pharma-lab e2e golden check FILE` | Kiểm một lô `*.authored.jsonl` (quote nằm trong section, hành vi theo nhóm, `absent_terms` vắng trong corpus) |
+| `pharma-lab e2e golden build` | Kiểm đủ số lượng từng nhóm rồi ghi `golden_e2e.jsonl` và manifest |
+| `pharma-lab e2e run --run NAME --config full\|one-step\|no-judge-refine\|no-rephrase\|no-rerank [--limit N] [--concurrency N] [--retry-errors]` | Chạy agent trên bộ golden, ghi `runs/<run>/<config>/answers.jsonl`; chạy lại để resume |
+| `pharma-lab e2e judge --run NAME --config CONFIG [--judge-model MODEL] [--concurrency N] [--force]` | Chấm bằng RAGAS và judge cấu trúc, ghi `judgments.jsonl` |
+| `pharma-lab e2e calibration export --run NAME [--seed S]` | Xuất 100 câu mù để chấm hiệu chỉnh |
+| `pharma-lab e2e calibration score --run NAME` | Tính κ và ρ giữa judge và `calibration/grades.jsonl` |
+| `pharma-lab e2e report --run NAME` | Ghi bảng CSV/LaTeX và phân tích lỗi vào `runs/<run>/reports/` |

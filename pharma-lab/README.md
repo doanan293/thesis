@@ -15,6 +15,7 @@ cd pharma-lab
 | Build ở local, Kaggle GPU embed bundle và chấm rerank | [Local + Kaggle GPU](docs/guides/workflow-local-kaggle.md) |
 | Không dùng Kaggle; mọi model chạy local | [Local CPU-only](docs/guides/workflow-local-only.md) |
 | Đánh giá retrieval (dựng lại số liệu luận văn) | [Evaluation](docs/guides/evaluation.md) |
+| Đánh giá end-to-end agent trên bộ golden | [E2E evaluation](docs/guides/e2e-evaluation.md) |
 
 ## Luồng dữ liệu
 
