@@ -170,3 +170,22 @@ def test_judge_failure_marks_partial_and_terminal_transitions_are_guarded() -> N
         "search",
         "judge",
     ]
+
+
+def test_skipped_judge_answers_from_one_search_round() -> None:
+    run = make_run()
+    run.record_guard(PASS, now=NOW)
+    run.record_rephrase(None, now=NOW, skipped=True)
+    run.record_search(Q1, search_result("c1"), now=NOW)
+    run.skip_judge(now=NOW)
+    assert run.allowed_steps() == {Step.ANSWER}
+    assert run.actions.entries[-1].outcome == "skipped"
+    assert run.decide_answer() == AnswerPlan(mode=AnswerMode.GROUNDED, partial=False)
+
+
+def test_skipped_judge_without_evidence_abstains() -> None:
+    run = make_run()
+    run.record_guard(PASS, now=NOW)
+    run.record_search(Q1, search_result(), now=NOW)
+    run.skip_judge(now=NOW)
+    assert run.decide_answer() == AnswerPlan(mode=AnswerMode.ABSTAIN)

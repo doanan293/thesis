@@ -284,6 +284,11 @@ class AgentRun(BaseModel):
             payload={"gaps": list(gaps)},
         )
 
+    def skip_judge(self, *, now: datetime) -> None:
+        """Answer from the evidence found so far without asking the judge."""
+        self.last_judge = JudgeOutcome.ANSWER
+        self._log(ActionKind.JUDGE, now, outcome="skipped")
+
     def record_refine(
         self, queries: Sequence[str], *, now: datetime, failed: bool = False
     ) -> list[Query]:
