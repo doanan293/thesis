@@ -22,6 +22,11 @@
       "artifact_dir": "rerank/bge_reranker_v2_m3_f16",
       "model": "bge-reranker-v2-m3:f16",
       "variant_sha256": "18a15e9678359e7ab688e35715a89f4628f4d714a0d48dbb62d536207d01b4f1"
+    },
+    "qwen3_reranker_0_6b_fp16": {
+      "artifact_dir": "rerank/qwen3_reranker_0_6b_fp16",
+      "model": "qwen3-reranker:0.6b-fp16",
+      "variant_sha256": "64a429c8343d0a0d6d6a18a36f31e37234d21118c250da370badc830aab45bed"
     }
   },
   "schema_version": 3
