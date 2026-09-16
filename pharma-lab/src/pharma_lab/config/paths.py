@@ -52,6 +52,10 @@ BUNDLE_DIR = CORPUS_DIR / "formulary"
 EVALUATION_DIR = DATA_DIR / "evaluation"
 GOLD_DIR = EVALUATION_DIR / "gold"
 RUNS_DIR = EVALUATION_DIR / "runs"
+E2E_DIR = EVALUATION_DIR / "e2e"
+GOLDEN_E2E_PATH = E2E_DIR / "golden_e2e.jsonl"
+E2E_AUTHORING_DIR = E2E_DIR / "authoring"
+E2E_RUNS_DIR = E2E_DIR / "runs"
 
 CACHE_DIR = DATA_DIR / "cache"
 TEXT_EMBEDDING_CACHE_DIR = CACHE_DIR / "text_embeddings"
@@ -79,6 +83,10 @@ BACKEND_ENV_FILE = PROJECT_ROOT.parent / "backend" / ".env"
 
 def run_dir(run: str) -> Path:
     return RUNS_DIR / run
+
+
+def e2e_run_dir(run: str) -> Path:
+    return E2E_RUNS_DIR / run
 
 
 def query_embedding_cache_path(model: str) -> Path:

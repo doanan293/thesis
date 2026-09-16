@@ -6,6 +6,7 @@ from pharma_lab.cli.commands.build import build
 from pharma_lab.cli.commands.bundle import bundle_app
 from pharma_lab.cli.commands.data import data_app
 from pharma_lab.cli.commands.doctor import doctor
+from pharma_lab.cli.commands.e2e import e2e_app
 from pharma_lab.cli.commands.embed import embed_app
 from pharma_lab.cli.commands.evaluation import evaluation_app
 from pharma_lab.cli.commands.metrics import metrics_app
@@ -50,6 +51,7 @@ app.add_typer(data_app, name="data")
 app.command("retrieve")(retrieve)
 app.command("rerank")(rerank)
 app.add_typer(metrics_app, name="metrics")
+app.add_typer(e2e_app, name="e2e")
 
 
 def main() -> None:

@@ -26,5 +26,10 @@ data/evaluation/runs/**
 !data/evaluation/runs/**/run.json
 !data/evaluation/runs/**/manifest.json
 !data/evaluation/runs/**/report.md
+data/evaluation/e2e/**
+!data/evaluation/e2e/**/
+!data/evaluation/e2e/golden_e2e.manifest.json
+!data/evaluation/e2e/runs/**/run.json
+!data/evaluation/e2e/runs/**/reports/**
 data/cache/
 data/work/
