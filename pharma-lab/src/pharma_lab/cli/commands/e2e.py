@@ -20,6 +20,7 @@ from pharma_lab.config.paths import (
     GOLDEN_E2E_PATH,
     e2e_run_dir,
 )
+from pharma_lab.e2e.calibration import export_calibration, score_calibration
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.corpus_text import chunk_texts, corpus_text, load_corpus_text
 from pharma_lab.e2e.golden import (
@@ -27,6 +28,7 @@ from pharma_lab.e2e.golden import (
     QUOTAS,
     Category,
     build_golden,
+    load_golden,
     manifest_path,
     read_items,
     validate_items,
@@ -52,6 +54,10 @@ golden_app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="Build the golden set."
 )
 e2e_app.add_typer(golden_app, name="golden")
+calibration_app = typer.Typer(
+    add_completion=False, no_args_is_help=True, help="Blind judge calibration."
+)
+e2e_app.add_typer(calibration_app, name="calibration")
 
 
 @golden_app.command("sample")
@@ -236,6 +242,48 @@ def judge(
                 "answers": summary.total,
                 "judged": summary.judged,
                 "errors": summary.errors,
+            },
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@calibration_app.command("export")
+def calibration_export(
+    ctx: typer.Context,
+    run_name: Annotated[str, typer.Option("--run")],
+    golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
+    seed: Annotated[int, typer.Option("--seed")] = 0,
+) -> None:
+    """Write 100 blind items from the full and one-step runs for grading."""
+
+    def handler() -> CommandResult:
+        items = {item.item_id: item for item in load_golden(golden)}
+        path = export_calibration(e2e_run_dir(run_name), items, seed=seed)
+        return CommandResult("e2e calibration export", CommandStatus.COMPLETE, path)
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@calibration_app.command("score")
+def calibration_score(
+    ctx: typer.Context,
+    run_name: Annotated[str, typer.Option("--run")],
+) -> None:
+    """Measure agreement between the judge and calibration/grades.jsonl."""
+
+    def handler() -> CommandResult:
+        rows = score_calibration(e2e_run_dir(run_name))
+        return CommandResult(
+            "e2e calibration score",
+            CommandStatus.COMPLETE,
+            e2e_run_dir(run_name) / "calibration",
+            {
+                f"{row.metric}.{row.statistic}": (
+                    f"{row.value:.3f} [{row.ci_low:.3f}, {row.ci_high:.3f}] "
+                    f"n={row.n} reliable={row.reliable}"
+                )
+                for row in rows
             },
         )
 
