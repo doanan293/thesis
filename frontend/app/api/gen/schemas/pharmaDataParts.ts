@@ -7,7 +7,6 @@
 import type { ConversationData } from "./conversationData"
 import type { EvidenceData } from "./evidenceData"
 import type { PhaseData } from "./phaseData"
-import type { SkillsData } from "./skillsData"
 
 /**
  * AI SDK `DataParts` of the chat stream: part `data-<field>` carries the field's payload.
@@ -16,5 +15,4 @@ export interface PharmaDataParts {
   conversation: ConversationData
   evidence: EvidenceData
   phase: PhaseData
-  skills: SkillsData
 }

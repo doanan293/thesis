@@ -5,7 +5,6 @@ from pharma_agent.domain.guardrail.service import GuardrailService
 from pharma_agent.domain.llm.port import LlmPort
 from pharma_agent.domain.retrieval.service import RetrievalService
 from pharma_agent.domain.shared.clock import Clock
-from pharma_agent.domain.skill.ports import SkillCatalog
 
 
 @dataclass(frozen=True)
@@ -15,7 +14,6 @@ class TurnDeps:
     llm: LlmPort
     guardrail: GuardrailService
     retrieval: RetrievalService
-    skills: SkillCatalog
     clock: Clock
 
 

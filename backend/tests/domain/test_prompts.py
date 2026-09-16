@@ -6,26 +6,20 @@ from pharma_agent.domain.agent.prompts import (
     judge_messages,
     refine_messages,
     rephrase_messages,
-    skill_selection_messages,
 )
 from pharma_agent.domain.agent.run import (
     AnswerMode,
     AnswerPlan,
     RunStatus,
-    SelectedSkill,
 )
 from pharma_agent.domain.agent.schemas import Audience
 from pharma_agent.domain.conversation.models import ConversationContext, Turn
 from pharma_agent.domain.retrieval.models import Query, QueryOrigin
-from pharma_agent.domain.skill.models import SkillMetadata
 from tests.domain.factories import NOW, make_run, search_result
 
 
 def all_prompt_text() -> str:
     run = make_run()
-    run.skills = [
-        SelectedSkill(name="s", title="S", instructions="tìm mục liều\ntrả lời bảng")
-    ]
     run.record_search(
         [Query(text="q", origin=QueryOrigin.INITIAL)], search_result("c1"), now=NOW
     )
@@ -37,7 +31,6 @@ def all_prompt_text() -> str:
                 turns=[Turn(user_text="u", assistant_text="a", status="completed")],
             ),
         ),
-        *skill_selection_messages("q", [SkillMetadata(name="s", description="d")]),
         *judge_messages(run, run.evidence.summary_view()),
         *refine_messages(run, ["liều tối đa"], ["Panadol"]),
     ]
@@ -81,11 +74,8 @@ def test_rephrase_prompt_carries_summary_and_turns() -> None:
     )
 
 
-def test_judge_and_refine_prompts_include_skill_guidance_hints_and_used_queries() -> (
-    None
-):
+def test_judge_and_refine_prompts_include_evidence_hints_and_used_queries() -> None:
     run = make_run()
-    run.skills = [SelectedSkill(name="s", title="S", instructions="tìm mục Liều dùng")]
     run.record_search(
         [Query(text="paracetamol liều", origin=QueryOrigin.INITIAL)],
         search_result("c1"),
@@ -94,7 +84,7 @@ def test_judge_and_refine_prompts_include_skill_guidance_hints_and_used_queries(
     judge = "\n".join(
         m.content for m in judge_messages(run, "E1 | Paracetamol > Liều dùng")
     )
-    assert "tìm mục Liều dùng" in judge and "E1 | Paracetamol" in judge
+    assert "E1 | Paracetamol" in judge
     refine = "\n".join(
         m.content for m in refine_messages(run, ["liều tối đa"], ["Panadol"])
     )

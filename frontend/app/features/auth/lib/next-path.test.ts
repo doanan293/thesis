@@ -5,7 +5,7 @@ import { safeNextPath } from "~/features/auth/lib/next-path"
 describe("safeNextPath", () => {
   test.each([
     ["/chat/7f0c?draft=1", "/chat/7f0c?draft=1"],
-    ["/skills", "/skills"],
+    ["/settings", "/settings"],
     [null, "/chat"],
     [undefined, "/chat"],
     ["", "/chat"],

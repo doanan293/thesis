@@ -76,12 +76,6 @@ export function answerChat(
           writer.sleep(600)
         }
         writer.data({
-          type: "data-skills",
-          data: {
-            skills: [{ name: "drug-monograph", title: "Chuyên luận thuốc" }],
-          },
-        })
-        writer.data({
           type: "data-phase",
           id: "phase",
           data: { phase: "answering" },

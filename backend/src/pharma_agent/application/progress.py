@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 class Phase(StrEnum):
     GUARDING = "guarding"
     UNDERSTANDING = "understanding"
-    SELECTING_SKILLS = "selecting_skills"
     SEARCHING = "searching"
     READING = "reading"
     ANSWERING = "answering"
@@ -19,7 +18,6 @@ class Phase(StrEnum):
 class EventType(StrEnum):
     CONVERSATION = "conversation"
     PHASE = "phase"
-    SKILLS_SELECTED = "skills_selected"
     EVIDENCE = "evidence"
     TOKEN = "token"
     CITATIONS = "citations"

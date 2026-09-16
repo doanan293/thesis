@@ -18,10 +18,6 @@
     "streaming": {
       "title": "Thấy agent đang làm gì",
       "description": "Theo dõi các bước tìm kiếm, đọc tài liệu và soạn câu trả lời theo thời gian thực."
-    },
-    "skills": {
-      "title": "Kỹ năng tuỳ chỉnh",
-      "description": "Tải lên tệp SKILL.md để agent trả lời theo cách bạn cần."
     }
   },
   "sources": {

@@ -18,10 +18,6 @@
     "streaming": {
       "title": "See what the agent is doing",
       "description": "Follow the search, reading and writing steps in real time."
-    },
-    "skills": {
-      "title": "Custom skills",
-      "description": "Upload a SKILL.md file so the agent answers the way you need."
     }
   },
   "sources": {

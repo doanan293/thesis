@@ -15,7 +15,6 @@ from pharma_agent.api.routers.citations import build_citations_router
 from pharma_agent.api.routers.conversations import build_conversations_router
 from pharma_agent.api.routers.feedback import build_feedback_router
 from pharma_agent.api.routers.health import build_health_router
-from pharma_agent.api.routers.skills import build_skills_router
 from pharma_agent.infrastructure.auth.users import build_auth, include_auth_routes
 from pharma_agent.infrastructure.container import ContainerFactory, open_container
 from pharma_agent.infrastructure.settings import Settings
@@ -60,7 +59,6 @@ def create_app(
     api.include_router(build_health_router())
     api.include_router(build_chat_router(current_user_id))
     api.include_router(build_conversations_router(current_user_id))
-    api.include_router(build_skills_router(current_user_id))
     api.include_router(build_feedback_router(current_user_id))
     api.include_router(build_citations_router(current_user_id))
     app.include_router(api)

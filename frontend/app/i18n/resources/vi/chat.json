@@ -22,7 +22,6 @@
   "phase": {
     "guarding": "Đang kiểm tra câu hỏi",
     "understanding": "Đang phân tích câu hỏi",
-    "selecting_skills": "Đang chọn kỹ năng",
     "searching": "Đang tìm kiếm",
     "searchingRound": "Đang tìm kiếm · vòng {{round}}",
     "reading": "Đang đọc tài liệu",
@@ -31,9 +30,6 @@
   "status": {
     "working": "Đang xử lý",
     "done": "Hoàn tất"
-  },
-  "skills": {
-    "label": "Kỹ năng đã chọn"
   },
   "evidence": {
     "searching": "Đang tìm tài liệu",

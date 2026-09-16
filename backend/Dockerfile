@@ -32,7 +32,6 @@ RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /app/.venv /app/.venv
-COPY --chown=10001:10001 backend/skills ./skills
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
 USER 10001:10001

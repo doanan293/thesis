@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, Pydantic 2.13 (strict models, `TypeAdapter`), `hashlib`, `uuid.uuid5`, `struct`/`base64`, pytest 9 with `asyncio_mode = "auto"`.
 
-**Spec:** `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md` §4 (code layout, public API), §5 (bundle format and validation), §6.1 (identity functions), §7 (chunker, enrichment, hydrate policy, parity). Names pinned in `backend/docs/superpowers/plans/2026-09-13-plans-overview.md` §2 and §3.1–§3.2.
+**Spec:** `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md` §4 (code layout, public API), §5 (bundle format and validation), §6.1 (identity functions), §7 (chunker, enrichment, hydrate policy, parity). Names pinned in `backend/docs/superpowers/plans/2026-09-13-corpus-domain.md` §2 and §3.1–§3.2.
 
 ## Global Constraints
 

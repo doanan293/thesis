@@ -17,7 +17,6 @@ from pharma_agent.application.chat.service import ChatService, MemoryPolicy
 from pharma_agent.application.conversation.queries import ConversationQueries
 from pharma_agent.application.feedback.service import FeedbackService
 from pharma_agent.application.memory.summarize import SummarizeConversation
-from pharma_agent.application.skill.service import SkillService
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.shared.clock import SystemClock
 from pharma_agent.infrastructure.container import Container
@@ -30,7 +29,6 @@ from tests.memory_repository import (
     InMemoryCitationReader,
     InMemoryConversationRepository,
     InMemoryFeedbackRepository,
-    InMemorySkillRepository,
 )
 
 OWNER = uuid.UUID(hex="a" * 32)
@@ -50,7 +48,6 @@ class Harness:
     llm: FakeLlm
     repo: InMemoryConversationRepository
     container: Container
-    skill_repo: InMemorySkillRepository
     feedback_repo: InMemoryFeedbackRepository
     sink: RecordingScoreSink
     citations: InMemoryCitationReader
@@ -89,7 +86,6 @@ def build_harness(
         build_deps(llm, turn_retriever),
         limits if limits is not None else BudgetLimits(),
     )
-    skill_repo = InMemorySkillRepository()
     feedback_repo = InMemoryFeedbackRepository()
     citation_reader = InMemoryCitationReader()
     sink = RecordingScoreSink()
@@ -103,7 +99,6 @@ def build_harness(
         summarizer=SummarizeConversation(llm, repo, clock, every=2, max_chars=500)
         if agent
         else None,
-        skills=SkillService(skill_repo),
         feedback=FeedbackService(repo, feedback_repo, sink, clock),
         health_checks=health if health is not None else {"postgres": _ok},
         health_reasons=health_reasons or {},
@@ -124,7 +119,6 @@ def build_harness(
         llm=llm,
         repo=repo,
         container=container,
-        skill_repo=skill_repo,
         feedback_repo=feedback_repo,
         sink=sink,
         citations=citation_reader,

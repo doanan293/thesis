@@ -124,16 +124,13 @@ async def test_service_errors_have_stable_codes() -> None:
         assert_problem(await client.get("/api/v1/health"), 503, "SERVICE_STARTING")
 
     harness = build_harness(agent=False)
-    harness.container.skills = None
     harness.container.feedback = None
     async with harness.client() as client:
         chat = await client.post("/api/v1/chat", json={"message": "hi"})
-        skills = await client.get("/api/v1/skills")
         feedback = await client.post(
             f"/api/v1/messages/{'f' * 32}/feedback", json={"rating": "up"}
         )
     assert_problem(chat, 503, "AGENT_UNAVAILABLE")
-    assert_problem(skills, 503, "SERVICE_NOT_CONFIGURED")
     assert_problem(feedback, 503, "SERVICE_NOT_CONFIGURED")
 
     anonymous = build_harness(authenticated=False)

@@ -104,7 +104,6 @@ def e2e_settings(config: E2EConfig) -> Settings:
             "csrf_secret": E2E_CSRF_SECRET,
             "cookie_secure": False,
         },
-        skills_dir=BACKEND_DIR / "skills",
     )
 
 

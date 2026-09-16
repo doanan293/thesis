@@ -37,12 +37,6 @@ class RephraseResult(BaseModel):
     intent: Intent
 
 
-class SkillSelection(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    skill_names: list[str]
-
-
 class JudgeDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

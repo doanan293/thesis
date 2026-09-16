@@ -26,9 +26,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# Same rule as the domain's portable Agent Skills name, in PostgreSQL regex syntax.
-SKILL_NAME_SQL_PATTERN = "^[a-z0-9]+(-[a-z0-9]+)*$"
-
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -203,40 +200,6 @@ class RetrievalHitTable(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     snippet: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
-
-
-class SkillTable(Base):
-    """Agent Skills (https://agentskills.io/specification); `content` is the SKILL.md."""
-
-    __tablename__ = "skills"
-    __table_args__ = (
-        UniqueConstraint(
-            "owner_user_id",
-            "name",
-            name="uq_skills_owner_name",
-            postgresql_nulls_not_distinct=True,
-        ),
-        CheckConstraint(f"name ~ '{SKILL_NAME_SQL_PATTERN}'", name="name_format"),
-        Index("ix_skills_owner", "owner_user_id"),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=True
-    )
-    name: Mapped[str] = mapped_column(String(64), nullable=False)
-    description: Mapped[str] = mapped_column(String(1024), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    version: Mapped[str] = mapped_column(String(64), nullable=False)
-    enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("true")
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
 
 
 class FeedbackTable(Base):

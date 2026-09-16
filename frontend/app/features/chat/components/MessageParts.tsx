@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next"
 import { AgentStatus } from "~/components/elements/agent-status"
 import { ErrorState } from "~/components/elements/error-state"
 import { GuardrailNotice } from "~/components/elements/guardrail-notice"
-import { Badge } from "~/components/ui/badge"
 import { Bubble, BubbleContent } from "~/components/ui/bubble"
 import { Marker, MarkerContent } from "~/components/ui/marker"
 import { Message, MessageContent, MessageFooter } from "~/components/ui/message"
@@ -123,18 +122,6 @@ export function MessageParts({
       <MessageContent>
         {view.showStatus ? (
           <AgentStatus state="working" label={phaseLabel} />
-        ) : null}
-        {view.skills.length > 0 ? (
-          <ul
-            aria-label={t("skills.label")}
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {view.skills.map((skill) => (
-              <li key={skill.name}>
-                <Badge variant="secondary">{skill.title}</Badge>
-              </li>
-            ))}
-          </ul>
         ) : null}
         {view.evidence.length > 0 ? (
           <EvidencePanel

@@ -41,7 +41,6 @@ def test_settings_ignore_the_developer_environment(
     assert settings.retrieval.collections == [COLLECTION_KEY]
     assert settings.retrieval.rerank.protocol == "none"
     assert settings.budget.deadline_seconds == 5.0
-    assert settings.skills_dir.is_dir()
 
 
 def test_reset_refuses_a_database_without_e2e_in_its_name() -> None:

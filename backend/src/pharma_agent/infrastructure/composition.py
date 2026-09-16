@@ -18,7 +18,6 @@ from pharma_agent.domain.llm.port import LlmPort
 from pharma_agent.domain.retrieval.ports import CorpusReader, Reranker
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
 from pharma_agent.domain.shared.clock import SystemClock
-from pharma_agent.domain.skill.ports import SkillCatalog
 from pharma_agent.infrastructure.llm.openai_adapter import (
     OpenAiLlmAdapter,
     default_client_factory,
@@ -39,7 +38,6 @@ from pharma_agent.infrastructure.retrieval.qdrant_adapter import (
     QdrantHybridRetriever,
 )
 from pharma_agent.infrastructure.settings import RetrievalSettings, Settings
-from pharma_agent.infrastructure.skills.filesystem_catalog import FileSystemSkillCatalog
 
 
 @dataclass
@@ -180,7 +178,6 @@ def build_application(
     settings: Settings,
     *,
     checkpointer: BaseCheckpointSaver | None = None,
-    skills: SkillCatalog | None = None,
     tracer: TurnTracer | None = None,
     database: Database | None = None,
     llm: LlmPort | None = None,
@@ -201,9 +198,6 @@ def build_application(
         llm=llm_port,
         guardrail=GuardrailService(llm_port),
         retrieval=retrieval.service,
-        skills=skills
-        if skills is not None
-        else FileSystemSkillCatalog(settings.skills_dir),
         clock=SystemClock(),
     )
     runner = ChatTurnRunner(

@@ -20,7 +20,6 @@ from pharma_agent.application.errors import (
     ServiceUnavailable,
 )
 from pharma_agent.application.feedback.service import MessageNotFound
-from pharma_agent.application.skill.service import SkillNameTaken, SkillNotFound
 
 VALIDATION_ERROR = "VALIDATION_ERROR"
 INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -34,8 +33,6 @@ STATUS_BY_ERROR: dict[type[ApplicationError], int] = {
     ConversationNotFound: 404,
     MessageNotFound: 404,
     CitationNotFound: 404,
-    SkillNotFound: 404,
-    SkillNameTaken: 409,
     PayloadTooLarge: 413,
     InvalidInput: 422,
     ServiceUnavailable: 503,

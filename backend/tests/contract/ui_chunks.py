@@ -122,21 +122,11 @@ class PhaseData(StrictChunk):
     phase: Literal[
         "guarding",
         "understanding",
-        "selecting_skills",
         "searching",
         "reading",
         "answering",
     ]
     round: int = 0
-
-
-class SkillRef(StrictChunk):
-    name: str
-    title: str
-
-
-class SkillsData(StrictChunk):
-    skills: list[SkillRef]
 
 
 class EvidenceEntry(StrictChunk):
@@ -160,7 +150,6 @@ class ConversationData(StrictChunk):
 
 DATA_PAYLOADS: dict[str, type[StrictChunk]] = {
     "data-phase": PhaseData,
-    "data-skills": SkillsData,
     "data-evidence": EvidenceData,
     "data-conversation": ConversationData,
 }

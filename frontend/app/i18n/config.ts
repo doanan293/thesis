@@ -7,7 +7,6 @@ import enCommon from "./resources/en/common.json"
 import enErrors from "./resources/en/errors.json"
 import enLanding from "./resources/en/landing.json"
 import enSettings from "./resources/en/settings.json"
-import enSkills from "./resources/en/skills.json"
 import viAuth from "./resources/vi/auth.json"
 import viChat from "./resources/vi/chat.json"
 import viCitations from "./resources/vi/citations.json"
@@ -15,7 +14,6 @@ import viCommon from "./resources/vi/common.json"
 import viErrors from "./resources/vi/errors.json"
 import viLanding from "./resources/vi/landing.json"
 import viSettings from "./resources/vi/settings.json"
-import viSkills from "./resources/vi/skills.json"
 
 export const SUPPORTED_LANGUAGES = ["vi", "en"] as const
 export type Language = (typeof SUPPORTED_LANGUAGES)[number]
@@ -26,7 +24,6 @@ export const NAMESPACES = [
   "auth",
   "chat",
   "citations",
-  "skills",
   "settings",
   "landing",
   "errors",
@@ -39,7 +36,6 @@ export const resources = {
     auth: viAuth,
     chat: viChat,
     citations: viCitations,
-    skills: viSkills,
     settings: viSettings,
     landing: viLanding,
     errors: viErrors,
@@ -49,7 +45,6 @@ export const resources = {
     auth: enAuth,
     chat: enChat,
     citations: enCitations,
-    skills: enSkills,
     settings: enSettings,
     landing: enLanding,
     errors: enErrors,

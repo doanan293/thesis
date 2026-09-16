@@ -1,4 +1,4 @@
-import { MessageSquareIcon, SettingsIcon, SparklesIcon } from "lucide-react"
+import { MessageSquareIcon, SettingsIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router"
 
@@ -19,7 +19,6 @@ import { ConversationSidebar } from "~/features/conversations/ConversationSideba
 
 const NAV_ITEMS = [
   { to: "/chat", label: "nav.chat", Icon: MessageSquareIcon },
-  { to: "/skills", label: "nav.skills", Icon: SparklesIcon },
   { to: "/settings", label: "nav.settings", Icon: SettingsIcon },
 ] as const
 

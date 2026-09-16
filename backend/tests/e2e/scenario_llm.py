@@ -18,7 +18,6 @@ from pharma_agent.domain.agent.schemas import (
     JudgeOutcome,
     Language,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.conversation.models import ConversationSummary
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
@@ -68,8 +67,6 @@ def _scripted(role: LlmRole, question: str) -> BaseModel:
             language=Language.VI,
             intent=Intent.PHARMA_QUESTION,
         )
-    if role is LlmRole.SKILL_SELECTOR:
-        return SkillSelection(skill_names=[])
     if role is LlmRole.JUDGE:
         return JudgeDecision(
             decision=JudgeOutcome.ANSWER, gaps=[], reason="e2e scenario"

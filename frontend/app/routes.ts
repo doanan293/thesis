@@ -13,7 +13,6 @@ export default [
   route("auth/google/callback", "routes/auth/google-callback.tsx"),
   layout("routes/app/layout.tsx", [
     route("chat/:conversationId?", "routes/app/chat.tsx"),
-    route("skills", "routes/app/skills.tsx"),
     route("settings", "routes/app/settings.tsx"),
   ]),
   route("actions/locale", "routes/actions/locale.ts"),

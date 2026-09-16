@@ -45,7 +45,6 @@ async def test_injected_llm_builds_the_agent_without_an_api_key(
         _env_file=None,
         postgres={"dsn": migrated_dsn},
         qdrant={"check_compatibility": False},
-        skills_dir=tmp_path,
     )
     assert settings.llm.configured is False
     async with open_container(

@@ -19,7 +19,6 @@ from pharma_agent.domain.agent.schemas import (
     JudgeOutcome,
     Language,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
@@ -43,7 +42,6 @@ def fake_application() -> SimpleNamespace:
             intent=Intent.PHARMA_QUESTION,
         ),
     )
-    llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=["drug-monograph"]))
     llm.script(
         LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
     )
@@ -75,7 +73,7 @@ def test_ask_json_output(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["status"] == "completed" and payload["citations"][0]["index"] == 1
-    assert payload["trace"]["usage"]["llm_calls"] == 5
+    assert payload["trace"]["usage"]["llm_calls"] == 4
 
 
 def test_migrate_upgrades_to_head(monkeypatch) -> None:

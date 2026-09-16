@@ -67,12 +67,6 @@ class UIMessageStreamEncoder:
                 if "round" in data:
                     phase["round"] = data["round"]
                 return [{"type": "data-phase", "id": PHASE_PART_ID, "data": phase}]
-            case EventType.SKILLS_SELECTED:
-                skills = [
-                    {"name": skill["name"], "title": skill["title"]}
-                    for skill in data["skills"]
-                ]
-                return [{"type": "data-skills", "data": {"skills": skills}}]
             case EventType.EVIDENCE:
                 items = [
                     item.model_dump(mode="json")

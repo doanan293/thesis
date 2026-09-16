@@ -6,8 +6,6 @@ data: {"type":"data-phase","id":"phase","data":{"phase":"guarding"}}
 
 data: {"type":"data-phase","id":"phase","data":{"phase":"understanding"}}
 
-data: {"type":"data-phase","id":"phase","data":{"phase":"selecting_skills"}}
-
 data: {"type":"data-phase","id":"phase","data":{"phase":"searching","round":1}}
 
 data: {"type":"data-phase","id":"phase","data":{"phase":"reading"}}
@@ -22,7 +20,7 @@ data: {"type":"text-delta","id":"text","delta":"Xin lỗi, xử lý câu hỏi v
 
 data: {"type":"text-end","id":"text"}
 
-data: {"type":"finish","finishReason":"error","messageMetadata":{"status":"timeout","createdAt":"2026-09-13T08:00:00Z","errorCode":"DEADLINE_EXCEEDED","usage":{"llmCalls":4,"promptTokens":400,"completionTokens":40,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":true}}
+data: {"type":"finish","finishReason":"error","messageMetadata":{"status":"timeout","createdAt":"2026-09-13T08:00:00Z","errorCode":"DEADLINE_EXCEEDED","usage":{"llmCalls":3,"promptTokens":300,"completionTokens":30,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":true}}
 
 data: [DONE]
 

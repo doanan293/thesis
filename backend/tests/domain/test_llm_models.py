@@ -19,7 +19,6 @@ def test_llm_roles_cover_every_pipeline_step() -> None:
     assert {role.value for role in LlmRole} == {
         "guardrail",
         "rephrase",
-        "skill_selector",
         "judge",
         "refine",
         "answer",

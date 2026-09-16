@@ -11,7 +11,7 @@ import {
 import { LANDING_PATHS } from "~/features/landing/meta"
 import type { Language } from "~/i18n/config"
 
-const FEATURES = ["citations", "streaming", "skills"] as const
+const FEATURES = ["citations", "streaming"] as const
 
 export function LandingPage({ locale }: { locale: Language }) {
   const { t } = useTranslation("landing")

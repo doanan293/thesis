@@ -11,11 +11,6 @@ from pharma_agent.domain.conversation.models import (
 from pharma_agent.domain.conversation.turns import pair_turns
 from pharma_agent.domain.feedback.models import Feedback
 from pharma_agent.domain.retrieval.audit import RetrievalRunRecord
-from pharma_agent.domain.skill.models import (
-    DuplicateSkillName,
-    Skill,
-    SkillMetadata,
-)
 
 
 class InMemoryConversationRepository:
@@ -133,80 +128,6 @@ class InMemoryConversationRepository:
                 if message.message_id == message_id:
                     return message
         return None
-
-
-class InMemorySkillRepository:
-    """Keyed like the Postgres table: one skill per (owner, name), system owner None."""
-
-    def __init__(self, *skills: Skill) -> None:
-        self.rows: dict[tuple[str | None, str], Skill] = {
-            (s.owner_user_id, s.name): s.model_copy(deep=True) for s in skills
-        }
-
-    async def replace_system(self, skills: Sequence[Skill]) -> None:
-        for key in [key for key in self.rows if key[0] is None]:
-            del self.rows[key]
-        for skill in skills:
-            self.rows[(None, skill.name)] = skill.model_copy(deep=True)
-
-    async def create(self, skill: Skill) -> None:
-        key = (skill.owner_user_id, skill.name)
-        if key in self.rows:
-            raise DuplicateSkillName(skill.name)
-        self.rows[key] = skill.model_copy(deep=True)
-
-    def _visible(self, user_id: str | None) -> list[Skill]:
-        candidates = sorted(
-            (
-                s
-                for s in self.rows.values()
-                if s.enabled and (s.owner_user_id is None or s.owner_user_id == user_id)
-            ),
-            key=lambda s: (s.owner_user_id is not None, s.name),
-        )
-        one_per_name: dict[str, Skill] = {}
-        for skill in candidates:
-            one_per_name.setdefault(skill.name, skill)
-        return list(one_per_name.values())
-
-    async def list_catalog(
-        self, user_id: str | None, limit: int
-    ) -> list[SkillMetadata]:
-        return [s.metadata() for s in self._visible(user_id)[:limit]]
-
-    async def get_by_names(
-        self, user_id: str | None, names: Sequence[str]
-    ) -> list[Skill]:
-        wanted = set(names)
-        return [
-            s.model_copy(deep=True) for s in self._visible(user_id) if s.name in wanted
-        ]
-
-    async def list_system(self) -> list[Skill]:
-        return sorted(
-            (s.model_copy(deep=True) for s in self.rows.values() if s.is_system),
-            key=lambda s: s.name,
-        )
-
-    async def list_for_user(self, user_id: str) -> list[Skill]:
-        return sorted(
-            (
-                s.model_copy(deep=True)
-                for s in self.rows.values()
-                if s.owner_user_id == user_id
-            ),
-            key=lambda s: s.name,
-        )
-
-    async def set_enabled(self, user_id: str, name: str, enabled: bool) -> Skill | None:
-        skill = self.rows.get((user_id, name))
-        if skill is None:
-            return None
-        skill.enabled = enabled
-        return skill.model_copy(deep=True)
-
-    async def delete_owned(self, user_id: str, name: str) -> bool:
-        return self.rows.pop((user_id, name), None) is not None
 
 
 class InMemoryFeedbackRepository:

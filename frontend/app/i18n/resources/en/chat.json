@@ -22,7 +22,6 @@
   "phase": {
     "guarding": "Checking the question",
     "understanding": "Understanding the question",
-    "selecting_skills": "Choosing skills",
     "searching": "Searching",
     "searchingRound": "Searching · round {{round}}",
     "reading": "Reading documents",
@@ -31,9 +30,6 @@
   "status": {
     "working": "Working",
     "done": "Done"
-  },
-  "skills": {
-    "label": "Selected skills"
   },
   "evidence": {
     "searching": "Searching documents",

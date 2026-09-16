@@ -7,7 +7,6 @@ from pharma_agent.domain.agent.run import (
     ErrorCode,
     EvidenceRequired,
     InvalidTransition,
-    OptionalStep,
     RunStatus,
     Step,
 )
@@ -132,11 +131,11 @@ def test_guard_and_intent_short_circuit_to_answer() -> None:
 
 def test_budget_reservation_and_exhaustion() -> None:
     run = make_run(max_llm_calls=4)
-    assert run.can_afford(OptionalStep.REPHRASE) is True
+    assert run.can_afford_rephrase() is True
     run.charge(LlmUsage(prompt_tokens=10, completion_tokens=1))
     run.charge(LlmUsage(prompt_tokens=10, completion_tokens=1))
     assert run.usage.llm_calls == 2
-    assert run.can_afford(OptionalStep.RESOLVE_SKILLS) is False  # 2 + 3 > 4
+    assert run.can_afford_rephrase() is False  # 2 + 3 > 4
     run.charge(LlmUsage())
     run.charge(LlmUsage())
     with pytest.raises(BudgetExhausted):

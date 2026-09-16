@@ -62,12 +62,6 @@ describe("AppSidebar", () => {
       .element(page.getByRole("link", { name: "Trò chuyện" }))
       .toHaveAttribute("data-active")
     await expect
-      .element(page.getByRole("link", { name: "Kỹ năng" }))
-      .not.toHaveAttribute("data-active")
-    await expect
-      .element(page.getByRole("link", { name: "Kỹ năng" }))
-      .toHaveAttribute("href", "/skills")
-    await expect
       .element(page.getByRole("link", { name: "Cài đặt" }))
       .toHaveAttribute("href", "/settings")
     // The shell also mounts the conversation list; wait for its request to finish inside the test,

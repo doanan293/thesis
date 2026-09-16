@@ -7,7 +7,6 @@ import { ListMessagesResponse } from "~/api/gen/zod"
 export const AGENT_PHASES = [
   "guarding",
   "understanding",
-  "selecting_skills",
   "searching",
   "reading",
   "answering",
@@ -41,9 +40,6 @@ export const pharmaDataPartSchemas = {
   phase: z.object({
     phase: z.enum(AGENT_PHASES),
     round: z.number().int().nullable().optional(),
-  }),
-  skills: z.object({
-    skills: z.array(z.object({ name: z.string(), title: z.string() })),
   }),
   evidence: z.object({ items: z.array(evidenceItemSchema) }),
   conversation: z.object({ id: z.string(), title: z.string() }),

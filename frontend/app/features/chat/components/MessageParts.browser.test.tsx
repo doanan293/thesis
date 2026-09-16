@@ -28,7 +28,7 @@ async function renderParts(
 }
 
 describe("MessageParts", () => {
-  test("shows phase, skills and evidence while streaming", async () => {
+  test("shows phase and evidence while streaming", async () => {
     const { screen } = await renderParts({
       streaming: true,
       message: {
@@ -39,12 +39,6 @@ describe("MessageParts", () => {
             type: "data-phase",
             id: "phase",
             data: { phase: "searching", round: 2 },
-          },
-          {
-            type: "data-skills",
-            data: {
-              skills: [{ name: "drug-monograph", title: "Chuyên luận thuốc" }],
-            },
           },
           {
             type: "data-evidence",
@@ -69,7 +63,6 @@ describe("MessageParts", () => {
     await expect
       .element(screen.getByText("Đang tìm kiếm · vòng 2"))
       .toBeVisible()
-    await expect.element(screen.getByText("Chuyên luận thuốc")).toBeVisible()
     await expect.element(screen.getByText("Đang tìm tài liệu")).toBeVisible()
     await expect
       .element(screen.getByText("Người lớn uống 500 mg"))

@@ -6,5 +6,4 @@
 !backend/pyproject.toml
 !backend/README.md
 !backend/src
-!backend/skills
 **/__pycache__

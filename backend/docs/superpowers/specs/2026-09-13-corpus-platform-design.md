@@ -5,9 +5,8 @@ Ngày: 2026-09-13. Trạng thái: đã duyệt qua brainstorming, chờ implemen
 Spec liên quan, cùng đợt:
 
 - `backend/docs/superpowers/specs/2026-09-13-web-client-contract-design.md` (contract cho web client, gọi tắt là spec A).
-- `frontend/docs/superpowers/specs/2026-09-13-frontend-v1-design.md` (frontend v1, gọi tắt là spec B).
 
-Spec này thay thế các phần sau của `2026-09-11-pharma-agent-backend-design.md`: §7 (retrieval đọc payload Qdrant, hydrate bằng scroll Qdrant) và câu "Corpus text không bao giờ vào Postgres" ở §8.1.
+Spec này ghi lại kiến trúc corpus hiện hành và thay thế mô tả lưu payload cũ bằng Postgres là nguồn chính.
 
 ## 1. Mục tiêu
 

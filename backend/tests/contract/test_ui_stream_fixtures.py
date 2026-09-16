@@ -24,7 +24,6 @@ from pharma_agent.domain.agent.schemas import (
     JudgeOutcome,
     Language,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
@@ -84,7 +83,7 @@ def hits() -> list[Hit]:
     ]
 
 
-def script_until_answer(llm: FakeLlm, *, skills: list[str]) -> None:
+def script_until_answer(llm: FakeLlm) -> None:
     llm.script(
         LlmRole.GUARDRAIL, LlmGuardVerdict(is_attack=False, in_scope=True, reason="ok")
     )
@@ -97,7 +96,6 @@ def script_until_answer(llm: FakeLlm, *, skills: list[str]) -> None:
             intent=Intent.PHARMA_QUESTION,
         ),
     )
-    llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=skills))
     llm.script(
         LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
     )
@@ -105,7 +103,7 @@ def script_until_answer(llm: FakeLlm, *, skills: list[str]) -> None:
 
 def completed_with_citations() -> Harness:
     harness = build_harness(retriever=FakeRetriever(hits()))
-    script_until_answer(harness.llm, skills=["drug-monograph"])
+    script_until_answer(harness.llm)
     harness.llm.stream_text = (
         "Người lớn uống 0,5–1 g mỗi 4–6 giờ [1] và không quá 4 g mỗi ngày [2]."
     )
@@ -128,14 +126,14 @@ def timeout() -> Harness:
     harness = build_harness(
         retriever=FakeRetriever(hits()), limits=BudgetLimits(deadline_seconds=0.5)
     )
-    script_until_answer(harness.llm, skills=[])
+    script_until_answer(harness.llm)
     harness.llm.stream_delay = 5.0
     return harness
 
 
 def no_evidence() -> Harness:
     harness = build_harness(retriever=FakeRetriever())
-    script_until_answer(harness.llm, skills=[])
+    script_until_answer(harness.llm)
     harness.llm.stream_text = "Dược thư không có thông tin phù hợp cho câu hỏi này."
     return harness
 
@@ -143,8 +141,6 @@ def no_evidence() -> Harness:
 GROUNDED_SHAPE = (
     "start",
     "data-conversation",
-    "data-phase",
-    "data-skills",
     "data-phase",
     "data-evidence",
     "text-start",

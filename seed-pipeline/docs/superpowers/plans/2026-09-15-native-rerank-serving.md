@@ -1229,7 +1229,7 @@ Expected staged set: the five paths above plus `D seed-pipeline/data/evaluation/
 **Files:**
 - Modify: `backend/src/pharma_agent/infrastructure/settings.py:100` (`RerankSettings.protocol`)
 - Modify: `backend/src/pharma_agent/infrastructure/retrieval/llama_cpp_reranker.py` (whole file)
-- Modify: `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md:88`, `:323`, `:348-359`, `:514-516`, `:536-540`
+- Modify: `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md:88`, `:323`, `:348-359`, `:514-516`, `:536-540`
 - Modify: `compose.yaml:87-88`, `.env.example:18-21`, `README.md:51-54`
 - Test: `backend/tests/infrastructure/test_llama_cpp_reranker.py` (whole file), `backend/tests/infrastructure/test_settings.py`, `backend/tests/infrastructure/test_langfuse_tracing.py:130`
 
@@ -1491,7 +1491,7 @@ In `README.md` replace the sentence that starts `Reranker mặc định chạy` 
 
 (keep the preceding `` `ai-models/gguf`, rồi `docker compose up -d`. Embedding phải là model đã dùng khi import corpus; `` line as is).
 
-In `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md`:
+In `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md`:
 - line 88: `      retrieval/llama_cpp/   # NativeReranker, NoopReranker`
 - line 323: `` | `retrieval.rerank.protocol` | `native_rerank` (`none` tắt rerank) | ``
 - replace step 4 of §7.2 (lines 348–359, from `4. Rerank theo` through the `` - `none`: `` bullet) with:
@@ -1531,7 +1531,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/src/pharma_agent/infrastructure/settings.py backend/src/pharma_agent/infrastructure/retrieval/llama_cpp_reranker.py backend/tests/infrastructure/test_llama_cpp_reranker.py backend/tests/infrastructure/test_settings.py backend/tests/infrastructure/test_langfuse_tracing.py backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md compose.yaml .env.example README.md
+git add backend/src/pharma_agent/infrastructure/settings.py backend/src/pharma_agent/infrastructure/retrieval/llama_cpp_reranker.py backend/tests/infrastructure/test_llama_cpp_reranker.py backend/tests/infrastructure/test_settings.py backend/tests/infrastructure/test_langfuse_tracing.py backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md compose.yaml .env.example README.md
 git diff --cached --name-status
 git commit -m "refactor(backend): drop the completion_logprobs reranker" -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -3792,7 +3792,7 @@ git commit -m "feat(seed): benchmark full runtime candidates end to end" -m "Co-
 - Modify: `seed-pipeline/src/seed_pipeline/runtime/compose.py` (whole file)
 - Modify: `seed-pipeline/src/seed_pipeline/runtime/catalog.py` (delete `ModelSpec.local_parallel`)
 - Modify: `.env.example` (CPU tuning block), `backend/.env.example` (`MAX_CONCURRENT` comment), `README.md` (bullet list under the compose commands)
-- Modify: `backend/src/pharma_agent/infrastructure/settings.py:109` (comment), `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md:327`
+- Modify: `backend/src/pharma_agent/infrastructure/settings.py:109` (comment), `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md:327`
 - Test: `seed-pipeline/tests/runtime/test_compose.py` (whole file), `seed-pipeline/tests/runtime/test_compose_reranker_integration.py` (new)
 
 **Interfaces:**
@@ -4233,7 +4233,7 @@ In `backend/.env.example` replace `# PHARMA_RETRIEVAL__RERANK__MAX_CONCURRENT=2 
 
 In `backend/src/pharma_agent/infrastructure/settings.py` replace the comment `# Match the server's parallel slots (llama-server --parallel / LLAMA_RERANKER_PARALLEL).` with `# Concurrent /v1/rerank requests; each carries a whole search round (compose sets 1).`
 
-In `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md` replace line 327 with:
+In `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md` replace line 327 with:
 
 ```text
 | `retrieval.rerank.max_concurrent` / `timeout_seconds` | 2 / 120; compose đặt 1 request đồng thời (mỗi request chứa mọi ứng viên của vòng search) và timeout ít nhất gấp đôi p95 CPU đo được |
@@ -4366,7 +4366,7 @@ Run the Seed gate and the Backend gate. Expected: PASS (the integration test is 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add compose.yaml .env.example backend/.env.example README.md backend/src/pharma_agent/infrastructure/settings.py backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md seed-pipeline/src/seed_pipeline/runtime/compose.py seed-pipeline/src/seed_pipeline/runtime/catalog.py seed-pipeline/tests/runtime/test_compose.py seed-pipeline/tests/runtime/test_compose_reranker_integration.py
+git add compose.yaml .env.example backend/.env.example README.md backend/src/pharma_agent/infrastructure/settings.py backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md seed-pipeline/src/seed_pipeline/runtime/compose.py seed-pipeline/src/seed_pipeline/runtime/catalog.py seed-pipeline/tests/runtime/test_compose.py seed-pipeline/tests/runtime/test_compose_reranker_integration.py
 git diff --cached --name-status
 git commit -m "feat(compose): serve the CPU reranker with batched unified-KV slots" -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```

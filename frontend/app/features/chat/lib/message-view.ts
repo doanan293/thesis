@@ -3,7 +3,6 @@ import type {
   MessageFeedback,
   PharmaSourceMetadata,
   PhaseData,
-  SkillsData,
 } from "~/api/gen/schemas"
 
 import { textOf } from "./chat-messages"
@@ -20,7 +19,6 @@ export type MessageView = {
   hasText: boolean
   phase: PhaseData | undefined
   showStatus: boolean
-  skills: SkillsData["skills"]
   evidence: EvidenceData["items"]
   sources: PharmaSourceMetadata[]
   notice: MessageNotice
@@ -31,7 +29,6 @@ export type MessageView = {
 export const PHASE_KEYS = {
   guarding: "phase.guarding",
   understanding: "phase.understanding",
-  selecting_skills: "phase.selecting_skills",
   searching: "phase.searching",
   reading: "phase.reading",
   answering: "phase.answering",
@@ -56,13 +53,10 @@ export function describeMessage(
   { streaming, failed }: { streaming: boolean; failed: boolean }
 ): MessageView {
   let phase: PhaseData | undefined
-  let skills: SkillsData["skills"] = []
   let evidence: EvidenceData["items"] = []
   for (const part of message.parts) {
     if (part.type === "data-phase") {
       phase = part.data
-    } else if (part.type === "data-skills") {
-      skills = part.data.skills
     } else if (part.type === "data-evidence") {
       evidence = part.data.items
     }
@@ -75,7 +69,6 @@ export function describeMessage(
     hasText: text.trim().length > 0,
     phase,
     showStatus: streaming && phase !== undefined,
-    skills,
     evidence,
     sources: [...citationSourcesOf(message).values()].toSorted(
       (left, right) => left.index - right.index

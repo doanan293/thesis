@@ -45,17 +45,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: validate-agent-skills
-        name: validate agent skills (agentskills)
-        entry: >-
-          bash -c 'for dir in backend/skills/*/; do
-          uv run agentskills validate "$dir" || exit 1; done'
-        language: system
-        files: ^backend/skills/
-        pass_filenames: false
-
-  - repo: local
-    hooks:
       - id: frontend-lint
         name: oxlint --type-aware (frontend)
         entry: npm --prefix frontend run lint

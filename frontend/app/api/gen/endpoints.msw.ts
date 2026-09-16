@@ -21,7 +21,6 @@ import type {
   MessagePage,
   OAuth2AuthorizeResponse,
   PharmaDataParts,
-  SkillView,
   SourceDocumentUIPart,
   TextUIPart,
   UserRead,
@@ -125,7 +124,6 @@ export const getChatStreamResponseMock = (
     phase: faker.helpers.arrayElement([
       "guarding",
       "understanding",
-      "selecting_skills",
       "searching",
       "reading",
       "answering",
@@ -134,15 +132,6 @@ export const getChatStreamResponseMock = (
       faker.helpers.arrayElement([faker.number.int(), null]),
       undefined,
     ]),
-  },
-  skills: {
-    skills: Array.from(
-      { length: faker.number.int({ min: 1, max: 10 }) },
-      (_, i) => i + 1
-    ).map(() => ({
-      name: faker.string.alpha({ length: { min: 10, max: 20 } }),
-      title: faker.string.alpha({ length: { min: 10, max: 20 } }),
-    })),
   },
   ...overrideResponse,
 })
@@ -354,43 +343,6 @@ export const getSubmitFeedbackResponseMock = (
   message_id: faker.string.alpha({ length: { min: 10, max: 20 } }),
   note: faker.string.alpha({ length: { min: 10, max: 20 } }),
   rating: faker.helpers.arrayElement(Object.values(Rating)),
-  ...overrideResponse,
-})
-
-export const getListSkillsResponseMock = (): SkillView[] =>
-  Array.from(
-    { length: faker.number.int({ min: 1, max: 10 }) },
-    (_, i) => i + 1
-  ).map(() => ({
-    description: faker.string.alpha({ length: { min: 10, max: 20 } }),
-    enabled: faker.datatype.boolean(),
-    is_system: faker.datatype.boolean(),
-    name: faker.string.alpha({ length: { min: 10, max: 20 } }),
-    title: faker.string.alpha({ length: { min: 10, max: 20 } }),
-    version: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  }))
-
-export const getUploadSkillResponseMock = (
-  overrideResponse: Partial<Extract<SkillView, object>> = {}
-): SkillView => ({
-  description: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  enabled: faker.datatype.boolean(),
-  is_system: faker.datatype.boolean(),
-  name: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  title: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  version: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  ...overrideResponse,
-})
-
-export const getSetSkillEnabledResponseMock = (
-  overrideResponse: Partial<Extract<SkillView, object>> = {}
-): SkillView => ({
-  description: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  enabled: faker.datatype.boolean(),
-  is_system: faker.datatype.boolean(),
-  name: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  title: faker.string.alpha({ length: { min: 10, max: 20 } }),
-  version: faker.string.alpha({ length: { min: 10, max: 20 } }),
   ...overrideResponse,
 })
 
@@ -861,99 +813,6 @@ export const getSubmitFeedbackMockHandler = (
   )
 }
 
-export const getListSkillsMockHandler = (
-  overrideResponse?:
-    | SkillView[]
-    | ((
-        info: Parameters<Parameters<typeof http.get>[1]>[0]
-      ) => Promise<SkillView[]> | SkillView[]),
-  options?: RequestHandlerOptions
-) => {
-  return http.get(
-    "*/api/v1/skills",
-    async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
-      return HttpResponse.json(
-        overrideResponse !== undefined
-          ? typeof overrideResponse === "function"
-            ? await overrideResponse(info)
-            : overrideResponse
-          : getListSkillsResponseMock(),
-        { status: 200 }
-      )
-    },
-    options
-  )
-}
-
-export const getUploadSkillMockHandler = (
-  overrideResponse?:
-    | SkillView
-    | ((
-        info: Parameters<Parameters<typeof http.post>[1]>[0]
-      ) => Promise<SkillView> | SkillView),
-  options?: RequestHandlerOptions
-) => {
-  return http.post(
-    "*/api/v1/skills",
-    async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
-      return HttpResponse.json(
-        overrideResponse !== undefined
-          ? typeof overrideResponse === "function"
-            ? await overrideResponse(info)
-            : overrideResponse
-          : getUploadSkillResponseMock(),
-        { status: 201 }
-      )
-    },
-    options
-  )
-}
-
-export const getDeleteSkillMockHandler = (
-  overrideResponse?:
-    | void
-    | ((
-        info: Parameters<Parameters<typeof http.delete>[1]>[0]
-      ) => Promise<void> | void),
-  options?: RequestHandlerOptions
-) => {
-  return http.delete(
-    "*/api/v1/skills/:name",
-    async (info: Parameters<Parameters<typeof http.delete>[1]>[0]) => {
-      if (typeof overrideResponse === "function") {
-        await overrideResponse(info)
-      }
-
-      return new HttpResponse(null, { status: 204 })
-    },
-    options
-  )
-}
-
-export const getSetSkillEnabledMockHandler = (
-  overrideResponse?:
-    | SkillView
-    | ((
-        info: Parameters<Parameters<typeof http.patch>[1]>[0]
-      ) => Promise<SkillView> | SkillView),
-  options?: RequestHandlerOptions
-) => {
-  return http.patch(
-    "*/api/v1/skills/:name",
-    async (info: Parameters<Parameters<typeof http.patch>[1]>[0]) => {
-      return HttpResponse.json(
-        overrideResponse !== undefined
-          ? typeof overrideResponse === "function"
-            ? await overrideResponse(info)
-            : overrideResponse
-          : getSetSkillEnabledResponseMock(),
-        { status: 200 }
-      )
-    },
-    options
-  )
-}
-
 export const getUsersCurrentUserMockHandler = (
   overrideResponse?:
     | UserRead
@@ -1089,10 +948,6 @@ export const getPharmaAgentAPIMock = () => [
   getHealthMockHandler(),
   getGetMessageCitationMockHandler(),
   getSubmitFeedbackMockHandler(),
-  getListSkillsMockHandler(),
-  getUploadSkillMockHandler(),
-  getDeleteSkillMockHandler(),
-  getSetSkillEnabledMockHandler(),
   getUsersCurrentUserMockHandler(),
   getUsersPatchCurrentUserMockHandler(),
   getUsersDeleteUserMockHandler(),

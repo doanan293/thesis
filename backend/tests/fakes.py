@@ -15,7 +15,6 @@ from pharma_agent.domain.retrieval.models import Chunk, Hit, HydrateStrategy, Qu
 from pharma_agent.domain.retrieval.ports import Reranker, RetrievalError
 from pharma_agent.domain.retrieval.service import RetrievalConfig, RetrievalService
 from pharma_agent.domain.shared.clock import FixedClock
-from pharma_agent.domain.skill.models import Skill, SkillMetadata
 from tests.domain.factories import chunk_of
 
 T = TypeVar("T", bound=BaseModel)
@@ -110,22 +109,6 @@ class FakeHydrator:
         return [chunk_of(hit)]
 
 
-class FakeSkillCatalog:
-    def __init__(self, *skills: Skill) -> None:
-        self.skills = list(skills)
-
-    async def list_catalog(
-        self, user_id: str | None, limit: int
-    ) -> list[SkillMetadata]:
-        return [s.metadata() for s in self.skills if s.enabled][:limit]
-
-    async def get_by_names(
-        self, user_id: str | None, names: Sequence[str]
-    ) -> list[Skill]:
-        wanted = set(names)
-        return [s for s in self.skills if s.enabled and s.name in wanted]
-
-
 FAKE_EMBEDDING_MODEL = "fake-embedding-4d"
 FAKE_EMBEDDING_DIMENSION = 4
 
@@ -162,31 +145,9 @@ class FakeEmbedder:
         return [fake_vector(text) for text in texts]
 
 
-MONOGRAPH_SKILL_MD = """---
-name: drug-monograph
-description: Tra cứu chuyên luận thuốc. Dùng khi hỏi liều, chỉ định, chống chỉ định của một thuốc.
----
-
-# Tra cứu chuyên luận thuốc
-
-## Khi tìm kiếm
-
-- Tìm mục Liều dùng của chuyên luận.
-
-## Khi trả lời
-
-- Ghi liều kèm đơn vị và khoảng cách dùng.
-"""
-
-
-def monograph_skill() -> Skill:
-    return Skill.from_markdown(MONOGRAPH_SKILL_MD, directory_name="drug-monograph")
-
-
 def build_deps(
     llm: FakeLlm,
     retriever: FakeRetriever,
-    catalog: FakeSkillCatalog | None = None,
     reranker: Reranker | None = None,
 ) -> TurnDeps:
     return TurnDeps(
@@ -198,7 +159,6 @@ def build_deps(
             FakeHydrator(),
             RetrievalConfig(candidate_k=5, rerank_top_n=3),
         ),
-        skills=catalog or FakeSkillCatalog(monograph_skill()),
         clock=FixedClock(NOW),
     )
 
@@ -211,10 +171,8 @@ __all__ = [
     "FakeLlm",
     "FakeReranker",
     "FakeRetriever",
-    "FakeSkillCatalog",
     "LlmError",
     "RetrievalError",
     "build_deps",
     "fake_vector",
-    "monograph_skill",
 ]

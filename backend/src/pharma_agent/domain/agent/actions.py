@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class ActionKind(StrEnum):
     GUARD = "guard"
     REPHRASE = "rephrase"
-    RESOLVE_SKILLS = "resolve_skills"
     SEARCH = "search"
     JUDGE = "judge"
     REFINE = "refine"

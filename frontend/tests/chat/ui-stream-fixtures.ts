@@ -85,8 +85,6 @@ export function dataPartMatchesSchema(name: string, data: unknown): boolean {
   switch (name) {
     case "phase":
       return pharmaDataPartSchemas.phase.safeParse(data).success
-    case "skills":
-      return pharmaDataPartSchemas.skills.safeParse(data).success
     case "evidence":
       return pharmaDataPartSchemas.evidence.safeParse(data).success
     case "conversation":

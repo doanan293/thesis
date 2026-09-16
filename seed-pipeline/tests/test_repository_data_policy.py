@@ -69,7 +69,6 @@ def test_no_tracked_data_file_exceeds_five_mib():
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION_TREES = (
     "backend/src",
-    "backend/skills",
     "seed-pipeline/src",
     "frontend/app",
 )

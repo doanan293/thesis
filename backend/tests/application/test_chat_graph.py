@@ -17,7 +17,6 @@ from pharma_agent.domain.agent.schemas import (
     Language,
     RefineResult,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
 from pharma_agent.domain.llm.models import LlmRole
@@ -43,9 +42,6 @@ def passing_llm(intent: Intent = Intent.PHARMA_QUESTION) -> FakeLlm:
             language=Language.VI,
             intent=intent,
         ),
-    )
-    llm.script(
-        LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=["drug-monograph", "ghost"])
     )
     return llm
 
@@ -89,15 +85,10 @@ async def test_grounded_answer_in_one_round() -> None:
     assert phases(events) == [
         Phase.GUARDING,
         Phase.UNDERSTANDING,
-        Phase.SELECTING_SKILLS,
         Phase.SEARCHING,
         Phase.READING,
         Phase.ANSWERING,
     ]
-    assert [e.type for e in events if e.type is EventType.SKILLS_SELECTED] == [
-        EventType.SKILLS_SELECTED
-    ]
-    assert outcome.run.skills[0].name == "drug-monograph"
     evidence_event = next(e for e in events if e.type is EventType.EVIDENCE)
     assert [i["index"] for i in evidence_event.data["items"]] == [1, 2]
     assert evidence_event.data["items"][0] == {
@@ -119,11 +110,9 @@ async def test_grounded_answer_in_one_round() -> None:
     assert retriever.calls[0][0].text == "Liều paracetamol cho người lớn"
     done = events[-1]
     assert done.type is EventType.DONE and done.data["status"] == "completed"
-    assert (
-        done.data["usage"]["llm_calls"] == 5
-    )  # guard, rephrase, skills, judge, answer
-    assert "Tìm mục Liều dùng" in llm.calls_for(LlmRole.JUDGE)[0][1].content
-    assert "Ghi liều kèm đơn vị" in llm.calls_for(LlmRole.ANSWER)[0][0].content
+    assert done.data["usage"]["llm_calls"] == 4  # guard, rephrase, judge, answer
+    assert "Evidence hiện có:" in llm.calls_for(LlmRole.JUDGE)[0][1].content
+    assert "Quy tắc trích dẫn:" in llm.calls_for(LlmRole.ANSWER)[0][0].content
 
 
 async def test_search_more_then_refine_runs_second_search() -> None:
@@ -170,7 +159,7 @@ async def test_smalltalk_skips_retrieval() -> None:
     events, outcome = await run_turn(llm, retriever)
     assert outcome.run.status is RunStatus.COMPLETED
     assert retriever.calls == [] and outcome.citations == []
-    assert llm.calls_for(LlmRole.SKILL_SELECTOR) == []
+    assert llm.calls_for(LlmRole.JUDGE) == []
     assert phases(events) == [Phase.GUARDING, Phase.UNDERSTANDING, Phase.ANSWERING]
 
 
@@ -235,10 +224,8 @@ async def test_optional_steps_are_skipped_when_budget_is_tight() -> None:
         llm, FakeRetriever([make_hit("c1", fusion=0.9)]), BudgetLimits(max_llm_calls=3)
     )
     assert outcome.run.status is RunStatus.COMPLETED
-    assert (
-        llm.calls_for(LlmRole.REPHRASE) == []
-        and llm.calls_for(LlmRole.SKILL_SELECTOR) == []
-    )
+    assert llm.calls_for(LlmRole.REPHRASE) == []
+    assert len(llm.calls_for(LlmRole.JUDGE)) == 1
     assert outcome.run.standalone_query == QUESTION
 
 

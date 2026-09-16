@@ -21,10 +21,6 @@ EXPECTED_OPERATION_IDS = {
     "delete_conversation",
     "get_message_citation",
     "submit_feedback",
-    "list_skills",
-    "upload_skill",
-    "set_skill_enabled",
-    "delete_skill",
     "auth:cookie.login",
     "auth:cookie.logout",
     "auth:jwt.login",
@@ -89,8 +85,6 @@ def test_every_error_response_is_a_problem() -> None:
     assert conversations["get"]["responses"]["200"]["content"]["application/json"] == {
         "schema": {"$ref": "#/components/schemas/ConversationPage"}
     }
-    skills = doc["paths"]["/api/v1/skills"]["post"]["responses"]
-    assert {"401", "409", "413", "422", "503"} <= set(skills)
     register = doc["paths"]["/api/v1/auth/register"]["post"]["responses"]
     assert register["400"]["content"] == {"application/problem+json": PROBLEM_CONTENT}
 
@@ -104,17 +98,28 @@ def test_components_are_clean() -> None:
         "ConversationPage",
         "MessagePage",
         "FeedbackView",
-        "SkillView",
         "HealthResponse",
         "Body_auth_cookie_login",
         "Body_auth_jwt_login",
-        "Body_upload_skill",
     } <= set(schemas)
     assert not {"HTTPValidationError", "ValidationError", "ErrorModel"} & set(schemas)
     # OpenAPI 3.1 component keys must match ^[a-zA-Z0-9.\-_]+$.
     assert all(re.fullmatch(r"[A-Za-z0-9.\-_]+", name) for name in schemas)
     assert schemas["Problem"]["required"] == ["type", "title", "status", "code"]
     assert schemas["ProblemItem"]["required"] == ["loc", "message", "type"]
+
+
+def test_product_skills_are_absent_from_openapi() -> None:
+    doc = document()
+    assert "/api/v1/skills" not in doc["paths"]
+    assert "/api/v1/skills/{name}" not in doc["paths"]
+    assert not {
+        "SkillView",
+        "SkillRef",
+        "SkillsData",
+        "EnableSkillRequest",
+        "Body_upload_skill",
+    } & set(doc["components"]["schemas"])
 
 
 def test_post_processing_is_idempotent() -> None:
@@ -134,8 +139,6 @@ UI_SCHEMAS = {
     "EvidenceItem",
     "PharmaDataParts",
     "PhaseData",
-    "SkillRef",
-    "SkillsData",
     "EvidenceData",
     "ConversationData",
 }

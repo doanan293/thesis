@@ -1,7 +1,7 @@
 # pharma-agent backend
 
 Backend AI agent tra cứu thuốc trên corpus Dược thư Quốc gia. Thiết kế:
-`docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md`.
+the current backend architecture and corpus specifications.
 
 ## Chạy lần đầu
 
@@ -103,8 +103,7 @@ keepalive dạng comment mỗi 15 giây, frame cuối là `data: [DONE]`.
 | --- | --- |
 | `{"type":"start","messageId":…}` | Chunk đầu; `messageId` là ID tin nhắn trợ lý |
 | `{"type":"data-conversation","transient":true,"data":{"id":…,"title":…}}` | Chunk thứ hai; không lưu vào tin nhắn |
-| `{"type":"data-phase","id":"phase","data":{"phase":…,"round":…}}` | `phase` là `guarding`, `understanding`, `selecting_skills`, `searching`, `reading` hoặc `answering`; `round` chỉ có khi `searching`; cùng `id` nên client cập nhật tại chỗ |
-| `{"type":"data-skills","data":{"skills":[{"name":…,"title":…}]}}` | Skill đã chọn |
+| `{"type":"data-phase","id":"phase","data":{"phase":…,"round":…}}` | `phase` là `guarding`, `understanding`, `searching`, `reading` hoặc `answering`; `round` chỉ có khi `searching`; cùng `id` nên client cập nhật tại chỗ |
 | `{"type":"data-evidence","id":"evidence","data":{"items":[…]}}` | Mỗi item: `index`, `source`, `title`, `section`, `startPage`, `endPage` (`null` khi không có), `snippet` |
 | `{"type":"text-start","id":"text"}`, `{"type":"text-delta","id":"text","delta":…}`, `{"type":"text-end","id":"text"}` | Câu trả lời; marker `[n]` không bị cắt giữa hai `text-delta` |
 | `{"type":"source-document","sourceId":…,"mediaType":"text/markdown","title":…,"providerMetadata":{"pharma":{…}}}` | Sau `text-end`, một chunk cho mỗi `[n]`: `sourceId` là `chunk_version_id`, `title` là `"{title} › {section}"`, `pharma` gồm `index`, `source`, `title`, `section`, `startPage`, `endPage`, `snippet`, `isCurrent` |
@@ -126,7 +125,6 @@ Mọi lỗi REST và lỗi trước khi stream bắt đầu trả `application/p
 | `GET /conversations/{id}/messages?limit=&cursor=` | Lịch sử dạng `UIMessage`, phân trang cursor |
 | `GET /messages/{message_id}/citations/{index}` | Toàn văn khối mà mô hình đã đọc cho citation |
 | `POST /messages/{message_id}/feedback` | Đánh giá câu trả lời (`up`/`down`), gửi score sang Langfuse |
-| `GET/POST /skills`, `PATCH/DELETE /skills/{id}` | Skill hệ thống và skill tự tải lên (`SKILL.md` tối đa 64 KB) |
 | `GET /health` | Postgres, `corpus` (collection Qdrant khớp model embedding và mọi collection trong `PHARMA_RETRIEVAL__COLLECTIONS` có release hiện hành; nếu không, `reasons.corpus = "CORPUS_NOT_READY"`), trạng thái agent |
 
 Schema OpenAPI cho frontend: `uv run pharma-agent export-openapi --output ../frontend/openapi.json`.
@@ -137,8 +135,6 @@ Schema OpenAPI cho frontend: `uv run pharma-agent export-openapi --output ../fro
 để bật Langfuse. Mỗi lượt hỏi đáp là một trace tên `chat_turn`, gắn `session` là hội thoại
 và `user` là người dùng. Các bước của graph, mọi lời gọi LLM và embedding, cùng bước rerank đều nằm trong trace đó. Feedback
 của người dùng được ghi thành score `user_feedback` (1 là up, 0 là down) trên cùng trace.
-
-Skill hệ thống trong `skills/` được đồng bộ vào Postgres mỗi lần service khởi động.
 
 Checkpoint LangGraph cũ hơn `PHARMA_CHECKPOINTS__RETENTION_DAYS` ngày (mặc định 7) được xóa
 một lần khi service khởi động. Có thể chạy tay:
@@ -188,9 +184,8 @@ uv run pytest -q -m integration  # cần Docker (Qdrant thật)
 ## Bố cục
 
 - `src/pharma_agent/domain`: Python thuần, không framework. Aggregate `AgentRun`, retrieval,
-  skill, guardrail, prompt.
+  guardrail, prompt.
 - `src/pharma_agent/application`: vòng lặp agentic RAG trên LangGraph và progress events.
 - `src/pharma_agent/infrastructure`: OpenAI, Qdrant, llama.cpp, settings, composition root.
-- `skills/`: skill hệ thống theo [Agent Skills specification](https://agentskills.io/specification): `skills/<name>/SKILL.md`, `name` trùng tên thư mục, `name` chỉ gồm chữ thường a-z, số và gạch nối, body là hướng dẫn tự do. Kiểm tra bằng `uv run agentskills validate skills/<name>` (CLI của thư viện tham chiếu `skills-ref`).
 
 Quy tắc phụ thuộc được kiểm tra bởi `tests/architecture/test_layering.py`.

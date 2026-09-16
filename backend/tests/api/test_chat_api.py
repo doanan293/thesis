@@ -2,7 +2,6 @@ from pharma_agent.application.conversation.ui_message import (
     ConversationData,
     EvidenceData,
     PhaseData,
-    SkillsData,
 )
 from pharma_agent.domain.agent.schemas import (
     Audience,
@@ -11,7 +10,6 @@ from pharma_agent.domain.agent.schemas import (
     JudgeOutcome,
     Language,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.conversation.models import ConversationSummary
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
@@ -34,7 +32,6 @@ def script_turn(llm: FakeLlm) -> None:
             intent=Intent.PHARMA_QUESTION,
         ),
     )
-    llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=[]))
     llm.script(
         LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
     )
@@ -148,7 +145,6 @@ async def test_streamed_data_parts_match_the_documented_models() -> None:
 
     models = {
         "data-phase": PhaseData,
-        "data-skills": SkillsData,
         "data-evidence": EvidenceData,
         "data-conversation": ConversationData,
     }

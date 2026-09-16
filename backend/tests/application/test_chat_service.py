@@ -15,7 +15,6 @@ from pharma_agent.domain.agent.schemas import (
     JudgeOutcome,
     Language,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.conversation.models import Conversation
 from pharma_agent.domain.guardrail.models import LlmGuardVerdict
@@ -42,7 +41,6 @@ def scripted_turn(llm: FakeLlm, standalone: str) -> None:
             intent=Intent.PHARMA_QUESTION,
         ),
     )
-    llm.script(LlmRole.SKILL_SELECTOR, SkillSelection(skill_names=[]))
     llm.script(
         LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
     )

@@ -26,12 +26,14 @@ describe("Google sign-in", () => {
     )
     const assign = vi.fn<(url: string) => void>()
 
-    await startGoogleLogin("/skills", assign)
+    await startGoogleLogin("/settings", assign)
 
     expect(assign).toHaveBeenCalledExactlyOnceWith(
       "https://accounts.google.com/o/oauth2/v2/auth?state=s1"
     )
-    expect(window.sessionStorage.getItem(NEXT_PATH_STORAGE_KEY)).toBe("/skills")
+    expect(window.sessionStorage.getItem(NEXT_PATH_STORAGE_KEY)).toBe(
+      "/settings"
+    )
   })
 
   test("complete forwards code and state and returns the stored next path", async () => {
@@ -42,13 +44,13 @@ describe("Google sign-in", () => {
         return new HttpResponse(null, { status: 204 })
       })
     )
-    window.sessionStorage.setItem(NEXT_PATH_STORAGE_KEY, "/skills")
+    window.sessionStorage.setItem(NEXT_PATH_STORAGE_KEY, "/settings")
 
     const next = await completeGoogleLogin(
       new URL("http://localhost/auth/google/callback?code=abc&state=xyz")
     )
 
-    expect(next).toBe("/skills")
+    expect(next).toBe("/settings")
     const params = new URLSearchParams(search)
     expect(params.get("code")).toBe("abc")
     expect(params.get("state")).toBe("xyz")

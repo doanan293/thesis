@@ -46,9 +46,9 @@ test("an expired session returns to login and then back to the page", async ({
 
   // The browser no longer has a valid session, exactly as after the lifetime ends.
   await page.context().clearCookies({ name: "pharma_session" })
-  await page.getByRole("link", { name: "Kỹ năng", exact: true }).click()
+  await page.getByRole("link", { name: "Cài đặt", exact: true }).click()
 
-  await expect(page).toHaveURL(/\/login\?next=(%2F|\/)skills/)
+  await expect(page).toHaveURL(/\/login\?next=(%2F|\/)settings/)
   await logIn(page, user)
-  await expect(page).toHaveURL(/\/skills$/)
+  await expect(page).toHaveURL(/\/settings$/)
 })

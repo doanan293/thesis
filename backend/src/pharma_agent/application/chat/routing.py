@@ -21,14 +21,10 @@ def route_after_guard(
 
 def route_after_rephrase(
     state: ChatTurnState,
-) -> Literal["resolve_skills", "answer", "fallback"]:
+) -> Literal["search", "answer", "fallback"]:
     if _failed(state):
         return FALLBACK
-    return "answer" if Step.ANSWER in state.run.allowed_steps() else "resolve_skills"
-
-
-def route_after_resolve_skills(state: ChatTurnState) -> Literal["search", "fallback"]:
-    return FALLBACK if _failed(state) else "search"
+    return "answer" if Step.ANSWER in state.run.allowed_steps() else "search"
 
 
 def route_after_search(state: ChatTurnState) -> Literal["judge", "fallback"]:

@@ -261,7 +261,7 @@ Lệnh bắt buộc: `pytest` (warning coi là lỗi), `ruff check`, `ruff forma
 - `seed-pipeline/docs/guides/cli-reference.md`: `seed rerank --backend local --benchmark`, `seed retrieve --sample/--sample-seed`.
 - `seed-pipeline/docs/guides/workflow-local-kaggle.md`, `workflow-local-only.md`: lệnh rerank mới, `--kaggle-account auto` và cách đọc bảng quota khi dừng, chạy trong tmux, vị trí log.
 - `seed-pipeline/data/README.md`: thêm `cache/local_profiles/`.
-- `backend/docs/superpowers/specs/2026-09-11-pharma-agent-backend-design.md`: bảng settings (`native_rerank | none`), bỏ mô tả `completion_logprobs`, cập nhật mục 5 của nhật ký quyết định.
+- `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md`: bảng settings (`native_rerank | none`), bỏ mô tả `completion_logprobs`, cập nhật mục 5 của nhật ký quyết định.
 - `README.md` và `.env.example` ở gốc repo: biến llama.cpp của reranker và cách chạy lại benchmark CPU.
 
 ## 8. Rủi ro

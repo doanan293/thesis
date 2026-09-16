@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Literal
 
 from openai.types import ReasoningEffort
@@ -18,7 +17,6 @@ from pharma_agent.domain.llm.models import LlmRole
 DEFAULT_ROLE_MODELS: dict[LlmRole, str] = {
     LlmRole.GUARDRAIL: "gpt-5-nano",
     LlmRole.REPHRASE: "gpt-5-nano",
-    LlmRole.SKILL_SELECTOR: "gpt-5-nano",
     LlmRole.SUMMARIZER: "gpt-5-nano",
     LlmRole.JUDGE: "gpt-5-mini",
     LlmRole.REFINE: "gpt-5-mini",
@@ -31,7 +29,6 @@ DEFAULT_ROLE_MODELS: dict[LlmRole, str] = {
 DEFAULT_ROLE_REASONING: dict[LlmRole, ReasoningEffort] = {
     LlmRole.GUARDRAIL: "minimal",
     LlmRole.REPHRASE: "minimal",
-    LlmRole.SKILL_SELECTOR: "minimal",
     LlmRole.SUMMARIZER: "minimal",
     LlmRole.JUDGE: "low",
     LlmRole.REFINE: "low",
@@ -235,4 +232,3 @@ class Settings(BaseSettings):
     memory: MemorySettings = Field(default_factory=MemorySettings)
     checkpoints: CheckpointSettings = Field(default_factory=CheckpointSettings)
     corpus: CorpusSettings = Field(default_factory=CorpusSettings)
-    skills_dir: Path = Path("skills")

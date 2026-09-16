@@ -9,7 +9,6 @@
   },
   "nav": {
     "chat": "Chat",
-    "skills": "Skills",
     "settings": "Settings"
   },
   "userMenu": {
@@ -19,7 +18,7 @@
   "shell": {
     "toggleSidebar": "Toggle sidebar",
     "sidebarTitle": "Sidebar",
-    "sidebarDescription": "Move between chat, skills and settings."
+    "sidebarDescription": "Move between chat and settings."
   },
   "errorPage": {
     "title": "Something went wrong",

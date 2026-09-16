@@ -30,7 +30,18 @@ def test_target_metadata_holds_app_and_corpus_tables() -> None:
         table.name for table in target_metadata.tables.values() if table.schema is None
     }
     assert corpus == CORPUS_TABLES
-    assert {"user", "conversations", "messages", "skills"} <= public
+    assert public == {
+        "access_tokens",
+        "conversations",
+        "feedback",
+        "message_citations",
+        "messages",
+        "oauth_account",
+        "retrieval_hits",
+        "retrieval_runs",
+        "user",
+    }
+    assert "skills" not in target_metadata.tables
 
 
 def test_include_name_manages_default_and_corpus_schemas_only() -> None:

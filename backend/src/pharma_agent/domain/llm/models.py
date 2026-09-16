@@ -36,7 +36,6 @@ class LlmUsage(BaseModel):
 class LlmRole(StrEnum):
     GUARDRAIL = "guardrail"
     REPHRASE = "rephrase"
-    SKILL_SELECTOR = "skill_selector"
     JUDGE = "judge"
     REFINE = "refine"
     ANSWER = "answer"

@@ -204,9 +204,9 @@ START → guard ─(tấn công)──────► answer[blocked]
           ▼
        rephrase ─(chào hỏi/meta)─► answer[no_retrieval]
           ▼
-   resolve_skills → search → judge ─(đủ evidence)─► answer[grounded]
-                      ▲        │ (thiếu, còn ngân sách)
-                      └─ refine┘
+       search → judge ─(đủ evidence)─► answer[grounded]
+                ▲        │ (thiếu, còn ngân sách)
+                └─ refine┘
                                judge ─(hết ngân sách)─► answer[partial] hoặc answer[abstain]
    node bất kỳ lỗi ─────────────────────────────────► fallback
 ```
@@ -215,7 +215,6 @@ START → guard ─(tấn công)──────► answer[blocked]
 | --- | --- | --- |
 | guard | Regex (prompt injection, jailbreak, lộ dữ liệu) rồi LLM phân loại | Fail-open: cho qua, ghi log |
 | rephrase | Viết lại câu hỏi độc lập từ tóm tắt và 4 lượt gần nhất; nhận diện đối tượng và ý định | Dùng câu hỏi gốc |
-| resolve_skills | Chọn tối đa 3 skill theo metadata | Không dùng skill |
 | search | Lần đầu tự tìm bằng câu hỏi độc lập; các vòng sau dùng query của refine | Sang judge với evidence hiện có |
 | judge | Structured output: `answer` hoặc `search_more` kèm phần còn thiếu | Thử lại 1 lần, rồi trả lời partial |
 | refine | Sinh 1–3 query mới từ phần thiếu; chặn query trùng | Trả lời partial |
@@ -244,7 +243,6 @@ Thiết kế cho LLM rẻ:
 | Thành phần | Nội dung |
 | --- | --- |
 | Corpus platform | Postgres là nguồn chính, Qdrant là index dựng lại được; import theo release (publish, rollback, gc, reindex, resume); chunk version bất biến; dùng lại embedding cache từ Kaggle |
-| Skills | 5 skill hệ thống theo Agent Skills specification; người dùng tải lên được `SKILL.md` |
 | Memory | Tóm tắt hội thoại cuốn chiếu + các lượt gần nhất; checkpoint LangGraph trên Postgres |
 | Audit retrieval | Query, cấu hình, release, hit, điểm rerank, chunk được trích dẫn |
 | Observability | Mỗi lượt một trace Langfuse (node, LLM, embedding, rerank); feedback thành score |
@@ -260,7 +258,7 @@ Thiết kế cho LLM rẻ:
 - **Đánh giá tự động:** dùng RAGAS/LLM-as-judge đo factual correctness, faithfulness, answer relevance và
   citation correctness; chấm rule-based cho hành vi trả lời / từ chối / chặn.
 - **Đánh giá chuyên gia:** nhờ dược sĩ chấm mù một tập con và đo độ tương quan với đánh giá tự động.
-- **Ablation study:** lần lượt bỏ judge/refine, reranker, skills, rephrase và từng lớp enrichment.
+- **Ablation study:** lần lượt bỏ judge/refine, reranker, rephrase và từng lớp enrichment.
 - **Tối ưu model theo role:** thử model nhỏ cho từng node và dựng đường Pareto chất lượng–chi phí–độ trễ.
 - **Phân tích lỗi:** phân nhóm lỗi retrieval, reasoning, generation và citation rồi đánh giá lại sau khi sửa.
 - **Kiểm thử ngoài phân phối:** dùng câu hỏi mới do người dùng hoặc chuyên gia viết, không sinh từ corpus.

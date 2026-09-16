@@ -22,7 +22,7 @@ from pharma_agent.domain.retrieval.service import SearchResult
 from pharma_agent.domain.shared.errors import DomainError
 from pharma_agent.domain.shared.ids import new_id
 
-RESERVED_CALLS = 3  # judge + answer + one spare, kept free for optional steps
+RESERVED_CALLS = 3  # judge + answer + one spare, kept free for rephrase
 
 
 class EvidenceRequired(DomainError):
@@ -38,11 +38,6 @@ class Step(StrEnum):
     JUDGE = "judge"
     REFINE = "refine"
     ANSWER = "answer"
-
-
-class OptionalStep(StrEnum):
-    REPHRASE = "rephrase"
-    RESOLVE_SKILLS = "resolve_skills"
 
 
 class AnswerMode(StrEnum):
@@ -74,7 +69,6 @@ class RunStatus(StrEnum):
 class ErrorCode(StrEnum):
     GUARDRAIL_LLM_FAILED = "GUARDRAIL_LLM_FAILED"
     REPHRASE_FAILED = "REPHRASE_FAILED"
-    SKILL_RESOLUTION_FAILED = "SKILL_RESOLUTION_FAILED"
     SEARCH_FAILED = "SEARCH_FAILED"
     RERANK_FAILED = "RERANK_FAILED"
     JUDGE_FAILED = "JUDGE_FAILED"
@@ -84,14 +78,6 @@ class ErrorCode(StrEnum):
     DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED"
     EVIDENCE_REQUIRED = "EVIDENCE_REQUIRED"
     INTERNAL = "INTERNAL"
-
-
-class SelectedSkill(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    title: str
-    instructions: str = ""
 
 
 _FINAL_STATUS = {
@@ -118,7 +104,6 @@ class AgentRun(BaseModel):
     usage: BudgetUsage = Field(default_factory=BudgetUsage)
     evidence: EvidenceSet = Field(default_factory=EvidenceSet)
     actions: ActionLog = Field(default_factory=ActionLog)
-    skills: list[SelectedSkill] = Field(default_factory=list)
     plan: AnswerPlan | None = None
     status: RunStatus = RunStatus.RUNNING
     error_code: ErrorCode | None = None
@@ -192,7 +177,7 @@ class AgentRun(BaseModel):
             else frozenset({Step.ANSWER})
         )
 
-    def can_afford(self, step: OptionalStep) -> bool:
+    def can_afford_rephrase(self) -> bool:
         return self.usage.llm_calls + RESERVED_CALLS <= self.limits.max_llm_calls
 
     def charge(self, usage: LlmUsage) -> None:
@@ -253,17 +238,6 @@ class AgentRun(BaseModel):
                 "intent": self.intent.value,
                 "audience": self.audience.value,
             },
-        )
-
-    def record_skills(
-        self, skills: Sequence[SelectedSkill], *, now: datetime, failed: bool = False
-    ) -> None:
-        self.skills = list(skills)
-        self._log(
-            ActionKind.RESOLVE_SKILLS,
-            now,
-            outcome="failed" if failed else ("ok" if skills else "none"),
-            payload={"skill_names": [s.name for s in skills]},
         )
 
     def record_search(
@@ -388,7 +362,6 @@ class AgentRun(BaseModel):
             "audience": self.audience.value,
             "intent": self.intent.value,
             "standalone_query": self.standalone_query,
-            "skills": [s.name for s in self.skills],
             "actions": [a.model_dump(mode="json") for a in self.actions.entries],
         }
 

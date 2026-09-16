@@ -17,7 +17,6 @@ from pharma_agent.application.chat.service import ChatService, MemoryPolicy
 from pharma_agent.application.conversation.queries import ConversationQueries
 from pharma_agent.application.feedback.service import FeedbackService
 from pharma_agent.application.memory.summarize import SummarizeConversation
-from pharma_agent.application.skill.service import SkillService
 from pharma_agent.application.tracing import NullTracing, Tracing
 from pharma_agent.domain.corpus.ports import Embedder
 from pharma_agent.domain.llm.port import LlmPort
@@ -40,9 +39,6 @@ from pharma_agent.infrastructure.persistence.postgres.database import Database
 from pharma_agent.infrastructure.persistence.postgres.feedback_repository import (
     PostgresFeedbackRepository,
 )
-from pharma_agent.infrastructure.persistence.postgres.skill_repository import (
-    PostgresSkillRepository,
-)
 from pharma_agent.infrastructure.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -59,7 +55,6 @@ class Container:
     queries: ConversationQueries
     chat: ChatService | None = None
     summarizer: SummarizeConversation | None = None
-    skills: SkillService | None = None
     feedback: FeedbackService | None = None
     tracing: Tracing = field(default_factory=NullTracing)
     health_checks: dict[str, HealthCheck] = field(default_factory=dict)
@@ -130,7 +125,6 @@ async def open_container(
         if settings.langfuse.enabled
         else NullTracing()
     )
-    skill_repository = PostgresSkillRepository(database.sessions)
     feedback_repository = PostgresFeedbackRepository(database.sessions)
     container = Container(
         settings=settings,
@@ -141,7 +135,6 @@ async def open_container(
             feedback=feedback_repository,
             citations=PostgresCitationReader(database.sessions),
         ),
-        skills=SkillService(skill_repository),
         feedback=FeedbackService(repository, feedback_repository, tracing, clock),
         tracing=tracing,
         health_checks={"postgres": database.ping},
@@ -150,8 +143,6 @@ async def open_container(
         async with AsyncExitStack() as stack:
             if isinstance(tracing, LangfuseTracing):
                 stack.callback(tracing.shutdown)
-            if container.skills is not None:
-                await container.skills.sync_system(settings.skills_dir)
             if settings.llm.configured or llm is not None:
                 checkpointer = await stack.enter_async_context(
                     open_postgres_checkpointer(settings.postgres.conninfo)
@@ -165,7 +156,6 @@ async def open_container(
                 agent = build_application(
                     settings,
                     checkpointer=checkpointer,
-                    skills=skill_repository,
                     tracer=tracing,
                     database=database,
                     llm=llm,

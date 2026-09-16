@@ -112,21 +112,11 @@ class PhaseData(CamelModel):
     phase: Literal[
         "guarding",
         "understanding",
-        "selecting_skills",
         "searching",
         "reading",
         "answering",
     ]
     round: int | None = None
-
-
-class SkillRef(CamelModel):
-    name: str
-    title: str
-
-
-class SkillsData(CamelModel):
-    skills: list[SkillRef]
 
 
 class EvidenceData(CamelModel):
@@ -142,7 +132,6 @@ class PharmaDataParts(CamelModel):
     """AI SDK `DataParts` of the chat stream: part `data-<field>` carries the field's payload."""
 
     phase: PhaseData
-    skills: SkillsData
     evidence: EvidenceData
     conversation: ConversationData
 

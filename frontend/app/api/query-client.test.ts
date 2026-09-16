@@ -82,7 +82,7 @@ describe("createQueryClient", () => {
 
     await expect(
       client.fetchQuery({
-        queryKey: ["/api/v1/skills"],
+        queryKey: ["/api/v1/settings"],
         queryFn: () =>
           Promise.reject(
             new ApiError({

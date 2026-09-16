@@ -98,9 +98,6 @@ async def _run_turn(application: Any, question: str, json_output: bool) -> None:
 def _render(event: ProgressEvent, evidence: list[dict[str, Any]]) -> None:
     if event.type is EventType.PHASE:
         typer.echo(f"… {event.data['phase']}", err=True)
-    elif event.type is EventType.SKILLS_SELECTED:
-        names = ", ".join(s["name"] for s in event.data["skills"])
-        typer.echo(f"… skills: {names}", err=True)
     elif event.type is EventType.EVIDENCE:
         evidence.extend(event.data["items"])
         typer.echo(f"… evidence: {len(event.data['items'])} nguồn", err=True)

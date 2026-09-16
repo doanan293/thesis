@@ -13,9 +13,7 @@ async def test_container_without_llm_serves_queries_only(
     monkeypatch.delenv("PHARMA_LLM__DEFAULT__API_KEY", raising=False)
     async with open_container(Settings(_env_file=None)) as container:
         assert container.chat is None and container.summarizer is None
-        assert container.skills is not None and container.feedback is not None
-        catalog = await container.skills.list_for_user("a" * 32)
-        assert catalog == []
+        assert container.feedback is not None
         assert await container.health_checks["postgres"]() is True
         assert container.health_reasons == {}
         page = await container.queries.list_conversations("a" * 32, limit=5)
@@ -30,7 +28,6 @@ async def test_container_with_llm_builds_chat_and_corpus_check(
     monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
     # Nothing listens on the discard port, so the Qdrant call fails fast.
     monkeypatch.setenv("PHARMA_QDRANT__URL", "http://127.0.0.1:9")
-    monkeypatch.setenv("PHARMA_SKILLS_DIR", str(tmp_path))
     async with open_container(Settings(_env_file=None)) as container:
         assert container.chat is not None and container.summarizer is not None
         assert set(container.health_checks) == {"postgres", "corpus"}

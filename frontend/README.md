@@ -1,6 +1,6 @@
 # pharma-agent-web
 
-The web frontend of the pharma AI agent: a React Router application with server rendering for the public pages and client-only chat, skills and settings pages behind sign-in.
+The web frontend of the pharma AI agent: a React Router application with server rendering for the public pages and client-only chat and settings pages behind sign-in.
 
 ## End-to-end tests
 
@@ -11,7 +11,6 @@ The Playwright suite in `tests/e2e/` runs the production build of this app again
 - asking a question and seeing the phase, the `[1]` citation, its preview and the full text
 - 👎 feedback with a note
 - loading older messages
-- uploading, enabling, disabling and deleting a skill
 - changing language and theme
 - the `/en/` hreflang links
 
@@ -25,7 +24,6 @@ The Playwright suite in `tests/e2e/` runs the production build of this app again
 
 ```bash
 npm run e2e                                   # starts every server, runs all specs
-npx playwright test tests/e2e/skills.e2e.ts   # one file
 npx playwright test --headed --debug          # step through in a browser
 npx playwright show-report                    # HTML report of the last run
 ```

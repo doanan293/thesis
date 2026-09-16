@@ -7,7 +7,6 @@ import type {
   MessageMetadata,
   PharmaSourceMetadata,
   PhaseData,
-  SkillsData,
 } from "~/api/gen/schemas"
 
 import {
@@ -19,14 +18,11 @@ import {
 describe("message schemas", () => {
   test("agree with the generated types in both directions", () => {
     type Phase = z.infer<typeof pharmaDataPartSchemas.phase>
-    type Skills = z.infer<typeof pharmaDataPartSchemas.skills>
     type Evidence = z.infer<typeof pharmaDataPartSchemas.evidence>
     type Conversation = z.infer<typeof pharmaDataPartSchemas.conversation>
     type Source = z.infer<typeof pharmaSourceMetadataSchema>
     expectTypeOf<Phase>().toExtend<PhaseData>()
     expectTypeOf<PhaseData>().toExtend<Phase>()
-    expectTypeOf<Skills>().toExtend<SkillsData>()
-    expectTypeOf<SkillsData>().toExtend<Skills>()
     expectTypeOf<Evidence>().toExtend<EvidenceData>()
     expectTypeOf<EvidenceData>().toExtend<Evidence>()
     expectTypeOf<Conversation>().toExtend<ConversationData>()
@@ -45,11 +41,6 @@ describe("message schemas", () => {
     expect(
       pharmaDataPartSchemas.phase.parse({ phase: "answering" }).phase
     ).toBe("answering")
-    expect(
-      pharmaDataPartSchemas.skills.parse({
-        skills: [{ name: "drug-monograph", title: "Chuyên luận thuốc" }],
-      }).skills
-    ).toHaveLength(1)
     expect(
       pharmaDataPartSchemas.conversation.parse({
         id: "c1",

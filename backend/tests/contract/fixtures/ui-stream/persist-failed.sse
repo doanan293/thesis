@@ -6,10 +6,6 @@ data: {"type":"data-phase","id":"phase","data":{"phase":"guarding"}}
 
 data: {"type":"data-phase","id":"phase","data":{"phase":"understanding"}}
 
-data: {"type":"data-phase","id":"phase","data":{"phase":"selecting_skills"}}
-
-data: {"type":"data-skills","data":{"skills":[{"name":"drug-monograph","title":"Tra cứu chuyên luận thuốc"}]}}
-
 data: {"type":"data-phase","id":"phase","data":{"phase":"searching","round":1}}
 
 data: {"type":"data-phase","id":"phase","data":{"phase":"reading"}}
@@ -46,7 +42,7 @@ data: {"type":"source-document","sourceId":"d2c4db75-ef8c-5aa9-b121-ff875c81d639
 
 data: {"type":"source-document","sourceId":"03e2c2fb-c3e9-5721-9f5b-bb2a1034c0e7","mediaType":"text/markdown","title":"Paracetamol › Liều lượng và cách dùng","providerMetadata":{"pharma":{"index":2,"source":"Dược thư Quốc gia Việt Nam","title":"Paracetamol","section":"Liều lượng và cách dùng","startPage":813,"endPage":813,"snippet":"Không dùng quá 4 g mỗi ngày ở người lớn.","isCurrent":true}}}
 
-data: {"type":"finish","finishReason":"stop","messageMetadata":{"status":"completed","createdAt":"2026-09-13T08:00:00Z","errorCode":null,"usage":{"llmCalls":5,"promptTokens":1200,"completionTokens":100,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":false}}
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"status":"completed","createdAt":"2026-09-13T08:00:00Z","errorCode":null,"usage":{"llmCalls":4,"promptTokens":1100,"completionTokens":90,"searchRounds":1},"runId":"00000000000000000000000000000003","persisted":false}}
 
 data: [DONE]
 

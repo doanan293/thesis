@@ -23,23 +23,19 @@ from pharma_agent.domain.agent.prompts import (
     judge_messages,
     refine_messages,
     rephrase_messages,
-    skill_selection_messages,
 )
-from pharma_agent.domain.agent.run import AnswerMode, ErrorCode, OptionalStep
+from pharma_agent.domain.agent.run import AnswerMode, ErrorCode
 from pharma_agent.domain.agent.schemas import (
     JudgeDecision,
     JudgeOutcome,
     RefineResult,
     RephraseResult,
-    SkillSelection,
 )
 from pharma_agent.domain.guardrail.models import VerdictSource
 from pharma_agent.domain.llm.models import LlmRole, LlmUsage
 from pharma_agent.domain.llm.port import LlmError
 from pharma_agent.domain.retrieval.models import Query, QueryOrigin
 from pharma_agent.domain.shared.text import make_snippet
-from pharma_agent.domain.skill.models import MAX_CATALOG_SIZE
-from pharma_agent.domain.skill.resolver import resolve_selected
 
 NodeUpdate = dict[str, Any]
 
@@ -97,7 +93,7 @@ async def rephrase_node(
     run, deps = state.run, runtime.context.deps
     _emit(ProgressEvent.phase(Phase.UNDERSTANDING))
     now = deps.clock.now()
-    if not run.can_afford(OptionalStep.REPHRASE):
+    if not run.can_afford_rephrase():
         run.record_rephrase(None, now=now, skipped=True)
         return {"run": run}
     try:
@@ -111,45 +107,6 @@ async def rephrase_node(
         run.record_rephrase(None, now=now, failed=True)
         return {"run": run}
     run.record_rephrase(result, now=now)
-    return {"run": run}
-
-
-@guarded(ErrorCode.SKILL_RESOLUTION_FAILED)
-async def resolve_skills_node(
-    state: ChatTurnState, *, runtime: Runtime[TurnContext]
-) -> NodeUpdate:
-    run, deps = state.run, runtime.context.deps
-    _emit(ProgressEvent.phase(Phase.SELECTING_SKILLS))
-    now = deps.clock.now()
-    if not run.can_afford(OptionalStep.RESOLVE_SKILLS):
-        run.record_skills([], now=now)
-        return {"run": run}
-    catalog = await deps.skills.list_catalog(run.user_id, limit=MAX_CATALOG_SIZE + 1)
-    if not catalog or len(catalog) > MAX_CATALOG_SIZE:
-        run.record_skills([], now=now, failed=len(catalog) > MAX_CATALOG_SIZE)
-        return {"run": run}
-    try:
-        selection, usage = await deps.llm.structured(
-            LlmRole.SKILL_SELECTOR,
-            skill_selection_messages(run.standalone_query, catalog),
-            SkillSelection,
-        )
-        run.charge(usage)
-    except (LlmError, BudgetExhausted):
-        run.record_skills([], now=now, failed=True)
-        return {"run": run}
-    names = resolve_selected(catalog, selection.skill_names)
-    found = await deps.skills.get_by_names(run.user_id, names) if names else []
-    by_name = {skill.name: skill for skill in found}
-    selected = [by_name[name].to_selected() for name in names if name in by_name]
-    run.record_skills(selected, now=now)
-    if selected:
-        _emit(
-            ProgressEvent(
-                type=EventType.SKILLS_SELECTED,
-                data={"skills": [{"name": s.name, "title": s.title} for s in selected]},
-            )
-        )
     return {"run": run}
 
 

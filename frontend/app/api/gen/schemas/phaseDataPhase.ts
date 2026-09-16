@@ -11,7 +11,6 @@ export type PhaseDataPhase =
 export const PhaseDataPhase = {
   guarding: "guarding",
   understanding: "understanding",
-  selecting_skills: "selecting_skills",
   searching: "searching",
   reading: "reading",
   answering: "answering",

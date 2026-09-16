@@ -42,10 +42,6 @@ class Problem(BaseModel):
     errors: list[ProblemItem] | None = None
 
 
-class EnableSkillRequest(BaseModel):
-    enabled: bool
-
-
 class FeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     note: str = Field(default="", max_length=2000)

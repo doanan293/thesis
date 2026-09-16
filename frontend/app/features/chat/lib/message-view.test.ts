@@ -27,12 +27,6 @@ describe("describeMessage", () => {
           data: { phase: "searching", round: 2 },
         },
         {
-          type: "data-skills",
-          data: {
-            skills: [{ name: "drug-monograph", title: "Chuyên luận thuốc" }],
-          },
-        },
-        {
           type: "data-evidence",
           id: "evidence",
           data: {
@@ -54,9 +48,6 @@ describe("describeMessage", () => {
     )
     expect(view.showStatus).toBe(true)
     expect(view.phase).toEqual({ phase: "searching", round: 2 })
-    expect(view.skills).toEqual([
-      { name: "drug-monograph", title: "Chuyên luận thuốc" },
-    ])
     expect(view.evidence).toHaveLength(1)
     expect(view.hasText).toBe(false)
     expect(view.notice).toBeNull()

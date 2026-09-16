@@ -77,14 +77,6 @@ def test_completed_turn_maps_every_event_in_spec_order() -> None:
     events = [
         conversation_event(),
         ProgressEvent.phase(Phase.GUARDING),
-        ProgressEvent(
-            type=EventType.SKILLS_SELECTED,
-            data={
-                "skills": [
-                    {"name": "drug-monograph", "title": "Tra cứu chuyên luận thuốc"}
-                ]
-            },
-        ),
         ProgressEvent.phase(Phase.SEARCHING, round=1),
         ProgressEvent(type=EventType.EVIDENCE, data={"items": [EVIDENCE_ITEM]}),
         ProgressEvent.token("Người lớn 0,5–1 g "),
@@ -103,14 +95,6 @@ def test_completed_turn_maps_every_event_in_spec_order() -> None:
             "data": {"id": CONVERSATION_ID, "title": "Paracetamol?"},
         },
         {"type": "data-phase", "id": "phase", "data": {"phase": "guarding"}},
-        {
-            "type": "data-skills",
-            "data": {
-                "skills": [
-                    {"name": "drug-monograph", "title": "Tra cứu chuyên luận thuốc"}
-                ]
-            },
-        },
         {
             "type": "data-phase",
             "id": "phase",

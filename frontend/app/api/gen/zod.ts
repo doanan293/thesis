@@ -470,68 +470,6 @@ export const SubmitFeedbackResponse = zod.object({
 })
 
 /**
- * @summary List Skills
- */
-export const ListSkillsResponseItem = zod.object({
-  description: zod.string(),
-  enabled: zod.boolean(),
-  is_system: zod.boolean(),
-  name: zod.string(),
-  title: zod.string(),
-  version: zod.string(),
-})
-export const ListSkillsResponse = zod.array(ListSkillsResponseItem)
-
-/**
- * @summary Upload Skill
- */
-export const UploadSkillBody = zod.object({
-  file: zod.instanceof(Blob),
-})
-
-export const UploadSkillResponse = zod.object({
-  description: zod.string(),
-  enabled: zod.boolean(),
-  is_system: zod.boolean(),
-  name: zod.string(),
-  title: zod.string(),
-  version: zod.string(),
-})
-
-/**
- * @summary Delete Skill
- */
-export const deleteSkillPathNameMax = 64
-
-export const DeleteSkillParams = zod.object({
-  name: zod.string().min(1).max(deleteSkillPathNameMax),
-})
-
-export const DeleteSkillResponse = zod.void()
-
-/**
- * @summary Set Skill Enabled
- */
-export const setSkillEnabledPathNameMax = 64
-
-export const SetSkillEnabledParams = zod.object({
-  name: zod.string().min(1).max(setSkillEnabledPathNameMax),
-})
-
-export const SetSkillEnabledBody = zod.object({
-  enabled: zod.boolean(),
-})
-
-export const SetSkillEnabledResponse = zod.object({
-  description: zod.string(),
-  enabled: zod.boolean(),
-  is_system: zod.boolean(),
-  name: zod.string(),
-  title: zod.string(),
-  version: zod.string(),
-})
-
-/**
  * @summary Users:Current User
  */
 export const usersCurrentUserResponseDisplayNameDefault = ``
