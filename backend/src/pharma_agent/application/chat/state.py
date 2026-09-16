@@ -10,4 +10,6 @@ class ChatTurnState(BaseModel):
     pending_queries: list[Query] = Field(default_factory=list)
     last_gaps: list[str] = Field(default_factory=list)
     answer_text: str = ""
+    # The numbered evidence the answer prompt carried.
+    context_text: str = ""
     citations: list[Citation] = Field(default_factory=list)

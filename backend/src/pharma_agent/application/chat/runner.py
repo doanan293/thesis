@@ -13,7 +13,11 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamMode
 from pydantic import BaseModel, Field
 
-from pharma_agent.application.chat.context import TurnContext, TurnDeps
+from pharma_agent.application.chat.context import (
+    PipelineOptions,
+    TurnContext,
+    TurnDeps,
+)
 from pharma_agent.application.chat.graph import ChatGraph
 from pharma_agent.application.chat.state import ChatTurnState
 from pharma_agent.application.progress import EventType, ProgressEvent
@@ -28,6 +32,7 @@ class TurnOutcome(BaseModel):
     run: AgentRun
     answer_text: str
     citations: list[Citation] = Field(default_factory=list)
+    context_text: str = ""
 
 
 class ChatTurnExecution:
@@ -44,8 +49,10 @@ class ChatTurnExecution:
         message: str,
         conversation: ConversationContext,
         conversation_id: str | None,
+        pipeline: PipelineOptions,
     ) -> None:
         self._graph = graph
+        self._pipeline = pipeline
         self._deps = deps
         self._limits = limits
         self._tracer = tracer
@@ -94,7 +101,9 @@ class ChatTurnExecution:
             "callbacks": list(handle.callbacks),
         }
         modes: list[StreamMode] = ["custom", "values"]
-        context = TurnContext(deps=self._deps, conversation=self._conversation)
+        context = TurnContext(
+            deps=self._deps, conversation=self._conversation, pipeline=self._pipeline
+        )
         try:
             async with asyncio.timeout(self._limits.deadline_seconds):
                 async for mode, chunk in self._graph.astream(
@@ -127,7 +136,12 @@ class ChatTurnExecution:
             self._finish(queue, run, fallback_text(run.status), [], emit_text=True)
             return
         self._finish(
-            queue, final.run, final.answer_text, final.citations, emit_text=False
+            queue,
+            final.run,
+            final.answer_text,
+            final.citations,
+            emit_text=False,
+            context_text=final.context_text,
         )
 
     def _finish(
@@ -138,9 +152,13 @@ class ChatTurnExecution:
         citations: list[Citation],
         *,
         emit_text: bool,
+        context_text: str = "",
     ) -> None:
         self.outcome = TurnOutcome(
-            run=run, answer_text=answer_text, citations=citations
+            run=run,
+            answer_text=answer_text,
+            citations=citations,
+            context_text=context_text,
         )
         if emit_text:
             queue.put_nowait(ProgressEvent.token(answer_text))
@@ -176,11 +194,13 @@ class ChatTurnRunner:
         deps: TurnDeps,
         limits: BudgetLimits,
         tracer: TurnTracer | None = None,
+        pipeline: PipelineOptions | None = None,
     ) -> None:
         self._graph = graph
         self._deps = deps
         self._limits = limits
         self._tracer: TurnTracer = tracer if tracer is not None else NullTracing()
+        self.pipeline = pipeline if pipeline is not None else PipelineOptions()
 
     def start(
         self,
@@ -199,4 +219,5 @@ class ChatTurnRunner:
             message=message,
             conversation=conversation or ConversationContext(),
             conversation_id=conversation_id,
+            pipeline=self.pipeline,
         )

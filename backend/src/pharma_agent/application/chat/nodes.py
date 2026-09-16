@@ -93,7 +93,7 @@ async def rephrase_node(
     run, deps = state.run, runtime.context.deps
     _emit(ProgressEvent.phase(Phase.UNDERSTANDING))
     now = deps.clock.now()
-    if not run.can_afford_rephrase():
+    if not runtime.context.pipeline.rephrase or not run.can_afford_rephrase():
         run.record_rephrase(None, now=now, skipped=True)
         return {"run": run}
     try:
@@ -136,6 +136,9 @@ async def judge_node(
 ) -> NodeUpdate:
     run, deps = state.run, runtime.context.deps
     now = deps.clock.now()
+    if not runtime.context.pipeline.judge_refine:
+        run.skip_judge(now=now)
+        return {"run": run, "last_gaps": []}
     gaps: list[str] = []
     try:
         decision, usage = await deps.llm.structured(
@@ -241,7 +244,12 @@ async def answer_node(
         )
     )
     run.complete()
-    return {"run": run, "answer_text": "".join(parts), "citations": citations}
+    return {
+        "run": run,
+        "answer_text": "".join(parts),
+        "citations": citations,
+        "context_text": context_text,
+    }
 
 
 async def fallback_node(

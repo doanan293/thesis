@@ -18,8 +18,17 @@ class TurnDeps:
 
 
 @dataclass(frozen=True)
+class PipelineOptions:
+    """Steps of the agent loop. Only the evaluation harness turns any of them off."""
+
+    rephrase: bool = True
+    judge_refine: bool = True
+
+
+@dataclass(frozen=True)
 class TurnContext:
     """LangGraph runtime context for one turn (not checkpointed)."""
 
     deps: TurnDeps
     conversation: ConversationContext
+    pipeline: PipelineOptions = PipelineOptions()

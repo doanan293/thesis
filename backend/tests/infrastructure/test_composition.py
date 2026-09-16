@@ -4,6 +4,7 @@ import pytest
 from langfuse import get_client
 from openai.resources.embeddings import AsyncEmbeddings
 
+from pharma_agent.application.chat.context import PipelineOptions
 from pharma_agent.application.chat.runner import ChatTurnRunner
 from pharma_agent.infrastructure.composition import (
     build_application,
@@ -32,6 +33,7 @@ async def test_build_application_wires_real_adapters(
     monkeypatch.setenv("PHARMA_QDRANT__CHECK_COMPATIBILITY", "false")
     app = build_application(Settings(_env_file=None))
     assert isinstance(app.runner, ChatTurnRunner)
+    assert app.runner.pipeline == PipelineOptions()
     assert isinstance(app.deps.llm, OpenAiLlmAdapter)
     assert isinstance(app.retrieval.retriever, QdrantHybridRetriever)
     assert isinstance(app.retrieval.reranker, NativeReranker)

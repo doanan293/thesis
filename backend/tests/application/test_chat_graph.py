@@ -4,6 +4,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from pharma_agent.application.chat.checkpoint import checkpoint_serializer
+from pharma_agent.application.chat.context import PipelineOptions
 from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.application.chat.runner import ChatTurnRunner
 from pharma_agent.application.progress import EventType, Phase, ProgressEvent
@@ -51,12 +52,14 @@ async def run_turn(
     retriever: FakeRetriever,
     limits: BudgetLimits | None = None,
     reranker: FakeReranker | None = None,
+    pipeline: PipelineOptions | None = None,
 ):
     graph = build_chat_graph(checkpointer=InMemorySaver(serde=checkpoint_serializer()))
     runner = ChatTurnRunner(
         graph,
         build_deps(llm, retriever, reranker=reranker),
         limits or BudgetLimits(),
+        pipeline=pipeline,
     )
     execution = runner.start(user_id="u1", message=QUESTION)
     events = [event async for event in execution.events()]
@@ -101,6 +104,7 @@ async def test_grounded_answer_in_one_round() -> None:
         "snippet": make_snippet("paracetamol 500 mg", 200),
     }
     assert tokens(events) == outcome.answer_text and "[1]" in outcome.answer_text
+    assert outcome.context_text.startswith("[1] Paracetamol > Liều dùng")
     assert [c.index for c in outcome.citations] == [1]
     citations_event = next(e for e in events if e.type is EventType.CITATIONS)
     assert citations_event.data["items"][0]["chunk_version_id"] == str(chunk_uuid("c1"))
@@ -320,3 +324,57 @@ async def test_slow_consumer_does_not_break_timeout_handling() -> None:
     assert execution.outcome is not None
     assert execution.outcome.run.status is RunStatus.TIMEOUT
     assert events[-1].type is EventType.DONE
+
+
+def guard_only_llm() -> FakeLlm:
+    llm = FakeLlm()
+    llm.script(
+        LlmRole.GUARDRAIL, LlmGuardVerdict(is_attack=False, in_scope=True, reason="ok")
+    )
+    return llm
+
+
+async def test_one_step_pipeline_calls_guard_and_answer_only() -> None:
+    llm = guard_only_llm()
+    retriever = FakeRetriever([make_hit("c1", fusion=0.9)])
+
+    events, outcome = await run_turn(
+        llm, retriever, pipeline=PipelineOptions(rephrase=False, judge_refine=False)
+    )
+
+    assert outcome.run.status is RunStatus.COMPLETED
+    assert retriever.calls[0][0].text == QUESTION
+    assert len(retriever.calls) == 1
+    assert llm.calls_for(LlmRole.REPHRASE) == []
+    assert llm.calls_for(LlmRole.JUDGE) == []
+    assert events[-1].data["usage"]["llm_calls"] == 2
+    assert "[1]" in outcome.context_text
+
+
+async def test_no_rephrase_keeps_the_judge() -> None:
+    llm = guard_only_llm()
+    llm.script(
+        LlmRole.JUDGE, JudgeDecision(decision=JudgeOutcome.ANSWER, gaps=[], reason="đủ")
+    )
+    retriever = FakeRetriever([make_hit("c1", fusion=0.9)])
+
+    _, outcome = await run_turn(
+        llm, retriever, pipeline=PipelineOptions(rephrase=False)
+    )
+
+    assert outcome.run.status is RunStatus.COMPLETED
+    assert retriever.calls[0][0].text == QUESTION
+    assert len(llm.calls_for(LlmRole.JUDGE)) == 1
+
+
+async def test_no_judge_refine_keeps_the_rephrase() -> None:
+    llm = passing_llm()
+    retriever = FakeRetriever([make_hit("c1", fusion=0.9)])
+
+    _, outcome = await run_turn(
+        llm, retriever, pipeline=PipelineOptions(judge_refine=False)
+    )
+
+    assert outcome.run.status is RunStatus.COMPLETED
+    assert retriever.calls[0][0].text == "Liều paracetamol cho người lớn"
+    assert llm.calls_for(LlmRole.JUDGE) == []
