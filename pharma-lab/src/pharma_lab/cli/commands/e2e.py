@@ -18,7 +18,7 @@ from pharma_lab.config.paths import (
     GOLD_DIR,
     GOLDEN_E2E_PATH,
 )
-from pharma_lab.e2e.corpus_text import corpus_text, load_corpus_text
+from pharma_lab.e2e.corpus_text import chunk_texts, corpus_text, load_corpus_text
 from pharma_lab.e2e.golden import (
     ANSWERABLE_PER_GROUP,
     QUOTAS,
@@ -78,7 +78,18 @@ def golden_sample(
             corpus=corpus,
             exclude={row["query_id"] for row in answerable},
         )
-        paths = write_authoring_batches(output, answerable, pairs, corpus, force=force)
+        sources = [*answerable, *(row for pair in pairs for row in pair)]
+        sections = {
+            section for row in sources for section in row["expected_section_ids"]
+        }
+        paths = write_authoring_batches(
+            output,
+            answerable,
+            pairs,
+            corpus,
+            force=force,
+            chunks=chunk_texts(knowledge, sections),
+        )
         return CommandResult(
             "e2e golden sample",
             CommandStatus.COMPLETE,
