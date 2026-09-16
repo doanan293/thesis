@@ -35,6 +35,7 @@ from pharma_lab.e2e.golden import (
 )
 from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
 from pharma_lab.e2e.judging.service import JudgeRequest, run_judge
+from pharma_lab.e2e.report import write_report
 from pharma_lab.e2e.sampling import (
     sample_answerable,
     sample_multi_turn,
@@ -285,6 +286,27 @@ def calibration_score(
                 )
                 for row in rows
             },
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@e2e_app.command("report")
+def report(
+    ctx: typer.Context,
+    run_name: Annotated[str, typer.Option("--run")],
+    golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
+) -> None:
+    """Write CSV and LaTeX tables for every judged configuration of a run."""
+
+    def handler() -> CommandResult:
+        items = {item.item_id: item for item in load_golden(golden)}
+        written = write_report(e2e_run_dir(run_name), items)
+        return CommandResult(
+            "e2e report",
+            CommandStatus.COMPLETE,
+            e2e_run_dir(run_name) / "reports",
+            {"files": ",".join(path.name for path in written)},
         )
 
     run_handler(state_from_context(ctx), handler)

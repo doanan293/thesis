@@ -22,6 +22,7 @@ dev = [
     "lxml==6.1.1",
     "mail-parser==4.4.0",
     "marko==2.2.3",
+    "numpy==2.5.3",
     "openpyxl==3.1.5",
     "PyMuPDF==1.27.2.3",
     "pylatexenc==2.10",
