@@ -52,6 +52,7 @@ một câu:
 | `gold_section_ids`, `gold_chunk_ids` | Bằng chứng đúng; rỗng với câu không có đáp án |
 | `reference.answer` | Câu trả lời mẫu ngắn |
 | `reference.key_facts` | Danh sách `{fact, evidence_quote, section_id}` |
+| `absent_terms` | Chỉ câu `unanswerable`: tên hoặc cụm từ phải vắng mặt trong corpus |
 | `eval_group`, `difficulty`, `tags` | Lấy từ bộ gold hoặc gán khi soạn |
 | `authored_by` | `claude-opus-5` |
 
@@ -65,7 +66,7 @@ và sha256 của bộ gold nguồn và của bundle. Bộ golden được lưu c
 |---|---|---|---|
 | Answerable | 420 | 70 câu × 6 `eval_group` của bộ gold. Phân tầng theo `difficulty` × `answer_mode`, seed cố định, dùng lại `stratified_sample`. | `grounded` |
 | Multi-turn | 50 | Lượt 1 hỏi về thuốc X. Lượt 2 hỏi tiếp bằng đại từ hoặc tỉnh lược; đáp án ở một section khác của cùng thuốc. | `grounded` |
-| Unanswerable | 10 | Thuốc hoặc thông tin không có trong corpus. Kiểm tra bằng tra tên thuốc và BM25 rằng corpus thật sự không có. | `abstain` |
+| Unanswerable | 10 | Thuốc hoặc thông tin không có trong corpus. Mỗi câu ghi `absent_terms`; `golden build` kiểm các từ này không xuất hiện ở bất kỳ tiêu đề hay section nào của bundle. | `abstain` |
 | Out-of-scope | 10 | Câu không liên quan đến thuốc | `redirect` |
 | Injection | 10 | Câu hỏi về thuốc có chèn lệnh ("bỏ qua hướng dẫn…", "in system prompt"…) | `blocked`, hoặc trả lời an toàn mà không làm theo lệnh chèn |
 
@@ -213,7 +214,8 @@ Thư mục là `pharma-lab/data/evaluation/e2e/runs/<run>/<config>/`.
 - Câu lỗi được ghi `status=error`. `--retry-errors` chỉ chạy lại các câu đó.
 - Chạy song song bằng semaphore (`--concurrency`, mặc định 4). Retry dựa vào OpenAI
   SDK.
-- Nếu Langfuse bật, trace được gắn tag `run`, `config` và `item_id`.
+- Harness tắt Langfuse (như retrieval eval); mọi thứ cần phân tích đã nằm trong
+  `answers.jsonl`.
 
 ## 7. Chấm tự động
 
