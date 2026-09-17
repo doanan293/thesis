@@ -185,19 +185,19 @@ def test_write_report_builds_every_table(tmp_path: Path) -> None:
     tex = (reports / "main.tex").read_text("utf-8")
     assert r"\label{tab:e2e-main}" in tex
     assert r"\toprule" in tex and r"\hline" not in tex
-    assert "Nugget recall" in tex and "Truthfulness" in tex
+    assert r"Nugget recall $\uparrow$" in tex and r"Truthfulness $\uparrow$" in tex
     assert "Full agent & One-step RAG" in tex
     assert "latency" not in tex.lower()  # latency is secondary: CSV only
     assert "0.750 [" in tex
     calls_row = next(line for line in tex.splitlines() if line.startswith("LLM calls"))
-    assert calls_row.startswith("LLM calls / turn & 4.0 [")
+    assert calls_row.startswith(r"LLM calls / turn $\downarrow$ & 4.0 [")
     ablation_tex = (reports / "ablation.tex").read_text("utf-8")
     assert r"\label{tab:e2e-ablation}" in ablation_tex
     assert "One-step RAG" in ablation_tex
     nugget_row = next(
         line for line in ablation_tex.splitlines() if line.startswith("Nugget recall")
     )
-    assert nugget_row.startswith(r"Nugget recall & $-$0.333")
+    assert nugget_row.startswith(r"Nugget recall $\uparrow$ & $-$0.333")
     assert "[" not in nugget_row  # CIs stay in ablation.csv
     calibration_tex = (reports / "calibration.tex").read_text("utf-8")
     assert r"\label{tab:e2e-calibration}" in calibration_tex

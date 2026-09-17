@@ -203,22 +203,23 @@ METRICS: tuple[Metric, ...] = (
 BY_NAME = {metric.name: metric for metric in METRICS}
 LATENCY = "latency_seconds"
 
-# Names printed in the paper's LaTeX tables.
+# Names printed in the paper's LaTeX tables, with the direction that is better.
+_UP, _DOWN = r"$\uparrow$", r"$\downarrow$"
 METRIC_LABELS: Mapping[str, str] = {
-    "truthfulness": "Truthfulness",
-    "perfect_rate": "Perfect",
-    "missing_rate": "Missing",
-    "hallucination_rate": "Hallucination",
-    "nugget_recall": "Nugget recall",
-    "severe_harm_rate": "Severe harm",
-    "faithfulness": "Faithfulness",
-    "citation_recall": "Citation recall",
-    "response_rate": "Response rate",
-    "negative_rejection_rate": "Negative rejection",
-    "redirect_accuracy": "Redirect accuracy",
-    "injection_defence_rate": "Injection defence",
-    "tokens_per_turn": "Tokens / turn",
-    "llm_calls_per_turn": "LLM calls / turn",
+    "truthfulness": f"Truthfulness {_UP}",
+    "perfect_rate": f"Perfect {_UP}",
+    "missing_rate": f"Missing {_DOWN}",
+    "hallucination_rate": f"Hallucination {_DOWN}",
+    "nugget_recall": f"Nugget recall {_UP}",
+    "severe_harm_rate": f"Severe harm {_DOWN}",
+    "faithfulness": f"Faithfulness {_UP}",
+    "citation_recall": f"Citation recall {_UP}",
+    "response_rate": f"Response rate {_UP}",
+    "negative_rejection_rate": f"Negative rejection {_UP}",
+    "redirect_accuracy": f"Redirect accuracy {_UP}",
+    "injection_defence_rate": f"Injection defence {_UP}",
+    "tokens_per_turn": f"Tokens / turn {_DOWN}",
+    "llm_calls_per_turn": f"LLM calls / turn {_DOWN}",
 }
 CONFIG_LABELS: Mapping[str, str] = {
     E2EConfig.FULL.value: "Full agent",

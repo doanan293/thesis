@@ -1,12 +1,13 @@
 \begin{table}[tb]
 \centering
-\caption{Retrieval results on the 10{,}000-question benchmark with 30 candidates per question. Chunk-level questions use a three-chunk window. CER@10: complete-evidence rate on the 500 multi-intent questions. Cost: vector dimension for dense retrieval, and query--chunk pairs scored per second on T4 GPUs for rerankers. Hybrid RRF fuses Qwen3-Embedding-4B with BM25. Best values in bold.}
+\caption{Retrieval results on the 10{,}000-question benchmark. Cost is the embedding dimension for dense and hybrid retrieval and the number of query--chunk pairs scored per second on a T4 GPU for rerankers. Hybrid RRF fuses Qwen3-Embedding-4B with BM25, and rerankers reorder its top 30 candidates. CER@10 is computed on the 500 multi-intent questions. Higher is better for all quality metrics, and the best value in each column is in bold.}
 \label{tab:retrieval}
 \small
 \setlength{\tabcolsep}{3.3pt}
 \begin{tabular}{lrrrrrr}
 \toprule
 Method & Cost & Hit@3 & Hit@10 & nDCG@10 & MRR@10 & CER@10 \\
+ & & (\%) & (\%) & & & (\%) \\
 \midrule
 BM25 & sparse & 62.8 & 81.3 & 0.621 & 0.568 & 44.4 \\
 EmbeddingGemma-300M & 768 & 67.5 & 84.0 & 0.640 & 0.587 & 55.4 \\
