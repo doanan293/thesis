@@ -12,6 +12,12 @@
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "aa677a51432adffa70093d894da74cc4469fe5b2ef3a12b97da42726c50d7f31"
+    },
+    "research-paper-writing": {
+      "source": "master-cai/research-paper-writing-skills",
+      "sourceType": "github",
+      "skillPath": "research-paper-writing/SKILL.md",
+      "computedHash": "12000150595a85bac589fe76cc7b9dd595a8ef8f752d3ff45b557b60bd546bc6"
     }
   }
 }
