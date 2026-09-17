@@ -40,7 +40,7 @@ Ngoài phạm vi: bản luận văn tiếng Việt, slide, poster.
 
 ## 3. Cấu trúc bài
 
-Theo khung chuẩn người dùng đưa ra, cộng Conclusion. Class tự đánh số mục; không dùng
+Theo khung chuẩn người dùng đưa ra. Cập nhật 17/09: Research Gap là đoạn cuối của Related Work, Discussion và Conclusion gộp thành một mục (theo skill `research-paper-writing`). Class tự đánh số mục; không dùng
 số La Mã và không đặt mục "System".
 
 **Không đặt tên hệ thống.** Trong bài gọi là "our agentic RAG pipeline". Trong bảng,
@@ -51,12 +51,10 @@ các dòng mang tên cấu hình: *Full agent*, *One-step RAG*, *w/o judge–ref
 | --- | --- | --- |
 | Abstract + Keywords | Bối cảnh, phương pháp, số chính (có placeholder), 4–6 keyword | 0,3 |
 | 1 Introduction | Bài toán hỏi đáp thuốc tiếng Việt; câu hỏi nghiên cứu (RQ1 retrieval nào tốt nhất theo chất lượng và chi phí; RQ2 agentic RAG có hơn one-step không, bước nào đóng góp; RQ3 hệ thống có an toàn không); Fig. 1; danh sách đóng góp | 1,3 |
-| 2 Related Work | RAG y khoa; benchmark retrieval và embedding; đánh giá RAG và LLM-as-judge; QA/RAG tiếng Việt | 1,2 |
-| 3 Research Gap | 3–4 gạch đầu dòng: thiếu corpus/benchmark thuốc tiếng Việt; thiếu so sánh retrieval theo chi phí triển khai; đánh giá agentic RAG thiếu ablation có kiểm định và hiệu chỉnh judge; ít nghiên cứu dùng LLM rẻ | 0,4 |
-| 4 Methodology | 4.1 Corpus (nguồn, làm sạch, chia section/chunk, enrichment); 4.2 Pipeline (guard → rephrase → hybrid search + rerank → judge/refine → answer có trích dẫn; model theo role); 4.3 Bộ đánh giá (10k retrieval, 500 golden E2E, quota các nhóm); 4.4 Thiết kế thí nghiệm (bảng cấu hình, metric có công thức, judge + hiệu chỉnh, thống kê) | 3,5 |
-| 5 Experimental Results | 5.1 Retrieval; 5.2 E2E chính và ablation (Δ, p Holm); 5.3 An toàn; 5.4 Chi phí và latency. Chỉ báo số, không diễn giải | 3,3 |
-| 6 Discussion | Ý nghĩa của kết quả theo từng RQ; 6.1 Limitations (judge là LLM, không có dược sĩ, latency đo trên môi trường demo, một nguồn tờ HDSD) | 1,3 |
-| 7 Conclusion | Tóm tắt đóng góp và hướng tiếp theo | 0,4 |
+| 2 Related Work | RAG và agentic RAG; retrieval cho QA y khoa; đánh giá RAG; QA y khoa tiếng Việt; đoạn cuối "Research gap" | 1,4 |
+| 3 Methodology | 4.1 Corpus (nguồn, làm sạch, chia section/chunk, enrichment); 4.2 Pipeline (guard → rephrase → hybrid search + rerank → judge/refine → answer có trích dẫn; model theo role); 4.3 Bộ đánh giá (10k retrieval, 500 golden E2E, quota các nhóm); 4.4 Thiết kế thí nghiệm (bảng cấu hình, metric có công thức, judge + hiệu chỉnh, thống kê) | 3,5 |
+| 4 Experimental Results | 5.1 Retrieval; 5.2 E2E chính và ablation (Δ, p Holm); 5.3 An toàn; 5.4 Chi phí và latency. Chỉ báo số, không diễn giải | 3,3 |
+| 5 Discussion and Conclusion | Nhắc lại vấn đề và ý tưởng chính; trả lời RQ1–RQ3; ý nghĩa thực tiễn; đoạn Limitations (câu hỏi sinh bằng luật, tham số chọn trên cùng benchmark, judge cùng nhà cung cấp, đáp án do LLM soạn, latency trên máy dev, một nguồn tờ HDSD); hướng tiếp theo | 1,5 |
 | References | `splncs04`, không tính trang | – |
 
 Tổng khoảng 11,7 trang, chừa 0,3 trang cho điều chỉnh.
@@ -119,7 +117,7 @@ DBLP; không tạo trích dẫn từ trí nhớ. Danh sách dự kiến gồm:
 report/
   main.tex            # preamble, \pending, \input các mục
   llncs.cls  splncs04.bst
-  sections/{abstract,introduction,related-work,research-gap,methodology,results,discussion,conclusion}.tex
+  sections/{abstract,introduction,related-work,methodology,results,discussion-conclusion}.tex
   tables/             # bảng viết tay + bảng copy từ e2e report
   figures/pipeline.tex
   references.bib
