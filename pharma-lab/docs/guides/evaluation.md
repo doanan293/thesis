@@ -188,19 +188,19 @@ Run này dùng embedding API trả phí nên không chạy lại. Candidates đ�
 
 | Run / biến thể | Hit@10 | MRR |
 | --- | ---: | ---: |
-| `bm25-qwen4b-k30` | 77,97% | 0,5550 |
-| `dense-gemma300m-k30` | 83,80% | 0,5902 |
-| `dense-bge-m3-k30` | 90,95% | 0,7334 |
-| `dense-qwen06b-k30` | 91,88% | 0,7042 |
-| `dense-qwen4b-k30` | 95,22% | 0,7786 |
-| `dense-qwen8b-k30` | 95,26% | 0,7952 |
+| `bm25-qwen4b-k30` | 81,33% | 0,5755 |
+| `dense-gemma300m-k30` | 84,00% | 0,5910 |
+| `dense-bge-m3-k30` | 91,62% | 0,7394 |
+| `dense-qwen06b-k30` | 92,17% | 0,7075 |
+| `dense-qwen4b-k30` | 95,39% | 0,7813 |
+| `dense-qwen8b-k30` | 95,36% | 0,7997 |
 | `dense-text-embedding-3-large-k30` | 94,85% | 0,7506 |
-| `hybrid-qwen4b-p50-k30-rrf60` | 92,44% | 0,6786 |
-| `hybrid-qwen4b-p50-k30-rrf2` | 95,67% | 0,7242 |
-| rrf2 + `bge-reranker-v2-gemma:f16` | 95,30% | 0,7570 |
-| rrf2 + `bge-reranker-v2-m3:f16` | 95,04% | 0,7982 |
-| rrf2 + `qwen3-reranker:0.6b-fp16` | 96,18% | 0,7823 |
-| rrf2 + `qwen3-reranker:4b-fp16` | 96,98% | 0,8060 |
-| rrf2 + `qwen3-reranker:8b-fp16` | 89,75% | 0,4797 |
+| `hybrid-qwen4b-p50-k30-rrf60` | 93,74% | 0,6976 |
+| `hybrid-qwen4b-p50-k30-rrf2` | 95,89% | 0,7331 |
+| rrf2 + `bge-reranker-v2-gemma:f16` (logprob, không chạy lại) | 95,30% | 0,7570 |
+| rrf2 + `bge-reranker-v2-m3:f16` | 95,81% | 0,8065 |
+| rrf2 + `qwen3-reranker:0.6b-fp16` | 96,75% | 0,7905 |
+| rrf2 + `qwen3-reranker:4b-fp16` | 97,52% | 0,8280 |
+| rrf2 + `qwen3-reranker:8b-fp16` (bản logprob cũ; đang chấm lại qua `/v1/rerank`) | 89,75% | 0,4797 |
 
 Số trước khi chuyển layout và bảng so sánh nằm trong commit "rebuild the evaluation runs with the new CLI". Lần dựng lại chấp nhận Hit@10 thấp hơn tối đa 1 điểm phần trăm và MRR thấp hơn tối đa 0,01.

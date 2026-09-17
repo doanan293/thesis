@@ -27,6 +27,11 @@
       "artifact_dir": "rerank/qwen3_reranker_0_6b_fp16",
       "model": "qwen3-reranker:0.6b-fp16",
       "variant_sha256": "64a429c8343d0a0d6d6a18a36f31e37234d21118c250da370badc830aab45bed"
+    },
+    "qwen3_reranker_4b_fp16": {
+      "artifact_dir": "rerank/qwen3_reranker_4b_fp16",
+      "model": "qwen3-reranker:4b-fp16",
+      "variant_sha256": "9fcf83e514b2f86ec721e36c43afb88fbbf46da6fce283aa02a77707ca3a5750"
     }
   },
   "schema_version": 3
