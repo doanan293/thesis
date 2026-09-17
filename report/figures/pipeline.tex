@@ -1,0 +1,34 @@
+\begin{figure}[tb]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  node distance=4mm and 4mm,
+  stage/.style={draw, rounded corners=2pt, align=center, minimum height=13mm, text width=14.5mm, inner sep=1.5pt, fill=gray!8},
+  ablated/.style={stage, dashed},
+  flow/.style={-{Stealth[length=1.5mm]}, semithick},
+  exit/.style={flow, gray!70!black},
+  note/.style={font=\tiny, inner sep=1pt},
+]
+\node[stage] (guard) {\textbf{Guard}\\regex + LLM};
+\node[ablated, right=of guard] (rephrase) {\textbf{Rephrase}\\\mbox{standalone}\\query};
+\node[stage, right=of rephrase] (search) {\textbf{Search}\\hybrid RRF\\top 30};
+\node[ablated, right=of search] (rerank) {\textbf{Rerank}\\keep top 8\\hydrate};
+\node[ablated, right=of rerank] (judge) {\textbf{Judge}\\enough\\evidence?};
+\node[stage, right=of judge, fill=gray!22] (answer) {\textbf{Answer}\\with\\citations};
+\node[ablated, below=5mm of rerank] (refine) {\textbf{Refine}\\1--3 new\\queries};
+
+\draw[flow] ([xshift=-6mm]guard.west) node[note, above right] {turn} -- (guard);
+\draw[flow] (guard) -- (rephrase);
+\draw[flow] (rephrase) -- (search);
+\draw[flow] (search) -- (rerank);
+\draw[flow] (rerank) -- (judge);
+\draw[flow] (judge) -- node[note, above=1pt] {yes} (answer);
+\draw[flow] (judge.south) |- node[note, pos=0.3, right] {no} (refine.east);
+\draw[flow] (refine.west) -| node[note, pos=0.75, left, align=right] {${\le}\,3$\\rounds} (search.south);
+\draw[exit] (guard.north) -- ++(0,7mm) -| node[note, pos=0.25, above] {attack or off-topic: blocked / redirect} ([xshift=2mm]answer.north);
+\draw[exit] (rephrase.north) -- ++(0,3.5mm) -| node[note, pos=0.3, above] {chit-chat: no retrieval} ([xshift=-2mm]answer.north);
+\node[note, below=1.5mm of answer, text width=14.5mm, align=center] {grounded, partial or abstain};
+\end{tikzpicture}
+\caption{Overview of the agentic RAG pipeline. Each step is one small LLM call with structured output, while routing, budgets and query de-duplication run in code. Dashed steps are removed in the ablation configurations (Table~\ref{tab:e2e-configs}).}
+\label{fig:pipeline}
+\end{figure}
