@@ -40,7 +40,7 @@ Ngoài phạm vi: bản luận văn tiếng Việt, slide, poster.
 
 ## 3. Cấu trúc bài
 
-Theo khung chuẩn người dùng đưa ra. Cập nhật 17/09: Research Gap là đoạn cuối của Related Work, Discussion và Conclusion gộp thành một mục (theo skill `research-paper-writing`). Class tự đánh số mục; không dùng
+Theo khung chuẩn người dùng đưa ra. Cập nhật 17/09: Research Gap là đoạn cuối của Related Work, các mục lớn theo skill `research-paper-writing`: Discussion là mục nhỏ cuối Experimental Results, bài kết bằng Conclusion. Class tự đánh số mục; không dùng
 số La Mã và không đặt mục "System".
 
 **Không đặt tên hệ thống.** Trong bài gọi là "our agentic RAG pipeline". Trong bảng,
@@ -53,8 +53,8 @@ các dòng mang tên cấu hình: *Full agent*, *One-step RAG*, *w/o judge–ref
 | 1 Introduction | Bài toán hỏi đáp thuốc tiếng Việt; câu hỏi nghiên cứu (RQ1 retrieval nào tốt nhất theo chất lượng và chi phí; RQ2 agentic RAG có hơn one-step không, bước nào đóng góp; RQ3 hệ thống có an toàn không); thách thức, ý tưởng chính, tóm tắt thí nghiệm, đóng góp; không có hình hay chi tiết cài đặt | 1,3 |
 | 2 Related Work | RAG và agentic RAG; retrieval cho QA y khoa; đánh giá RAG; QA y khoa tiếng Việt; đoạn cuối "Research gap" | 1,4 |
 | 3 Methodology | 3.1 Corpus (nguồn, làm sạch, chia section/chunk, enrichment). 3.2 Pipeline (Fig. 1, guard → rephrase → hybrid search + rerank → judge/refine → answer có trích dẫn; model theo role). 3.3 Bộ đánh giá (10k retrieval, 500 golden E2E, quota các nhóm). 3.4 Thiết kế thí nghiệm (bảng cấu hình, metric có công thức, judge + hiệu chỉnh, thống kê) | 3,5 |
-| 4 Experimental Results | 4.1 Retrieval, 4.2 E2E chính và ablation (Δ, p Holm), 4.3 An toàn, 4.4 Chi phí và latency. Chỉ báo số, không diễn giải | 3,3 |
-| 5 Discussion and Conclusion | Nhắc lại vấn đề và ý tưởng chính; trả lời RQ1–RQ3; ý nghĩa thực tiễn; đoạn Limitations (câu hỏi sinh bằng luật, tham số chọn trên cùng benchmark, judge cùng nhà cung cấp, đáp án do LLM soạn, latency trên máy dev, một nguồn tờ HDSD); hướng tiếp theo | 1,5 |
+| 4 Experimental Results | 4.1 Retrieval, 4.2 E2E chính và ablation (Δ, p Holm), 4.3 An toàn, 4.4 Chi phí và latency (chỉ báo số), 4.5 Discussion trả lời RQ1–RQ3 | 3,3 |
+| 5 Conclusion | Nhắc lại vấn đề và ý tưởng chính; bằng chứng chính; ý nghĩa thực tiễn; đoạn Limitations (câu hỏi sinh bằng luật, tham số chọn trên cùng benchmark, judge cùng nhà cung cấp, đáp án do LLM soạn, latency trên máy dev, một nguồn tờ HDSD); hướng tiếp theo | 0,8 |
 | References | `splncs04`, không tính trang | – |
 
 Tổng khoảng 11,7 trang, chừa 0,3 trang cho điều chỉnh.
@@ -116,7 +116,7 @@ DBLP; không tạo trích dẫn từ trí nhớ. Danh sách dự kiến gồm:
 report/
   main.tex            # preamble, \pending, \input các mục
   llncs.cls  splncs04.bst
-  sections/{abstract,introduction,related-work,methodology,results,discussion-conclusion}.tex
+  sections/{abstract,introduction,related-work,methodology,results,conclusion}.tex
   tables/             # bảng viết tay + bảng copy từ e2e report
   figures/pipeline.tex
   references.bib
