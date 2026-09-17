@@ -51,7 +51,7 @@ các dòng mang tên cấu hình: *Full agent*, *One-step RAG*, *w/o judge–ref
 | --- | --- | --- |
 | Abstract + Keywords | Bối cảnh, phương pháp, số chính (có placeholder), 4–6 keyword | 0,3 |
 | 1 Introduction | Bài toán hỏi đáp thuốc tiếng Việt; câu hỏi nghiên cứu (RQ1 retrieval nào tốt nhất theo chất lượng và chi phí; RQ2 agentic RAG có hơn one-step không, bước nào đóng góp; RQ3 hệ thống có an toàn không); thách thức, ý tưởng chính, tóm tắt thí nghiệm, đóng góp; không có hình hay chi tiết cài đặt | 1,3 |
-| 2 Related Work | RAG và agentic RAG; retrieval cho QA y khoa; đánh giá RAG; QA y khoa tiếng Việt; đoạn cuối "Research gap" | 1,4 |
+| 2 Related Work | RAG và agentic RAG; retrieval cho QA y khoa; đánh giá RAG; QA y khoa tiếng Việt. Mỗi đoạn kết bằng hạn chế và điểm khác biệt của bài, không có đoạn research gap riêng | 1,4 |
 | 3 Methodology | 3.1 Corpus (nguồn, làm sạch, chia section/chunk, enrichment). 3.2 Pipeline (Fig. 1, guard → rephrase → hybrid search + rerank → judge/refine → answer có trích dẫn; model theo role). 3.3 Bộ đánh giá (10k retrieval, 500 golden E2E, quota các nhóm). 3.4 Thiết kế thí nghiệm (bảng cấu hình, metric có công thức, judge + hiệu chỉnh, thống kê) | 3,5 |
 | 4 Experimental Results | 4.1 Retrieval, 4.2 E2E chính và ablation (Δ, p Holm), 4.3 An toàn, 4.4 Chi phí và latency (chỉ báo số), 4.5 Discussion trả lời RQ1–RQ3 | 3,3 |
 | 5 Conclusion | Nhắc lại vấn đề và ý tưởng chính; bằng chứng chính; ý nghĩa thực tiễn; đoạn Limitations (câu hỏi sinh bằng luật, tham số chọn trên cùng benchmark, judge cùng nhà cung cấp, đáp án do LLM soạn, latency trên máy dev, một nguồn tờ HDSD); hướng tiếp theo | 0,8 |
