@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,10 +13,17 @@ import numpy as np
 
 from pharma_lab.e2e.calibration import AGREEMENT_FILE, calibration_dir
 from pharma_lab.e2e.configs import E2EConfig
-from pharma_lab.e2e.golden import ExpectedBehavior, GoldenItem
+from pharma_lab.e2e.golden import Category, ExpectedBehavior, GoldenItem
 from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
+from pharma_lab.e2e.judging.code_metrics import (
+    behaviour_correct,
+    citation_scores,
+    is_relevant_chunk,
+    over_refusal,
+)
 from pharma_lab.e2e.judging.service import JUDGMENTS_FILE
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+from pharma_lab.evaluation.relevance_judgments import LoadedJudgments
 
 REPORTS_DIR = "reports"
 RESAMPLES = 10_000
@@ -26,26 +33,59 @@ ERROR_ROWS = 20
 Values = dict[str, float]
 
 
+@dataclass(frozen=True)
+class ItemView:
+    """Everything one metric may read about one item in one configuration."""
+
+    item: GoldenItem
+    answer: AnswerRecord
+    judgement: Judgement
+    # Gold section id -> extra accepted chunk ids (relevance judgments).
+    accepted: Mapping[str, frozenset[str]]
+
+
 def _flag(value: bool | None) -> float | None:
     return None if value is None else float(value)
 
 
+def _behaviour(view: ItemView) -> float:
+    return float(
+        behaviour_correct(
+            view.item,
+            view.answer,
+            injection_followed=view.judgement.injection_followed,
+            declined=view.judgement.declined,
+        )
+    )
+
+
+def _behaviour_in(category: Category) -> Callable[[ItemView], float | None]:
+    return lambda view: _behaviour(view) if view.item.category is category else None
+
+
+def _citation(index: int) -> Callable[[ItemView], float | None]:
+    return lambda view: citation_scores(view.item, view.answer, view.accepted)[index]
+
+
 # metric -> value for one item, or None when the metric does not apply
-METRICS: dict[str, Callable[[AnswerRecord, Judgement], float | None]] = {
-    "behaviour_correct": lambda _, j: float(j.behaviour_correct),
-    "key_fact_recall": lambda _, j: j.key_fact_recall,
-    "contradiction": lambda _, j: _flag(j.contradiction),
-    "faithfulness": lambda _, j: j.faithfulness,
-    "factual_correctness": lambda _, j: j.factual_correctness,
-    "answer_relevancy": lambda _, j: j.answer_relevancy,
-    "citation_precision": lambda _, j: j.citation_precision,
-    "citation_recall": lambda _, j: j.citation_recall,
-    "citation_support": lambda _, j: j.citation_support,
-    "injection_followed": lambda _, j: _flag(j.injection_followed),
-    "declined": lambda _, j: _flag(j.declined),
-    "tokens_per_turn": lambda a, _: float(a.total_tokens),
-    "llm_calls": lambda a, _: float(a.llm_calls),
-    "latency_seconds": lambda a, _: a.latency_seconds,
+METRICS: dict[str, Callable[[ItemView], float | None]] = {
+    "behaviour_correct": _behaviour,
+    "abstention_accuracy": _behaviour_in(Category.UNANSWERABLE),
+    "redirect_accuracy": _behaviour_in(Category.OUT_OF_SCOPE),
+    "injection_defence": _behaviour_in(Category.INJECTION),
+    "over_refusal": lambda v: over_refusal(v.item, v.answer),
+    "key_fact_recall": lambda v: v.judgement.key_fact_recall,
+    "contradiction": lambda v: _flag(v.judgement.contradiction),
+    "faithfulness": lambda v: v.judgement.faithfulness,
+    "factual_correctness": lambda v: v.judgement.factual_correctness,
+    "answer_relevancy": lambda v: v.judgement.answer_relevancy,
+    "citation_precision": _citation(0),
+    "citation_recall": _citation(1),
+    "citation_support": lambda v: v.judgement.citation_support,
+    "injection_followed": lambda v: _flag(v.judgement.injection_followed),
+    "tokens_per_turn": lambda v: float(v.answer.total_tokens),
+    "llm_calls": lambda v: float(v.answer.llm_calls),
+    "latency_seconds": lambda v: v.answer.latency_seconds,
 }
 LATENCY = "latency_seconds"
 
@@ -75,16 +115,28 @@ def paired_delta(baseline: Values, candidate: Values, *, seed: int = SEED) -> Su
     return bootstrap_mean([candidate[key] - baseline[key] for key in shared], seed=seed)
 
 
+def _accepted(
+    item: GoldenItem, relevance: LoadedJudgments | None
+) -> Mapping[str, frozenset[str]]:
+    if relevance is None or item.source_query_id is None:
+        return {}
+    return relevance.for_query(item.source_query_id)
+
+
 def _values(
-    answers: dict[str, AnswerRecord], judgments: dict[str, Judgement]
+    items: Mapping[str, GoldenItem],
+    answers: dict[str, AnswerRecord],
+    judgments: dict[str, Judgement],
+    relevance: LoadedJudgments | None,
 ) -> dict[str, Values]:
     table: dict[str, Values] = {metric: {} for metric in METRICS}
     for key, judgement in judgments.items():
         record = answers.get(key)
         if record is None or judgement.error is not None:
             continue
+        view = ItemView(items[key], record, judgement, _accepted(items[key], relevance))
         for metric, read in METRICS.items():
-            value = read(record, judgement)
+            value = read(view)
             if value is not None and not math.isnan(value):
                 table[metric][key] = value
     return table
@@ -152,21 +204,39 @@ def _section(chunk_label: str) -> str:
     return chunk_label.rsplit(":chunk-", 1)[0]
 
 
-def error_label(item: GoldenItem, record: AnswerRecord) -> str:
+def error_label(
+    item: GoldenItem,
+    record: AnswerRecord,
+    accepted: Mapping[str, frozenset[str]] | None = None,
+) -> str:
     """Where a poor grounded answer went wrong first."""
-    gold = set(item.gold_section_ids)
-    if not gold & {_section(label) for label in record.retrieved_chunk_ids}:
+    judged = accepted or {}
+    if not any(
+        is_relevant_chunk(item, _section(label), label, judged)
+        for label in record.retrieved_chunk_ids
+    ):
         return "retrieval"
-    if not gold & {c.section_id for c in record.citations if c.section_id}:
+    if not any(
+        is_relevant_chunk(item, c.section_id, c.chunk_id, judged)
+        for c in record.citations
+    ):
         return "citation"
     return "answer"
 
 
-def write_report(run_root: Path, items: dict[str, GoldenItem]) -> list[Path]:
+def write_report(
+    run_root: Path,
+    items: dict[str, GoldenItem],
+    relevance: LoadedJudgments | None = None,
+) -> list[Path]:
+    """Write every table; `relevance` extends relevant chunks as in retrieval metrics."""
     loaded = _load(run_root)
     directory = Path(run_root) / REPORTS_DIR
     directory.mkdir(parents=True, exist_ok=True)
-    values = {config: _values(*pair) for config, pair in loaded.items()}
+    values = {
+        config: _values(items, answers, judgments, relevance)
+        for config, (answers, judgments) in loaded.items()
+    }
     configs = list(loaded)
     written: list[Path] = []
 
@@ -250,7 +320,16 @@ def write_report(run_root: Path, items: dict[str, GoldenItem]) -> list[Path]:
             groups: dict[str, set[str]] = {}
             for key in loaded[config][1]:
                 item = items[key]
-                name = item.category.value if kind == "category" else item.eval_group
+                if kind == "category":
+                    name = item.category.value
+                else:
+                    # Multi-turn items borrow their follow-up row's group; keep the
+                    # eval-group breakdown to single-turn answerable questions.
+                    name = (
+                        item.eval_group
+                        if item.category is Category.ANSWERABLE
+                        else None
+                    )
                 if name:
                     groups.setdefault(name, set()).add(key)
             for name, keys in sorted(groups.items()):
@@ -332,8 +411,24 @@ def write_report(run_root: Path, items: dict[str, GoldenItem]) -> list[Path]:
             question = item.question.replace("|", "/").replace("\n", " ")
             lines.append(
                 f"| {item.item_id} | {item.category.value} | {judgement.key_fact_recall:.2f} "
-                f"| {faithfulness} | {error_label(item, answers[judgement.item_id])} | {question} |"
+                f"| {faithfulness} | {error_label(item, answers[judgement.item_id], _accepted(item, relevance))} | {question} |"
             )
         written.append(directory / "errors.md")
         written[-1].write_text("\n".join(lines) + "\n", encoding="utf-8")
+    written.append(directory / "provenance.json")
+    written[-1].write_text(
+        json.dumps(
+            {
+                "configs": configs,
+                "relevance_judgments_sha256": None
+                if relevance is None
+                else relevance.sha256,
+                "bootstrap_resamples": RESAMPLES,
+                "bootstrap_seed": SEED,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return written

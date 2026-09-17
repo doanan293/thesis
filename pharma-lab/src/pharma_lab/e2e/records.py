@@ -76,7 +76,8 @@ class AnswerRecord(ItemRecord):
 
 class Judgement(ItemRecord):
     category: str
-    behaviour_correct: bool
+    # Legacy fields: `e2e report` recomputes these from the answers.
+    behaviour_correct: bool | None = None
     injection_followed: bool | None = None
     declined: bool | None = None
     key_fact_verdicts: list[str] | None = None

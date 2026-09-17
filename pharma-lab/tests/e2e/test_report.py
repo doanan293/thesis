@@ -19,6 +19,7 @@ from pharma_lab.e2e.report import (
     paired_delta,
     write_report,
 )
+from pharma_lab.evaluation.relevance_judgments import LoadedJudgments
 
 SECTION = "drug:x:lieu-dung"
 
@@ -156,6 +157,7 @@ def test_write_report_builds_every_table(tmp_path: Path) -> None:
         "errors.md",
         "main.csv",
         "main.tex",
+        "provenance.json",
     ]
     reports = tmp_path / "reports"
     main = rows(reports / "main.csv")
@@ -182,3 +184,38 @@ def test_write_report_builds_every_table(tmp_path: Path) -> None:
 def test_report_needs_judged_answers(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no judged configuration"):
         write_report(tmp_path, {})
+
+
+def test_report_uses_relevance_judgments_and_answerable_groups(tmp_path: Path) -> None:
+    item = golden(1).model_copy(update={"source_query_id": "q-1"})
+    leaflet = "leaflet:x:chunk-001"
+    answers = JsonlStore(tmp_path / "full" / "answers.jsonl", AnswerRecord)
+    answers.append(
+        answer(1, "full").model_copy(
+            update={
+                "citations": [
+                    CitedSection(
+                        index=1,
+                        chunk_version_id="c",
+                        chunk_id=leaflet,
+                        section_id="leaflet:x",
+                    )
+                ]
+            }
+        )
+    )
+    JsonlStore(tmp_path / "full" / "judgments.jsonl", Judgement).append(
+        judgement(1, "full", 1.0)
+    )
+    relevance = LoadedJudgments("r" * 64, {"q-1": {SECTION: frozenset({leaflet})}})
+
+    write_report(tmp_path, {item.item_id: item}, relevance)
+    main = {r["metric"]: r for r in rows(tmp_path / "reports" / "main.csv")}
+    assert float(main["citation_precision"]["mean"]) == 1.0
+    assert main["over_refusal"]["n"] == "1"
+    provenance = json.loads((tmp_path / "reports" / "provenance.json").read_text())
+    assert provenance["relevance_judgments_sha256"] == "r" * 64
+
+    write_report(tmp_path, {item.item_id: item})
+    main = {r["metric"]: r for r in rows(tmp_path / "reports" / "main.csv")}
+    assert float(main["citation_precision"]["mean"]) == 0.0

@@ -48,6 +48,7 @@ from pharma_lab.e2e.sampling import (
 )
 from pharma_lab.evaluation.artifact_contracts import sha256_file
 from pharma_lab.evaluation.backend_retrieval import load_query_rows
+from pharma_lab.evaluation.relevance_judgments import judgments_path, load_judgments
 
 GOLD_PATH = GOLD_DIR / "section_retrieval_eval.jsonl"
 
@@ -388,12 +389,19 @@ def report(
     ctx: typer.Context,
     run_name: Annotated[str, typer.Option("--run")],
     golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
+    evaluation: Annotated[
+        Path, typer.Option("--evaluation", dir_okay=False)
+    ] = GOLD_PATH,
 ) -> None:
     """Write CSV and LaTeX tables for every judged configuration of a run."""
+    # `evaluation` is the gold file whose relevance judgments extend citation scoring.
 
     def handler() -> CommandResult:
         items = {item.item_id: item for item in load_golden(golden)}
-        written = write_report(e2e_run_dir(run_name), items)
+        relevance = load_judgments(
+            judgments_path(evaluation), evaluation_sha256=sha256_file(evaluation)
+        )
+        written = write_report(e2e_run_dir(run_name), items, relevance)
         return CommandResult(
             "e2e report",
             CommandStatus.COMPLETE,

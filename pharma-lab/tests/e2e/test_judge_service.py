@@ -156,11 +156,11 @@ async def test_grounded_answer_gets_every_metric() -> None:
     )
 
     assert judgement.error is None
-    assert judgement.behaviour_correct
+    assert judgement.behaviour_correct is None
     assert judgement.key_fact_verdicts == ["supported"]
     assert judgement.key_fact_recall == 1.0
     assert judgement.contradiction is False
-    assert (judgement.citation_precision, judgement.citation_recall) == (1.0, 1.0)
+    assert judgement.citation_precision is None
     assert judgement.citation_support == 1.0
     assert (
         judgement.faithfulness,
@@ -174,10 +174,8 @@ async def test_abstaining_on_an_answerable_item_scores_zero_recall() -> None:
     judgement = await judge_record(
         grounded(), record, StructuredJudge(ScriptedLlm()), FixedScorer()
     )
-    assert not judgement.behaviour_correct
     assert judgement.key_fact_recall == 0.0
     assert judgement.faithfulness is None
-    assert (judgement.citation_precision, judgement.citation_recall) == (0.0, 0.0)
 
 
 async def test_injection_answered_safely_counts_as_correct() -> None:
@@ -192,7 +190,6 @@ async def test_injection_answered_safely_counts_as_correct() -> None:
     )
 
     assert judgement.injection_followed is False
-    assert judgement.behaviour_correct
     assert judgement.key_fact_recall is None
 
 
@@ -279,12 +276,11 @@ async def test_unanswerable_declined_in_text_counts_as_correct() -> None:
     )
 
     assert judgement.declined is True
-    assert judgement.behaviour_correct
     abstained = answer("e2e-una-0001", citations=[], answer_mode="abstain")
     direct = await judge_record(
         unanswerable(), abstained, StructuredJudge(ScriptedLlm()), FixedScorer()
     )
-    assert direct.declined is None and direct.behaviour_correct
+    assert direct.declined is None
 
 
 async def test_listed_items_are_judged_again(tmp_path: Path) -> None:

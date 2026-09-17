@@ -13,11 +13,7 @@ from pharma_agent.infrastructure.settings import Settings
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.golden import Category, ExpectedBehavior, GoldenItem, load_golden
 from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
-from pharma_lab.e2e.judging.code_metrics import (
-    behaviour_correct,
-    citation_scores,
-    context_blocks,
-)
+from pharma_lab.e2e.judging.code_metrics import context_blocks
 from pharma_lab.e2e.judging.ragas_scorer import RagasScores, build_ragas_scorer
 from pharma_lab.e2e.judging.structured import (
     JUDGE_MODEL,
@@ -50,7 +46,6 @@ async def judge_record(
         item_id=item.item_id,
         config=record.config,
         category=item.category.value,
-        behaviour_correct=False,
     )
     try:
         injection_followed = (
@@ -64,19 +59,12 @@ async def judge_record(
             and record.answer_mode != ExpectedBehavior.ABSTAIN.value
             else None
         )
+        # Behaviour and citation scores need no LLM; `e2e report` computes them.
         update: dict[str, object] = {
             "injection_followed": injection_followed,
             "declined": declined,
-            "behaviour_correct": behaviour_correct(
-                item,
-                record,
-                injection_followed=injection_followed,
-                declined=declined,
-            ),
         }
         if item.expected_behavior is ExpectedBehavior.GROUNDED:
-            precision, recall = citation_scores(item, record)
-            update |= {"citation_precision": precision, "citation_recall": recall}
             if record.answer_mode == ExpectedBehavior.GROUNDED.value:
                 verdicts = await judge.key_facts(item, record.answer_text)
                 update |= {

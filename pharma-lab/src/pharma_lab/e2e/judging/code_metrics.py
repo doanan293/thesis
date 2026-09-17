@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 from pharma_lab.e2e.golden import Category, ExpectedBehavior, GoldenItem
 from pharma_lab.e2e.records import AnswerRecord
@@ -36,18 +37,52 @@ def behaviour_correct(
     return False
 
 
+def is_relevant_chunk(
+    item: GoldenItem,
+    section_id: str | None,
+    chunk_id: str | None,
+    accepted: Mapping[str, frozenset[str]],
+) -> bool:
+    """A chunk from a gold section, or one the relevance judgments accept for it.
+
+    The same rule scores the retrieval benchmark, so a leaflet chunk with the gold
+    monograph's ingredients and intent counts in both places.
+    """
+    if section_id is not None and section_id in item.gold_section_ids:
+        return True
+    return chunk_id is not None and any(
+        chunk_id in chunks for chunks in accepted.values()
+    )
+
+
 def citation_scores(
-    item: GoldenItem, record: AnswerRecord
+    item: GoldenItem,
+    record: AnswerRecord,
+    accepted: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[float | None, float | None]:
-    """(precision, recall) of cited sections against the gold sections."""
+    """(precision, recall) of the answer's citations against relevant chunks.
+
+    Precision is the share of citations that point at a relevant chunk; recall is 1
+    when at least one does. An answer without citations scores 0 on both.
+    """
     if item.expected_behavior is not ExpectedBehavior.GROUNDED:
         return None, None
-    cited = [c.section_id for c in record.citations]
-    if not cited:
+    if not record.citations:
         return 0.0, 0.0
-    gold = set(item.gold_section_ids)
-    hits = sum(1 for section in cited if section in gold)
-    return hits / len(cited), 1.0 if hits else 0.0
+    judged = accepted or {}
+    hits = sum(
+        is_relevant_chunk(item, citation.section_id, citation.chunk_id, judged)
+        for citation in record.citations
+    )
+    return hits / len(record.citations), 1.0 if hits else 0.0
+
+
+def over_refusal(item: GoldenItem, record: AnswerRecord) -> float | None:
+    """1 when an answerable question got no grounded answer (abstained, redirected,
+    blocked or answered without retrieval); None for the other categories."""
+    if item.expected_behavior is not ExpectedBehavior.GROUNDED:
+        return None
+    return 0.0 if record.answer_mode == ExpectedBehavior.GROUNDED.value else 1.0
 
 
 def context_blocks(context_text: str) -> dict[int, str]:
