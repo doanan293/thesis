@@ -25,7 +25,7 @@ Lệnh này:
 
 Trong session chạy E2E, nạp file env trước (`set -a; . data/work/serve/qwen3_reranker_4b_fp16.env; set +a`).
 
-**Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Model khác thì truyền `--judge-model`.
+**Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Proxy antigravity không có model này. Run `e2e-v1` chấm bằng `--judge-model gemini-3.1-flash-lite`: model này khác model trả lời (`gemini-3.8-flash-high`), nhanh (khoảng 3 giây mỗi lần gọi), và có quota lớn nhất trong các model đã thử.
 
 **Cấu hình ablation chỉ đặt được từ harness.** Backend không có biến môi trường nào để tắt bước của agent.
 
@@ -58,7 +58,7 @@ Mỗi cấu hình chạy trong một tmux session riêng; chạy lại cùng l�
 uv run pharma-lab e2e run --run e2e-v1 --config full --limit 20        # chạy thử
 uv run pharma-lab e2e run --run e2e-v1 --config full
 uv run pharma-lab e2e run --run e2e-v1 --config full --retry-errors    # chạy lại các câu lỗi
-uv run pharma-lab e2e judge --run e2e-v1 --config full
+uv run pharma-lab e2e judge --run e2e-v1 --config full --judge-model gemini-3.1-flash-lite
 uv run pharma-lab e2e calibration export --run e2e-v1
 uv run pharma-lab e2e calibration score --run e2e-v1
 uv run pharma-lab e2e report --run e2e-v1
