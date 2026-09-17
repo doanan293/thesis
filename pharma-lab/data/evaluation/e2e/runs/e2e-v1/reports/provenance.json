@@ -1,0 +1,8 @@
+{
+  "configs": [
+    "no-rerank"
+  ],
+  "relevance_judgments_sha256": "f68a12331f632fec2d1791fd5dcd5eae961ca3f9fa6d1dc2daf57c581ad20e34",
+  "bootstrap_resamples": 10000,
+  "bootstrap_seed": 0
+}
