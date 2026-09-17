@@ -2,8 +2,8 @@
 
 The studies above leave four gaps that this paper addresses.
 \begin{itemize}
-\item \textbf{No Vietnamese drug-information benchmark.} Existing Vietnamese medical datasets target general health questions, intent detection or reading comprehension; none pairs a drug-label corpus with a large set of questions whose answer locations are known.
+\item \textbf{No Vietnamese drug-information benchmark.} Existing Vietnamese medical datasets target general health questions, intent detection or reading comprehension. None of them pairs a drug-label corpus with a large set of questions whose answer locations are known.
 \item \textbf{Retrieval choices without their cost.} Benchmarks rank embedding models, but rarely compare sparse, dense, hybrid and reranked retrieval on one corpus together with vector size and reranking throughput, which decide whether a configuration can be deployed.
-\item \textbf{Agentic RAG without controlled evaluation.} Agentic pipelines are usually reported with a single score; ablations with paired significance tests, safety cases (unanswerable, out-of-scope, injection) and a validated LLM judge are rare, especially outside English.
-\item \textbf{Strong models assumed.} Most agentic designs rely on capable LLMs to plan; whether small, inexpensive models can run such a pipeline reliably is largely untested.
+\item \textbf{Agentic RAG without controlled evaluation.} Agentic pipelines are usually reported with a single overall score. Ablations with paired significance tests, safety cases (unanswerable, out-of-scope, injection) and a validated LLM judge are rare, especially outside English.
+\item \textbf{Strong models assumed.} Most agentic designs rely on capable LLMs for planning. Whether small, inexpensive models can run such a pipeline reliably remains largely untested.
 \end{itemize}

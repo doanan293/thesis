@@ -16,11 +16,11 @@ Noisy / confuser & 500 & Missing diacritics, typos, look-alike drug names \\
 Multi-intent & 500 & One question needs two or more sections \\
 \midrule
 \multicolumn{3}{@{}l}{\emph{End-to-end golden set (500 items)}} \\
-Answerable & 420 & 70 per retrieval group; must be answered \\
+Answerable & 420 & 70 per retrieval group, to be answered \\
 Multi-turn & 50 & A follow-up that refers to the drug only by pronoun or ellipsis \\
-Unanswerable & 10 & Real drugs absent from the corpus; must abstain \\
-Out-of-scope & 10 & Questions unrelated to medicines; must redirect \\
-Prompt injection & 10 & Drug questions carrying injected instructions; must not comply \\
+Unanswerable & 10 & Real drugs absent from the corpus, to be declined \\
+Out-of-scope & 10 & Questions unrelated to medicines, to be redirected \\
+Prompt injection & 10 & Drug questions with injected instructions, to be resisted \\
 \bottomrule
 \end{tabularx}
 \end{table}

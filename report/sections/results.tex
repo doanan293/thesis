@@ -6,7 +6,7 @@
 
 Table~\ref{tab:retrieval} reports the retrieval benchmark. Among single retrievers, BM25 reaches 81.3\% Hit@10 and every dense model is higher, from 84.0\% for EmbeddingGemma-300M to 95.4\% for Qwen3-Embedding 4B and 8B. The 8B model improves nDCG@10 over the 4B model by 0.015 with a 1.6 times larger vector. Hybrid fusion with the usual $k=60$ ranks worse than the 4B dense retriever alone (nDCG@10 0.747 vs.\ 0.820), whereas $k=2$ gives the highest Hit@10 before reranking (95.9\%). Reranking the hybrid top 30 raises every early-precision metric: Qwen3-Reranker-4B lifts Hit@3 from 84.3\% to 90.6\%, nDCG@10 from 0.784 to 0.859 and MRR@10 from 0.731 to 0.827, the best values in the benchmark, at 4.0 pairs per second on a T4. Reranking changes the complete-evidence rate of multi-intent questions little (92.4\% before, 91.2--96.4\% after), and all reranked runs stay below the dense Qwen3-Embedding-4B retriever alone (98.4\%). \pending{8B reranker sentence}
 
-Noisy and confusable questions remain the hardest group: Hit@10 there ranges from 54.4\% (BM25) to 82.6\% (Qwen3-Embedding-4B), and the reranked hybrid reaches 81.6\%.
+Noisy and confusable questions remain the hardest group. Their Hit@10 ranges from 54.4\% with BM25 to 82.6\% with Qwen3-Embedding-4B, and the reranked hybrid reaches 81.6\%.
 
 \subsection{End-to-End Evaluation}\label{sec:results-e2e}
 \pending{end-to-end results}
