@@ -40,3 +40,10 @@ def test_rerank_logs_live_under_work(isolated_logs_dir) -> None:
     assert paths.rerank_log_path("qwen3-reranker:0.6b-fp16") == (
         isolated_logs_dir.root / "rerank" / "qwen3_reranker_0_6b_fp16.log"
     )
+
+
+def test_source_root_is_the_imported_package_tree() -> None:
+    import pharma_lab
+
+    assert paths.Path(pharma_lab.__file__).resolve().parent.parent == paths.SOURCE_ROOT
+    assert (paths.SOURCE_ROOT / "pharma_lab" / "integrations" / "kaggle").is_dir()

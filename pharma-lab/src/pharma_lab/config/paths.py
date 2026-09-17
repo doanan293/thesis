@@ -34,6 +34,9 @@ def resolve_workspace_root(explicit: Path | None = None) -> Path:
 
 
 PROJECT_ROOT = resolve_workspace_root()
+# The importable source tree, which differs from PROJECT_ROOT/src when the data
+# workspace is another checkout (PHARMA_LAB_ROOT).
+SOURCE_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 
 SOURCES_DIR = DATA_DIR / "sources"

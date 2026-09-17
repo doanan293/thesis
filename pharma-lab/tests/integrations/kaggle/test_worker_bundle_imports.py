@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from tests.integrations.kaggle.factories import UnusedKernelService
 
-from pharma_lab.config.paths import PROJECT_ROOT
+from pharma_lab.config.paths import SOURCE_ROOT
 from pharma_lab.integrations.kaggle.kernels import PipelineKernelService
 
 
@@ -17,7 +17,7 @@ def _source_bundle(tmp_path: Path) -> Path:
     service = PipelineKernelService(
         service=UnusedKernelService(),
         owner="test-owner",
-        source_root=PROJECT_ROOT / "src",
+        source_root=SOURCE_ROOT,
     )
     bundle = tmp_path / "source_bundle.zip"
     bundle.write_bytes(base64.b64decode(service._build_source_b64()))
