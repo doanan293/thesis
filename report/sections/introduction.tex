@@ -1,3 +1,11 @@
 \section{Introduction}\label{sec:introduction}
+
+People increasingly ask chatbots about the medicines they take, and a wrong dose or a missed contraindication can cause real harm. Retrieval-augmented generation (RAG) reduces this risk by grounding answers in authoritative text~\cite{lewis2020rag}, and agentic variants add query rewriting, evidence checks and iterative search~\cite{asai2024selfrag,yan2024crag,jeong2024adaptiverag}. Deploying such a system for Vietnamese drug information raises three practical problems. There is no Vietnamese corpus and benchmark of drug labelling to measure retrieval on; retrieval choices are usually ranked by quality alone, although vector size and reranking throughput decide what can be served; and agentic pipelines are typically built on strong LLMs, while many deployments can only afford small, inexpensive models.
+
+This paper studies these problems on a corpus built from the Vietnamese National Drug Formulary and 2{,}406 drug package leaflets, and asks three research questions. \textbf{RQ1:} Which retrieval configuration gives the best quality for its cost on Vietnamese drug questions? \textbf{RQ2:} Does an agentic pipeline run by low-cost LLMs answer more accurately than one-step RAG with the same retriever, and which steps contribute? \textbf{RQ3:} Does the pipeline refuse unanswerable, off-topic and adversarial requests reliably?
+
 \input{figures/pipeline}
-\pending{introduction}~\cite{lewis2020rag} Fig.~\ref{fig:pipeline} gives an overview.
+
+Our contributions are threefold. (1)~We build a structured corpus of 24{,}946 chunks with deterministic, LLM-free enrichment and a 10{,}000-question retrieval benchmark with known answer locations. (2)~We benchmark BM25, five dense models, hybrid fusion and four rerankers through the production retrieval code, reporting quality next to cost; a Qwen3 hybrid with a 4B reranker reaches 97.5\% Hit@10 and 0.859 nDCG@10. (3)~We evaluate the agentic pipeline of Fig.~\ref{fig:pipeline} end to end on a 500-item golden set with CRAG-style truthfulness, nugget recall, citation and safety metrics, paired ablations and a calibrated LLM judge; \pending{headline E2E result}.
+
+Section~\ref{sec:related} reviews related work and Section~\ref{sec:gap} states the gaps. Section~\ref{sec:method} describes the corpus, pipeline, evaluation sets and experimental design, Section~\ref{sec:results} reports the results, Section~\ref{sec:discussion} discusses them and Section~\ref{sec:conclusion} concludes.
