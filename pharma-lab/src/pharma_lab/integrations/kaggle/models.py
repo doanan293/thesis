@@ -120,6 +120,8 @@ class StageName(StrEnum):
     RERANK_BENCHMARK = "rerank-benchmark"
     QUERY_EMBED_BENCHMARK = "query-embed-benchmark"
     CORPUS_EMBED_BENCHMARK = "corpus-embed-benchmark"
+    # A reranker served over a tunnel for a bounded time (E2E evaluation).
+    RERANK_SERVE = "rerank-serve"
 
 
 class KernelPresence(StrEnum):

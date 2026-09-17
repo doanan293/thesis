@@ -11,6 +11,20 @@ Harness gọi backend trong cùng tiến trình, như `pharma-lab retrieve`, v�
 - Endpoint LLM trong `PHARMA_LLM__*`. Model của từng role lấy từ `.env` và được ghi vào `run.json`.
 - llama.cpp embedding (`PHARMA_RETRIEVAL__EMBEDDING__*`) và reranker (`PHARMA_RETRIEVAL__RERANK__*`), chạy qua `docker compose up -d` ở thư mục gốc repo.
 
+**Endpoint LLM** là service `cli-proxy-api` của compose (`docker compose up -d cli-proxy-api`, đăng nhập lưu trong volume `thesis_cli_proxy_auth`).
+
+**Reranker trên GPU.** Reranker trên CPU quá chậm cho E2E: trên laptop i5, 40 tài liệu mất khoảng 10 phút với model 4B. Vì vậy các cấu hình có rerank dùng reranker chạy trên GPU Kaggle, qua tunnel có API key.
+
+```bash
+uv run pharma-lab e2e rerank-server --model qwen3-reranker:4b-fp16 --hours 8 --kaggle-account auto
+```
+
+Lệnh này:
+- giữ một account và đẩy kernel `rerank-serve` lên (llama-server trên 2 T4 cộng tunnel cloudflared);
+- ghi `data/work/serve/<model>.env` khi tunnel đã sẵn sàng, và xóa file đó khi phiên kết thúc.
+
+Trong session chạy E2E, nạp file env trước (`set -a; . data/work/serve/qwen3_reranker_4b_fp16.env; set +a`).
+
 **Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Model khác thì truyền `--judge-model`.
 
 **Cấu hình ablation chỉ đặt được từ harness.** Backend không có biến môi trường nào để tắt bước của agent.

@@ -30,6 +30,7 @@ def _source_bundle(tmp_path: Path) -> Path:
         "pharma_lab.integrations.kaggle.workers.query_embed",
         "pharma_lab.integrations.kaggle.workers.corpus_embed",
         "pharma_lab.integrations.kaggle.workers.rerank",
+        "pharma_lab.integrations.kaggle.workers.serve",
     ],
 )
 def test_worker_imports_from_source_bundle_without_local_workspace(

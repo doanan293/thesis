@@ -67,7 +67,7 @@ class PipelineKernelService:
             bundle.name,
             references,
             code_file="runner.py",
-            enable_internet=False,
+            enable_internet=bool(job.worker_config.get("enable_internet", False)),
         )
         (bundle / "kernel-metadata.json").write_text(
             json.dumps(metadata, indent=2), encoding="utf-8"

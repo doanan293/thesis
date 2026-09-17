@@ -38,6 +38,7 @@ from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
 from pharma_lab.e2e.judging.service import JudgeRequest, run_judge
 from pharma_lab.e2e.judging.structured import JUDGE_MODEL
 from pharma_lab.e2e.report import write_report
+from pharma_lab.e2e.rerank_server import env_path, serve_reranker
 from pharma_lab.e2e.sampling import (
     replacement_candidates,
     sample_answerable,
@@ -399,5 +400,30 @@ def report(
             e2e_run_dir(run_name) / "reports",
             {"files": ",".join(path.name for path in written)},
         )
+
+    run_handler(state_from_context(ctx), handler)
+
+
+@e2e_app.command("rerank-server")
+def rerank_server(
+    ctx: typer.Context,
+    model: Annotated[str, typer.Option("--model")] = "qwen3-reranker:4b-fp16",
+    hours: Annotated[float, typer.Option("--hours", min=0.1, max=11.0)] = 8.0,
+    kaggle_account: Annotated[
+        str | None, typer.Option("--kaggle-account", help="accN or auto")
+    ] = "auto",
+) -> None:
+    """Serve the reranker from a Kaggle GPU; E2E runs source the printed env file."""
+
+    def handler() -> CommandResult:
+        target = env_path(model)
+        typer.echo(f"env file (while serving): {target}")
+        serve_reranker(
+            model=model,
+            hours=hours,
+            kaggle_account=kaggle_account,
+            log=lambda line: typer.echo(f"[rerank-server] {line}"),
+        )
+        return CommandResult("e2e rerank-server", CommandStatus.COMPLETE, target)
 
     run_handler(state_from_context(ctx), handler)

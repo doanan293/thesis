@@ -340,10 +340,65 @@ class BenchmarkStage:
         )
 
 
+SERVE_REPORT_FILENAME = "serve_report.jsonl"
+
+
+@dataclass(frozen=True)
+class RerankServeStage:
+    """Serve a reranker through a tunnel until the session budget or `hours` ends.
+
+    The input is a small request file (hours, API key, nonce); every request is a new
+    job, so a finished session is never mistaken for a reusable artifact.
+    """
+
+    name: StageName = StageName.RERANK_SERVE
+    contract_version: int = 1
+
+    def build_job(self, request: StageRequest) -> StageJob:
+        spec = require_model(request.model)
+        if spec.kind is not ModelKind.RERANKER:
+            raise ValueError(f"rerank-serve requires a reranker model: {request.model}")
+        input_bundle = InputBundle.create(
+            (InputFile.create("serve_request", request.input_path),)
+        )
+        profile = _required_runtime_profile(request)
+        identity = JobIdentity.create(
+            stage=self.name,
+            contract_version=self.contract_version,
+            model=request.model,
+            model_sha256=spec.sha256,
+            input_sha256=input_bundle.sha256,
+            runtime_parameters={"runtime_profile": profile.to_dict()},
+        )
+        output_dir = (
+            request.output_dir / self.name.value / spec.slug / identity.sha256[:12]
+        )
+        return StageJob(
+            self.name,
+            self.contract_version,
+            request.model,
+            identity,
+            input_bundle,
+            output_dir,
+            output_dir / SERVE_REPORT_FILENAME,
+            SERVE_REPORT_FILENAME,
+            1,
+            "pharma_lab.integrations.kaggle.workers.serve",
+            {
+                "model": request.model,
+                "runtime_overrides": profile.to_dict(),
+                "gguf_root": str(request.gguf_root),
+                "job_sha256": identity.sha256,
+                "enable_internet": True,
+            },
+        )
+
+
 _ADAPTERS: dict[StageName, StageAdapter] = {
     StageName.CORPUS_EMBED: CorpusEmbedStage(),
     StageName.QUERY_EMBED: QueryEmbedStage(),
     StageName.RERANK: RerankStage(),
+    StageName.RERANK_SERVE: RerankServeStage(),
 }
 _ADAPTERS.update(
     {
