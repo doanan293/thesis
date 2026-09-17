@@ -9,6 +9,7 @@ import pytest
 
 from pharma_lab.e2e.rerank_server import (
     UrlWatcher,
+    api_key_from_runner,
     api_key_path,
     env_lines,
     find_url,
@@ -90,3 +91,17 @@ def test_watcher_follows_a_restarted_tunnel(tmp_path: Path) -> None:
     watcher.feed("[serve] url=https://a.trycloudflare.com replicas=2")
     watcher.feed("[serve] url=https://b.trycloudflare.com (tunnel restarted)")
     assert "https://b.trycloudflare.com" in (tmp_path / "m.env").read_text("utf-8")
+
+
+def test_api_key_is_read_back_from_a_pushed_runner() -> None:
+    config = {"model": "m", "api_key": "secret-key", "enable_internet": True}
+    runner = (
+        "import base64, json, os, runpy, sys\n"
+        "from pathlib import Path\n"
+        "config = Path('/tmp/stage_config.json')\n"
+        f"config.write_text({json.dumps(json.dumps(config))}, encoding='utf-8')\n"
+        "runpy.run_module('pharma_lab.integrations.kaggle.workers.serve', run_name='__main__')\n"
+    )
+    assert api_key_from_runner(runner) == "secret-key"
+    with pytest.raises(ValueError, match="no rerank-serve api_key"):
+        api_key_from_runner("config.write_text('{}', encoding='utf-8')\n")

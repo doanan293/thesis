@@ -194,6 +194,10 @@ def kernel_list_mine_command(search: str) -> list[str]:
     ]
 
 
+def kernel_pull_command(reference: str, path: Path) -> list[str]:
+    return ["kaggle", "kernels", "pull", reference, "-p", str(path)]
+
+
 def kernel_logs_command(reference: str) -> list[str]:
     return ["kaggle", "kernels", "logs", reference]
 

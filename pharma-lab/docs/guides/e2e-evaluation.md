@@ -23,6 +23,12 @@ Lệnh này:
 - giữ một account và đẩy kernel `rerank-serve` lên (llama-server trên 2 T4 cộng tunnel cloudflared);
 - ghi `data/work/serve/<model>.env` khi tunnel đã sẵn sàng, và xóa file đó khi phiên kết thúc.
 
+Nếu máy tắt khi kernel vẫn chạy, nối lại mà không mất phiên GPU. Lệnh này lấy key từ source của kernel, lấy URL từ log, rồi ghi lại file env:
+
+```bash
+uv run pharma-lab e2e rerank-server --kaggle-account acc1 --attach OWNER/rerank-serve-XXXX
+```
+
 Trong session chạy E2E, nạp file env trước (`set -a; . data/work/serve/qwen3_reranker_4b_fp16.env; set +a`).
 
 **Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Proxy antigravity không có model này. Run `e2e-v1` chấm bằng `--judge-model gemini-3.1-flash-lite`: model này khác model trả lời (`gemini-3.8-flash-high`), nhanh (khoảng 3 giây mỗi lần gọi), và có quota lớn nhất trong các model đã thử.

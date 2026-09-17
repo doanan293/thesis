@@ -7,10 +7,12 @@ file that `pharma-lab e2e run` sessions source before starting.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import secrets
 import subprocess
+import tempfile
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -127,6 +129,77 @@ class UrlWatcher:
         if process is not None and process.poll() is None:
             process.terminate()
         self._thread.join(timeout=10)
+
+
+def api_key_from_runner(source: str) -> str:
+    """The API key embedded in a pushed rerank-serve kernel's runner script.
+
+    The runner writes its stage config with `config.write_text("<json>", ...)`.
+    """
+    for node in ast.walk(ast.parse(source)):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "write_text"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "config"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            key = json.loads(node.args[0].value).get("api_key")
+            if isinstance(key, str) and key:
+                return key
+    raise ValueError("the kernel's runner has no rerank-serve api_key")
+
+
+def attach_reranker(
+    *, model: str, reference: str, kaggle_account: str, log: Callable[[str], None]
+) -> Path:
+    """Serve through a rerank-serve kernel that is already running.
+
+    After a local restart the key and env files are gone, but the kernel keeps
+    serving: its source holds the key and its log holds the tunnel URL. Blocks until
+    the kernel stops.
+    """
+    from pharma_lab.integrations.kaggle.api import (
+        kernel_logs_follow_command,
+        kernel_pull_command,
+    )
+    from pharma_lab.integrations.kaggle.kernel_service import KernelService
+    from pharma_lab.integrations.kaggle.models import KernelStatus
+    from pharma_lab.integrations.kaggle.service import resolve_execution_context
+
+    context = resolve_execution_context(kaggle_account)
+    kernels = KernelService(context.runner, context.owners.execution)
+    state = kernels.inspect_state(reference)
+    if state.status not in {KernelStatus.QUEUED, KernelStatus.RUNNING}:
+        raise ValueError(f"{reference} is not running ({state.status})")
+    with tempfile.TemporaryDirectory() as folder:
+        context.runner.run(kernel_pull_command(reference, Path(folder)))
+        runners = list(Path(folder).glob("*.py"))
+        if len(runners) != 1:
+            raise ValueError(f"expected one runner script in {reference}")
+        api_key = api_key_from_runner(runners[0].read_text(encoding="utf-8"))
+    target = env_path(model)
+    runner = context.runner
+    watcher = UrlWatcher(
+        lambda: runner.start(
+            kernel_logs_follow_command(reference), capture_output=True
+        ),
+        target,
+        model,
+        api_key,
+        log,
+    )
+    log(f"attach kernel={reference} account={kaggle_account}")
+    watcher.start()
+    try:
+        kernels.wait_for_terminal(reference, timeout_seconds=12 * 3600)
+    finally:
+        watcher.stop()
+        target.unlink(missing_ok=True)
+    return target
 
 
 def serve_reranker(
