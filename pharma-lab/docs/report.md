@@ -256,9 +256,6 @@ Thiết kế cho LLM rẻ:
   ngoài phạm vi và prompt injection.
 - **Baseline RAG:** so sánh agentic RAG với RAG một bước khi dùng cùng retriever, model và context.
 - **Đánh giá tự động:** dùng RAGAS/LLM-as-judge đo factual correctness, faithfulness, answer relevance và
-  citation correctness; chấm rule-based cho hành vi trả lời / từ chối / chặn.
-- **Đánh giá chuyên gia:** nhờ dược sĩ chấm mù một tập con và đo độ tương quan với đánh giá tự động.
-- **Ablation study:** lần lượt bỏ judge/refine, reranker, rephrase và từng lớp enrichment.
-- **Tối ưu model theo role:** thử model nhỏ cho từng node và dựng đường Pareto chất lượng–chi phí–độ trễ.
-- **Phân tích lỗi:** phân nhóm lỗi retrieval, reasoning, generation và citation rồi đánh giá lại sau khi sửa.
-- **Kiểm thử ngoài phân phối:** dùng câu hỏi mới do người dùng hoặc chuyên gia viết, không sinh từ corpus.
+  citation correctness.
+- **Đánh giá chuyên gia thủ công:** nhờ dược sĩ chấm mù một tập con và đo độ tương quan với đánh giá tự động.
+- **Ablation study:** lần lượt bỏ judge/refine, reranker, rephrase.
