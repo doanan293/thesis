@@ -83,6 +83,8 @@ class Judgement(ItemRecord):
     key_fact_verdicts: list[str] | None = None
     key_fact_recall: float | None = None
     contradiction: bool | None = None
+    # none / minor / severe; judged only for answers that contradict a key fact.
+    harm: str | None = None
     citation_precision: float | None = None
     citation_recall: float | None = None
     citation_support: float | None = None

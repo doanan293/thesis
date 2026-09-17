@@ -77,7 +77,7 @@ def write_run(root: Path, items: dict[str, GoldenItem]) -> None:
             )
 
 
-def test_export_is_blind_balanced_and_reproducible(tmp_path: Path) -> None:
+def test_export_is_a_blind_random_sample_per_config(tmp_path: Path) -> None:
     items = golden_set()
     write_run(tmp_path, items)
 
@@ -93,14 +93,16 @@ def test_export_is_blind_balanced_and_reproducible(tmp_path: Path) -> None:
     key = json.loads((calibration_dir(tmp_path) / "key.json").read_text("utf-8"))
     configs = [entry["config"] for entry in key.values()]
     assert configs.count("full") == configs.count("one-step") == 50
-    special = [r for r in rows if r["category"] == "injection"]
-    assert len(special) == 30
+    # A simple random sample (for PPI), not a stratified one.
+    full_items = {e["item_id"] for e in key.values() if e["config"] == "full"}
+    assert len(full_items) == 50
+    assert export_calibration(tmp_path, items, seed=8).read_text("utf-8") != first
 
 
 def test_export_needs_enough_answers(tmp_path: Path) -> None:
     items = dict(list(golden_set().items())[:10])
     write_run(tmp_path, items)
-    with pytest.raises(ValueError, match="need 35 full grounded answers"):
+    with pytest.raises(ValueError, match="need 50 full answers"):
         export_calibration(tmp_path, items)
 
 
@@ -139,8 +141,8 @@ def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
                 item_id=item,
                 config="full",
                 category="answerable",
-                behaviour_correct=True,
                 key_fact_verdicts=verdicts,
+                contradiction=False,
                 key_fact_recall=verdicts.count("supported") / 2,
                 faithfulness=n / 10,
                 citation_support=1.0 if n % 3 else 0.0,
@@ -160,14 +162,20 @@ def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
         "".join(g.model_dump_json() + "\n" for g in grades), encoding="utf-8"
     )
 
-    rows = {row.metric: row for row in score_calibration(tmp_path)}
+    rows = {(row.metric, row.statistic): row for row in score_calibration(tmp_path)}
 
-    assert rows["key_fact_supported"].value == 1.0
-    assert rows["key_fact_supported"].n == 20
-    assert rows["key_fact_supported"].reliable
-    assert rows["faithfulness"].value == pytest.approx(1.0)
-    assert rows["citation_support"].value == pytest.approx(1.0)
-    assert rows["injection_followed"].n == 0
-    assert not rows["injection_followed"].reliable
+    kappa = rows[("key_fact_supported", "cohen_kappa")]
+    assert (kappa.value, kappa.n, kappa.reliable) == (1.0, 20, True)
+    assert rows[("key_fact_supported", "percent_agreement")].value == 1.0
+    assert rows[("key_fact_supported", "gwet_ac1")].value == 1.0
+    assert rows[("faithfulness", "spearman")].value == pytest.approx(1.0)
+    assert rows[("supported_citation_rate", "spearman")].value == pytest.approx(1.0)
+    assert rows[("injection_followed", "cohen_kappa")].n == 0
+    assert not rows[("injection_followed", "cohen_kappa")].reliable
     stored = json.loads((directory / "agreement.json").read_text("utf-8"))
-    assert stored["rows"][1]["value"] is None
+    assert any(row["value"] is None for row in stored["rows"])
+    ppi = json.loads((directory / "ppi.json").read_text("utf-8"))["rows"]
+    recall = next(row for row in ppi if row["metric"] == "nugget_recall")
+    # Identical judge and grader labels: the correction is zero.
+    assert recall["ppi"] == pytest.approx(recall["judge_mean"])
+    assert recall["n_labelled"] == 10

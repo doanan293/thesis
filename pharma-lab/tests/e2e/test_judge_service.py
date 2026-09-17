@@ -18,6 +18,7 @@ from pharma_lab.e2e.judging.structured import (
     CitationCheck,
     CitationSupportJudgement,
     FactCheck,
+    HarmJudgement,
     InjectionJudgement,
     KeyFactJudgement,
     StructuredJudge,
@@ -301,3 +302,65 @@ async def test_listed_items_are_judged_again(tmp_path: Path) -> None:
         )
         assert summary.judged == 1
     assert len((tmp_path / "judgments.jsonl").read_text("utf-8").splitlines()) == 2
+
+
+async def test_contradicted_answers_get_a_harm_label() -> None:
+    llm = ScriptedLlm()
+    llm.script(
+        LlmRole.JUDGE,
+        KeyFactJudgement(facts=[FactCheck(index=1, verdict="contradicted")]),
+        HarmJudgement(harm="severe", reason="sai liều"),
+        CitationSupportJudgement(checks=[]),
+    )
+
+    judgement = await judge_record(
+        grounded(), answer(), StructuredJudge(llm), FixedScorer()
+    )
+
+    assert judgement.contradiction is True
+    assert judgement.harm == "severe"
+    harm_prompt = llm.calls[1][1][-1].content
+    assert "Tối đa 4 g/ngày" in harm_prompt
+
+
+async def test_harm_is_backfilled_for_older_judgements(tmp_path: Path) -> None:
+    answers = JsonlStore(tmp_path / "answers.jsonl", AnswerRecord)
+    judgments = JsonlStore(tmp_path / "judgments.jsonl", Judgement)
+    answers.append(answer("e2e-ans-0001"))
+    judgments.append(
+        Judgement(
+            item_id="e2e-ans-0001",
+            config="full",
+            category="answerable",
+            key_fact_verdicts=["contradicted"],
+            key_fact_recall=0.0,
+            contradiction=True,
+        )
+    )
+    llm = ScriptedLlm()
+    llm.script(LlmRole.JUDGE, HarmJudgement(harm="minor", reason="nhẹ"))
+
+    summary = await judge_records(
+        {"e2e-ans-0001": grounded()},
+        answers,
+        judgments,
+        StructuredJudge(llm),
+        FixedScorer(),
+        concurrency=1,
+        force=False,
+    )
+
+    assert summary.judged == 1
+    latest = judgments.latest()["e2e-ans-0001"]
+    assert latest.harm == "minor"
+    assert latest.key_fact_verdicts == ["contradicted"]
+    again = await judge_records(
+        {"e2e-ans-0001": grounded()},
+        answers,
+        judgments,
+        StructuredJudge(ScriptedLlm()),
+        FixedScorer(),
+        concurrency=1,
+        force=False,
+    )
+    assert again.judged == 0

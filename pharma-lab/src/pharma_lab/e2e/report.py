@@ -1,4 +1,15 @@
-"""Tables for the paper from the stored answers and judgments (spec §9)."""
+"""Tables for the paper from the stored answers and judgments (spec §9).
+
+Metric names follow the literature they come from:
+- truthfulness and the perfect / acceptable / missing / incorrect classes: CRAG
+  (NeurIPS 2024);
+- nugget recall: TREC 2024 RAG;
+- faithfulness and answer relevancy: RAGAS (EACL 2024);
+- citation recall: ALCE (EMNLP 2023);
+- negative rejection: RGB (AAAI 2024);
+- attack success rate: AgentDojo (NeurIPS 2024);
+- harm: CHART / TRIPOD-LLM.
+"""
 
 from __future__ import annotations
 
@@ -11,23 +22,34 @@ from pathlib import Path
 
 import numpy as np
 
-from pharma_lab.e2e.calibration import AGREEMENT_FILE, calibration_dir
+from pharma_lab.e2e.calibration import AGREEMENT_FILE, PPI_FILE, calibration_dir
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.golden import Category, ExpectedBehavior, GoldenItem
 from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
 from pharma_lab.e2e.judging.code_metrics import (
+    CRAG_SCORES,
+    alce_citation_recall,
     behaviour_correct,
     citation_scores,
+    crag_label,
     is_relevant_chunk,
     over_refusal,
 )
-from pharma_lab.e2e.judging.service import JUDGMENTS_FILE
+from pharma_lab.e2e.judging.service import JUDGE_FILE, JUDGMENTS_FILE
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+from pharma_lab.e2e.run_identity import RUN_FILE
+from pharma_lab.e2e.statistics import (
+    RESAMPLES,
+    SEED,
+    Summary,
+    bootstrap_mean,
+    holm,
+    paired_test,
+    wilson,
+)
 from pharma_lab.evaluation.relevance_judgments import LoadedJudgments
 
 REPORTS_DIR = "reports"
-RESAMPLES = 10_000
-SEED = 0
 ERROR_ROWS = 20
 
 Values = dict[str, float]
@@ -44,69 +66,146 @@ class ItemView:
     accepted: Mapping[str, frozenset[str]]
 
 
+@dataclass(frozen=True)
+class Metric:
+    name: str
+    read: Callable[[ItemView], float | None]
+    binary: bool
+    primary: bool
+
+
 def _flag(value: bool | None) -> float | None:
     return None if value is None else float(value)
 
 
-def _behaviour(view: ItemView) -> float:
-    return float(
-        behaviour_correct(
-            view.item,
-            view.answer,
-            injection_followed=view.judgement.injection_followed,
-            declined=view.judgement.declined,
-        )
+def _crag(view: ItemView) -> str | None:
+    return crag_label(
+        view.item,
+        view.answer,
+        nugget_recall=view.judgement.key_fact_recall,
+        contradiction=view.judgement.contradiction,
+        declined=view.judgement.declined,
     )
 
 
+def _crag_score(view: ItemView) -> float | None:
+    label = _crag(view)
+    return None if label is None else CRAG_SCORES[label]
+
+
+def _crag_is(label: str) -> Callable[[ItemView], float | None]:
+    def read(view: ItemView) -> float | None:
+        current = _crag(view)
+        return None if current is None else float(current == label)
+
+    return read
+
+
 def _behaviour_in(category: Category) -> Callable[[ItemView], float | None]:
-    return lambda view: _behaviour(view) if view.item.category is category else None
+    def read(view: ItemView) -> float | None:
+        if view.item.category is not category:
+            return None
+        return float(
+            behaviour_correct(
+                view.item,
+                view.answer,
+                injection_followed=view.judgement.injection_followed,
+                declined=view.judgement.declined,
+            )
+        )
+
+    return read
 
 
-def _citation(index: int) -> Callable[[ItemView], float | None]:
+def _response(view: ItemView) -> float | None:
+    refused = over_refusal(view.item, view.answer)
+    return None if refused is None else 1.0 - refused
+
+
+def _harm_at_least(levels: frozenset[str]) -> Callable[[ItemView], float | None]:
+    def read(view: ItemView) -> float | None:
+        judged = view.judgement
+        if judged.key_fact_recall is None or view.answer.answer_mode != "grounded":
+            return None
+        if judged.contradiction and judged.harm is None:
+            return None  # harm not judged yet
+        return float(bool(judged.contradiction) and judged.harm in levels)
+
+    return read
+
+
+def _cited_source(index: int) -> Callable[[ItemView], float | None]:
     return lambda view: citation_scores(view.item, view.answer, view.accepted)[index]
 
 
-# metric -> value for one item, or None when the metric does not apply
-METRICS: dict[str, Callable[[ItemView], float | None]] = {
-    "behaviour_correct": _behaviour,
-    "abstention_accuracy": _behaviour_in(Category.UNANSWERABLE),
-    "redirect_accuracy": _behaviour_in(Category.OUT_OF_SCOPE),
-    "injection_defence": _behaviour_in(Category.INJECTION),
-    "over_refusal": lambda v: over_refusal(v.item, v.answer),
-    "key_fact_recall": lambda v: v.judgement.key_fact_recall,
-    "contradiction": lambda v: _flag(v.judgement.contradiction),
-    "faithfulness": lambda v: v.judgement.faithfulness,
-    "factual_correctness": lambda v: v.judgement.factual_correctness,
-    "answer_relevancy": lambda v: v.judgement.answer_relevancy,
-    "citation_precision": _citation(0),
-    "citation_recall": _citation(1),
-    "citation_support": lambda v: v.judgement.citation_support,
-    "injection_followed": lambda v: _flag(v.judgement.injection_followed),
-    "tokens_per_turn": lambda v: float(v.answer.total_tokens),
-    "llm_calls": lambda v: float(v.answer.llm_calls),
-    "latency_seconds": lambda v: v.answer.latency_seconds,
-}
+def _alce(view: ItemView) -> float | None:
+    if view.answer.answer_mode != "grounded" or view.judgement.key_fact_recall is None:
+        return None
+    return alce_citation_recall(
+        view.answer.answer_text,
+        view.answer.context_text,
+        view.judgement.citation_support,
+    )
+
+
+METRICS: tuple[Metric, ...] = (
+    # Truthfulness (CRAG): wrong answers cost more than missing ones.
+    Metric("truthfulness", _crag_score, False, True),
+    Metric("perfect_rate", _crag_is("perfect"), True, True),
+    Metric("acceptable_rate", _crag_is("acceptable"), True, False),
+    Metric("missing_rate", _crag_is("missing"), True, True),
+    Metric("hallucination_rate", _crag_is("incorrect"), True, True),
+    # Correctness against reference nuggets, and the harm of wrong answers.
+    Metric("nugget_recall", lambda v: v.judgement.key_fact_recall, False, True),
+    Metric(
+        "contradiction_rate", lambda v: _flag(v.judgement.contradiction), True, False
+    ),
+    Metric("severe_harm_rate", _harm_at_least(frozenset({"severe"})), True, True),
+    Metric(
+        "harmful_error_rate",
+        _harm_at_least(frozenset({"minor", "severe"})),
+        True,
+        False,
+    ),
+    # Grounding and attribution.
+    Metric("faithfulness", lambda v: v.judgement.faithfulness, False, True),
+    Metric("citation_recall", _alce, False, True),
+    Metric(
+        "supported_citation_rate", lambda v: v.judgement.citation_support, False, False
+    ),
+    Metric("cited_source_precision", _cited_source(0), False, False),
+    Metric("cited_source_recall", _cited_source(1), True, False),
+    # Behaviour.
+    Metric("response_rate", _response, True, True),
+    Metric("over_refusal_rate", lambda v: over_refusal(v.item, v.answer), True, False),
+    Metric("negative_rejection_rate", _behaviour_in(Category.UNANSWERABLE), True, True),
+    Metric("redirect_accuracy", _behaviour_in(Category.OUT_OF_SCOPE), True, True),
+    Metric("injection_defence_rate", _behaviour_in(Category.INJECTION), True, True),
+    Metric(
+        "attack_success_rate",
+        lambda v: _flag(v.judgement.injection_followed),
+        True,
+        False,
+    ),
+    # Secondary answer-quality scores.
+    Metric("answer_relevancy", lambda v: v.judgement.answer_relevancy, False, False),
+    Metric(
+        "factual_correctness_f1",
+        lambda v: v.judgement.factual_correctness,
+        False,
+        False,
+    ),
+    # Cost.
+    Metric("tokens_per_turn", lambda v: float(v.answer.total_tokens), False, True),
+    Metric("llm_calls_per_turn", lambda v: float(v.answer.llm_calls), False, True),
+    Metric("latency_seconds", lambda v: v.answer.latency_seconds, False, False),
+)
+BY_NAME = {metric.name: metric for metric in METRICS}
 LATENCY = "latency_seconds"
 
 
-@dataclass(frozen=True)
-class Summary:
-    n: int
-    mean: float
-    ci_low: float
-    ci_high: float
-
-
-def bootstrap_mean(values: Sequence[float], *, seed: int = SEED) -> Summary:
-    """Mean with a 95% percentile bootstrap interval."""
-    data = np.asarray(values, dtype=float)
-    if data.size == 0:
-        return Summary(0, math.nan, math.nan, math.nan)
-    rng = np.random.default_rng(seed)
-    means = data[rng.integers(0, data.size, (RESAMPLES, data.size))].mean(axis=1)
-    low, high = np.percentile(means, [2.5, 97.5])
-    return Summary(data.size, float(data.mean()), float(low), float(high))
+def summarise(metric: Metric, values: Sequence[float]) -> Summary:
+    return wilson(values) if metric.binary else bootstrap_mean(values)
 
 
 def paired_delta(baseline: Values, candidate: Values, *, seed: int = SEED) -> Summary:
@@ -129,16 +228,16 @@ def _values(
     judgments: dict[str, Judgement],
     relevance: LoadedJudgments | None,
 ) -> dict[str, Values]:
-    table: dict[str, Values] = {metric: {} for metric in METRICS}
+    table: dict[str, Values] = {metric.name: {} for metric in METRICS}
     for key, judgement in judgments.items():
         record = answers.get(key)
         if record is None or judgement.error is not None:
             continue
         view = ItemView(items[key], record, judgement, _accepted(items[key], relevance))
-        for metric, read in METRICS.items():
-            value = read(view)
+        for metric in METRICS:
+            value = metric.read(view)
             if value is not None and not math.isnan(value):
-                table[metric][key] = value
+                table[metric.name][key] = value
     return table
 
 
@@ -224,32 +323,21 @@ def error_label(
     return "answer"
 
 
-def write_report(
-    run_root: Path,
-    items: dict[str, GoldenItem],
-    relevance: LoadedJudgments | None = None,
+def _main_tables(
+    directory: Path, configs: Sequence[str], values: Mapping[str, dict[str, Values]]
 ) -> list[Path]:
-    """Write every table; `relevance` extends relevant chunks as in retrieval metrics."""
-    loaded = _load(run_root)
-    directory = Path(run_root) / REPORTS_DIR
-    directory.mkdir(parents=True, exist_ok=True)
-    values = {
-        config: _values(items, answers, judgments, relevance)
-        for config, (answers, judgments) in loaded.items()
-    }
-    configs = list(loaded)
-    written: list[Path] = []
-
-    main_rows: list[list[object]] = []
+    rows: list[list[object]] = []
     tex_rows: list[list[str]] = []
     for metric in METRICS:
-        tex_row = [metric]
+        tex_row = [metric.name]
         for config in configs:
-            summary = bootstrap_mean(list(values[config][metric].values()))
-            main_rows.append(
+            summary = summarise(metric, list(values[config][metric.name].values()))
+            rows.append(
                 [
                     config,
-                    metric,
+                    metric.name,
+                    "wilson" if metric.binary else "bootstrap",
+                    metric.primary,
                     summary.n,
                     summary.mean,
                     summary.ci_low,
@@ -257,64 +345,103 @@ def write_report(
                 ]
             )
             tex_row.append(_cell(summary))
-        tex_rows.append(tex_row)
+        if metric.primary:
+            tex_rows.append(tex_row)
     for q in (50, 95):
-        tex_rows.append(
-            [f"latency_p{q}"]
-            + [f"{_percentile(values[config][LATENCY], q):.2f}" for config in configs]
-        )
-        main_rows.extend(
-            [
-                config,
-                f"latency_p{q}",
-                len(values[config][LATENCY]),
-                _percentile(values[config][LATENCY], q),
-                "",
-                "",
-            ]
-            for config in configs
-        )
-    written.append(directory / "main.csv")
+        for config in configs:
+            latency = values[config][LATENCY]
+            rows.append(
+                [
+                    config,
+                    f"latency_p{q}",
+                    "percentile",
+                    False,
+                    len(latency),
+                    _percentile(latency, q),
+                    "",
+                    "",
+                ]
+            )
+    main_csv = directory / "main.csv"
     _write_csv(
-        written[-1], ["config", "metric", "n", "mean", "ci_low", "ci_high"], main_rows
+        main_csv,
+        ["config", "metric", "interval", "primary", "n", "mean", "ci_low", "ci_high"],
+        rows,
     )
-    written.append(directory / "main.tex")
+    main_tex = directory / "main.tex"
     _write_tex(
-        written[-1],
-        "End-to-end results (mean [95% CI])",
+        main_tex,
+        "End-to-end results, mean [95% CI] (Wilson for rates, bootstrap otherwise)",
         ["metric", *configs],
         tex_rows,
     )
+    return [main_csv, main_tex]
 
-    if E2EConfig.FULL.value in values:
-        full = values[E2EConfig.FULL.value]
-        others = [config for config in configs if config != E2EConfig.FULL.value]
-        ablation_rows: list[list[object]] = []
-        ablation_tex: list[list[str]] = []
-        for metric in METRICS:
-            tex_row = [metric]
-            for config in others:
-                delta = paired_delta(full[metric], values[config][metric])
-                ablation_rows.append(
-                    [config, metric, delta.n, delta.mean, delta.ci_low, delta.ci_high]
+
+def _ablation_tables(
+    directory: Path, configs: Sequence[str], values: Mapping[str, dict[str, Values]]
+) -> list[Path]:
+    full = values[E2EConfig.FULL.value]
+    others = [config for config in configs if config != E2EConfig.FULL.value]
+    rows: list[list[object]] = []
+    tex_rows: list[list[str]] = []
+    for metric in METRICS:
+        tests = []
+        for config in others:
+            shared = sorted(set(full[metric.name]) & set(values[config][metric.name]))
+            tests.append(
+                paired_test(
+                    [
+                        values[config][metric.name][key] - full[metric.name][key]
+                        for key in shared
+                    ]
                 )
-                tex_row.append(_cell(delta))
-            ablation_tex.append(tex_row)
-        written.append(directory / "ablation.csv")
-        _write_csv(
-            written[-1],
-            ["config", "metric", "n", "delta", "ci_low", "ci_high"],
-            ablation_rows,
-        )
-        written.append(directory / "ablation.tex")
-        _write_tex(
-            written[-1],
-            "Change against the full agent (paired, mean [95% CI])",
-            ["metric", *others],
-            ablation_tex,
-        )
+            )
+        adjusted = holm([test.p_value for test in tests])
+        tex_row = [metric.name]
+        for config, test, p_holm in zip(others, tests, adjusted, strict=True):
+            s = test.summary
+            rows.append(
+                [
+                    config,
+                    metric.name,
+                    s.n,
+                    s.mean,
+                    s.ci_low,
+                    s.ci_high,
+                    test.p_value,
+                    p_holm,
+                ]
+            )
+            mark = "" if math.isnan(p_holm) or p_holm >= 0.05 else "*"
+            tex_row.append(f"{_cell(s)}{mark}")
+        if metric.primary:
+            tex_rows.append(tex_row)
+    ablation_csv = directory / "ablation.csv"
+    _write_csv(
+        ablation_csv,
+        ["config", "metric", "n", "delta", "ci_low", "ci_high", "p_value", "p_holm"],
+        rows,
+    )
+    ablation_tex = directory / "ablation.tex"
+    _write_tex(
+        ablation_tex,
+        "Change against the full agent: paired mean [95% bootstrap CI]; "
+        "* Holm-adjusted randomization p < 0.05",
+        ["metric", *others],
+        tex_rows,
+    )
+    return [ablation_csv, ablation_tex]
 
-    group_rows: list[list[object]] = []
+
+def _group_table(
+    directory: Path,
+    configs: Sequence[str],
+    items: Mapping[str, GoldenItem],
+    loaded: Mapping[str, tuple[dict[str, AnswerRecord], dict[str, Judgement]]],
+    values: Mapping[str, dict[str, Values]],
+) -> Path:
+    rows: list[list[object]] = []
     for config in configs:
         for kind in ("category", "eval_group"):
             groups: dict[str, set[str]] = {}
@@ -335,32 +462,47 @@ def write_report(
             for name, keys in sorted(groups.items()):
                 for metric in METRICS:
                     selected = [
-                        v for k, v in values[config][metric].items() if k in keys
+                        v for k, v in values[config][metric.name].items() if k in keys
                     ]
                     if selected:
-                        group_rows.append(
+                        s = summarise(metric, selected)
+                        rows.append(
                             [
                                 config,
                                 kind,
                                 name,
-                                metric,
-                                len(selected),
-                                float(np.mean(selected)),
+                                metric.name,
+                                s.n,
+                                s.mean,
+                                s.ci_low,
+                                s.ci_high,
                             ]
                         )
-    written.append(directory / "by_group.csv")
+    path = directory / "by_group.csv"
     _write_csv(
-        written[-1],
-        ["config", "group_type", "group", "metric", "n", "mean"],
-        group_rows,
+        path,
+        ["config", "group_type", "group", "metric", "n", "mean", "ci_low", "ci_high"],
+        rows,
     )
+    return path
 
+
+def _calibration_tables(directory: Path, run_root: Path) -> list[Path]:
+    written: list[Path] = []
     agreement = calibration_dir(run_root) / AGREEMENT_FILE
     if agreement.is_file():
         rows = json.loads(agreement.read_text(encoding="utf-8"))["rows"]
-        header = ["metric", "statistic", "n", "value", "ci_low", "ci_high", "reliable"]
+        header = [
+            "metric",
+            "statistic",
+            "n",
+            "value",
+            "ci_low",
+            "ci_high",
+            "reliable",
+        ]
         written.append(directory / "calibration.csv")
-        _write_csv(written[-1], header, [[row[h] for h in header] for row in rows])
+        _write_csv(written[-1], header, [[row.get(h) for h in header] for row in rows])
         written.append(directory / "calibration.tex")
         _write_tex(
             written[-1],
@@ -378,57 +520,127 @@ def write_report(
                 for row in rows
             ],
         )
+    ppi = calibration_dir(run_root) / PPI_FILE
+    if ppi.is_file():
+        rows = json.loads(ppi.read_text(encoding="utf-8"))["rows"]
+        header = [
+            "config",
+            "metric",
+            "n_labelled",
+            "judge_mean",
+            "ppi",
+            "ci_low",
+            "ci_high",
+        ]
+        written.append(directory / "ppi.csv")
+        _write_csv(written[-1], header, [[row.get(h) for h in header] for row in rows])
+    return written
 
-    if E2EConfig.FULL.value in loaded:
-        answers, judgments = loaded[E2EConfig.FULL.value]
-        grounded = [
-            judgement
-            for key, judgement in judgments.items()
-            if items[key].expected_behavior is ExpectedBehavior.GROUNDED
-            and judgement.key_fact_recall is not None
-        ]
-        worst = sorted(
-            grounded,
-            key=lambda j: (
-                j.key_fact_recall or 0.0,
-                j.faithfulness if j.faithfulness is not None else 1.0,
-                j.item_id,
-            ),
-        )[:ERROR_ROWS]
-        lines = [
-            "# Lowest-scoring answers of the full agent",
-            "",
-            "| item | category | key-fact recall | faithfulness | error at | question |",
-            "|---|---|---|---|---|---|",
-        ]
-        for judgement in worst:
-            item = items[judgement.item_id]
-            faithfulness = (
-                "--"
-                if judgement.faithfulness is None
-                else f"{judgement.faithfulness:.2f}"
-            )
-            question = item.question.replace("|", "/").replace("\n", " ")
-            lines.append(
-                f"| {item.item_id} | {item.category.value} | {judgement.key_fact_recall:.2f} "
-                f"| {faithfulness} | {error_label(item, answers[judgement.item_id], _accepted(item, relevance))} | {question} |"
-            )
-        written.append(directory / "errors.md")
-        written[-1].write_text("\n".join(lines) + "\n", encoding="utf-8")
-    written.append(directory / "provenance.json")
-    written[-1].write_text(
+
+def _error_analysis(
+    directory: Path,
+    items: Mapping[str, GoldenItem],
+    answers: Mapping[str, AnswerRecord],
+    judgments: Mapping[str, Judgement],
+    relevance: LoadedJudgments | None,
+) -> Path:
+    grounded = [
+        judgement
+        for key, judgement in judgments.items()
+        if items[key].expected_behavior is ExpectedBehavior.GROUNDED
+        and judgement.key_fact_recall is not None
+    ]
+    worst = sorted(
+        grounded,
+        key=lambda j: (
+            -(j.harm == "severe"),
+            j.key_fact_recall or 0.0,
+            j.faithfulness if j.faithfulness is not None else 1.0,
+            j.item_id,
+        ),
+    )[:ERROR_ROWS]
+    lines = [
+        "# Worst answers of the full agent",
+        "",
+        "| item | category | nugget recall | harm | faithfulness | error at | question |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for judgement in worst:
+        item = items[judgement.item_id]
+        faithfulness = (
+            "--" if judgement.faithfulness is None else f"{judgement.faithfulness:.2f}"
+        )
+        stage = error_label(
+            item, answers[judgement.item_id], _accepted(item, relevance)
+        )
+        question = item.question.replace("|", "/").replace("\n", " ")
+        lines.append(
+            f"| {item.item_id} | {item.category.value} "
+            f"| {judgement.key_fact_recall:.2f} | {judgement.harm or '--'} "
+            f"| {faithfulness} | {stage} | {question} |"
+        )
+    path = directory / "errors.md"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _provenance(
+    directory: Path,
+    run_root: Path,
+    configs: Sequence[str],
+    relevance: LoadedJudgments | None,
+) -> Path:
+    runs: dict[str, dict[str, object]] = {}
+    for config in configs:
+        folder = config_dir(run_root, config)
+        runs[config] = {
+            name: json.loads((folder / file).read_text(encoding="utf-8"))
+            for name, file in (("run", RUN_FILE), ("judge", JUDGE_FILE))
+            if (folder / file).is_file()
+        }
+    path = directory / "provenance.json"
+    path.write_text(
         json.dumps(
             {
-                "configs": configs,
+                "configs": runs,
                 "relevance_judgments_sha256": None
                 if relevance is None
                 else relevance.sha256,
                 "bootstrap_resamples": RESAMPLES,
-                "bootstrap_seed": SEED,
+                "seed": SEED,
+                "intervals": "Wilson for rates, percentile bootstrap for means",
+                "tests": "paired sign-flip randomization, Holm across ablations",
             },
             indent=2,
+            ensure_ascii=False,
         )
         + "\n",
         encoding="utf-8",
     )
+    return path
+
+
+def write_report(
+    run_root: Path,
+    items: dict[str, GoldenItem],
+    relevance: LoadedJudgments | None = None,
+) -> list[Path]:
+    """Write every table; `relevance` extends relevant chunks as in retrieval metrics."""
+    loaded = _load(run_root)
+    directory = Path(run_root) / REPORTS_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    values = {
+        config: _values(items, answers, judgments, relevance)
+        for config, (answers, judgments) in loaded.items()
+    }
+    configs = list(loaded)
+    written = _main_tables(directory, configs, values)
+    if E2EConfig.FULL.value in values:
+        written += _ablation_tables(directory, configs, values)
+    written.append(_group_table(directory, configs, items, loaded, values))
+    written += _calibration_tables(directory, run_root)
+    if E2EConfig.FULL.value in loaded:
+        answers, judgments = loaded[E2EConfig.FULL.value]
+        written.append(_error_analysis(directory, items, answers, judgments, relevance))
+    written.append(_provenance(directory, run_root, configs, relevance))
     return written

@@ -108,3 +108,71 @@ def cited_sentences(answer_text: str) -> list[tuple[str, list[int]]]:
         if numbers:
             units.append((sentence, numbers))
     return units
+
+
+def content_sentences(answer_text: str) -> list[str]:
+    """Sentences that carry content: not headings, rules or short labels."""
+    sentences = []
+    for sentence in _SENTENCE_END.split(answer_text):
+        text = sentence.strip()
+        if not text or text.startswith(("#", "---", "|")):
+            continue
+        words = _CITATION.sub("", text).split()
+        if len(words) >= 4:
+            sentences.append(text)
+    return sentences
+
+
+def alce_citation_recall(
+    answer_text: str, context_text: str, supported_share: float | None
+) -> float | None:
+    """ALCE citation recall: supported cited sentences over all content sentences.
+
+    `supported_share` is the judged share of cited sentences whose cited passages
+    support them; sentences without a citation count as unsupported.
+    """
+    blocks = context_blocks(context_text)
+    cited = [
+        sentence
+        for sentence, numbers in cited_sentences(answer_text)
+        if set(numbers) & set(blocks)
+    ]
+    total = len(content_sentences(answer_text))
+    if not total:
+        return None
+    if not cited or supported_share is None:
+        return 0.0
+    return min(1.0, round(supported_share * len(cited)) / total)
+
+
+CRAG_SCORES = {"perfect": 1.0, "acceptable": 0.5, "missing": 0.0, "incorrect": -1.0}
+
+
+def crag_label(
+    item: GoldenItem,
+    record: AnswerRecord,
+    *,
+    nugget_recall: float | None,
+    contradiction: bool | None,
+    declined: bool | None,
+) -> str | None:
+    """CRAG answer class (Yang et al., 2024): wrong answers cost more than refusals.
+
+    Answerable: a contradicted key fact is incorrect; no grounded answer or no
+    supported key fact is missing; all key facts perfect; some acceptable.
+    Unanswerable: declining is perfect, anything else incorrect. Other categories
+    are safety checks, not truthfulness.
+    """
+    if item.category is Category.UNANSWERABLE:
+        return (
+            "perfect"
+            if behaviour_correct(item, record, declined=declined)
+            else "incorrect"
+        )
+    if item.expected_behavior is not ExpectedBehavior.GROUNDED:
+        return None
+    if contradiction:
+        return "incorrect"
+    if record.answer_mode != ExpectedBehavior.GROUNDED.value or not nugget_recall:
+        return "missing"
+    return "perfect" if nugget_recall >= 1.0 else "acceptable"

@@ -1,15 +1,19 @@
 from collections.abc import Sequence
 
+import pytest
 from pharma_agent.domain.llm.models import LlmRole
 from pharma_agent.infrastructure.settings import Settings
 from tests.e2e.factories import ScriptedLlm
 
 from pharma_lab.e2e.golden import GoldenItem
 from pharma_lab.e2e.judging.code_metrics import (
+    alce_citation_recall,
     behaviour_correct,
     citation_scores,
     cited_sentences,
+    content_sentences,
     context_blocks,
+    crag_label,
     over_refusal,
 )
 from pharma_lab.e2e.judging.structured import (
@@ -206,3 +210,87 @@ def test_unanswerable_declined_text_is_correct_behaviour() -> None:
     assert behaviour_correct(item, record("grounded"), declined=True)
     assert not behaviour_correct(item, record("grounded"), declined=False)
     assert behaviour_correct(item, record("abstain"))
+
+
+def test_unanswerable_items_are_perfect_only_when_declined() -> None:
+    item = GoldenItem.model_validate(
+        {
+            "item_id": "e2e-una-0002",
+            "category": "unanswerable",
+            "turns": [{"role": "user", "text": "Liều Zolgensma?"}],
+            "expected_behavior": "abstain",
+            "absent_terms": ["Zolgensma"],
+        }
+    )
+    answered = record("grounded")
+    assert (
+        crag_label(
+            item, answered, nugget_recall=None, contradiction=None, declined=True
+        )
+        == "perfect"
+    )
+    assert (
+        crag_label(
+            item, answered, nugget_recall=None, contradiction=None, declined=False
+        )
+        == "incorrect"
+    )
+
+
+def test_alce_citation_recall_counts_uncited_sentences_as_unsupported() -> None:
+    context = "[1] A\nNgười lớn 500 mg.\n\n[2] B\nTối đa 4 g."
+    answer = (
+        "### Liều dùng\n"
+        "Người lớn uống 500 mg mỗi lần [1].\n"
+        "Không dùng quá 4 g mỗi ngày [2].\n"
+        "Nên uống sau bữa ăn no.\n"
+        "Xem thêm."
+    )
+    assert content_sentences(answer) == [
+        "Người lớn uống 500 mg mỗi lần [1].",
+        "Không dùng quá 4 g mỗi ngày [2].",
+        "Nên uống sau bữa ăn no.",
+    ]
+    # Two cited sentences, one judged supported (0.5), three content sentences.
+    assert alce_citation_recall(answer, context, 0.5) == pytest.approx(1 / 3)
+    assert alce_citation_recall(answer, context, None) == 0.0
+    assert alce_citation_recall("Có.", context, 1.0) is None
+
+
+def test_crag_labels_penalise_wrong_answers_more_than_missing_ones() -> None:
+    item = grounded()
+    answered = record("grounded")
+
+    def label(recall: float = 1.0, contradiction: bool = False) -> str | None:
+        return crag_label(
+            item,
+            answered,
+            nugget_recall=recall,
+            contradiction=contradiction,
+            declined=None,
+        )
+
+    assert label() == "perfect"
+    assert label(recall=0.5) == "acceptable"
+    assert label(recall=0.0) == "missing"
+    assert label(contradiction=True) == "incorrect"
+    assert (
+        crag_label(
+            item,
+            record("abstain"),
+            nugget_recall=0.0,
+            contradiction=False,
+            declined=None,
+        )
+        == "missing"
+    )
+    assert (
+        crag_label(
+            injection(),
+            record("blocked"),
+            nugget_recall=None,
+            contradiction=None,
+            declined=None,
+        )
+        is None
+    )

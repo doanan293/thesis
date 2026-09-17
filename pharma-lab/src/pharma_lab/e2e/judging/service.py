@@ -67,10 +67,14 @@ async def judge_record(
         if item.expected_behavior is ExpectedBehavior.GROUNDED:
             if record.answer_mode == ExpectedBehavior.GROUNDED.value:
                 verdicts = await judge.key_facts(item, record.answer_text)
+                contradicted = "contradicted" in verdicts
                 update |= {
                     "key_fact_verdicts": verdicts,
                     "key_fact_recall": verdicts.count("supported") / len(verdicts),
-                    "contradiction": "contradicted" in verdicts,
+                    "contradiction": contradicted,
+                    "harm": await judge.harm(item, record.answer_text, verdicts)
+                    if contradicted
+                    else None,
                     "citation_support": await judge.citation_support(
                         record.answer_text, record.context_text
                     ),
@@ -94,6 +98,15 @@ async def judge_record(
         return base.model_copy(
             update={"error": f"{type(error).__name__}: {error}"[:500]}
         )
+
+
+def record_needs_harm(judged: Judgement | None) -> bool:
+    return (
+        judged is not None
+        and judged.error is None
+        and judged.contradiction is True
+        and judged.harm is None
+    )
 
 
 @dataclass(frozen=True)
@@ -158,6 +171,12 @@ async def judge_records(
         for key, record in sorted(records.items())
         if force or key in only or key not in done or done[key].error is not None
     ]
+    pending_keys = {record.item_id for record in pending}
+    backfill = [
+        (items[key], records[key], done[key])
+        for key in sorted(records)
+        if key not in pending_keys and record_needs_harm(done.get(key))
+    ]
     semaphore = asyncio.Semaphore(concurrency)
     lock = asyncio.Lock()
 
@@ -167,11 +186,30 @@ async def judge_records(
         async with lock:
             judgments.append(judgement)
 
-    await asyncio.gather(*(one(record) for record in pending))
+    async def add_harm(
+        item: GoldenItem, record: AnswerRecord, judged: Judgement
+    ) -> None:
+        async with semaphore:
+            try:
+                harm = await judge.harm(
+                    item, record.answer_text, judged.key_fact_verdicts or []
+                )
+                updated = judged.model_copy(update={"harm": harm})
+            except Exception as error:  # retried on the next run
+                updated = judged.model_copy(
+                    update={"error": f"{type(error).__name__}: {error}"[:500]}
+                )
+        async with lock:
+            judgments.append(updated)
+
+    await asyncio.gather(
+        *(one(record) for record in pending),
+        *(add_harm(*entry) for entry in backfill),
+    )
     final = judgments.latest()
     return JudgeSummary(
         total=len(records),
-        judged=len(pending),
+        judged=len(pending) + len(backfill),
         errors=sum(1 for judgement in final.values() if judgement.error is not None),
     )
 

@@ -74,18 +74,40 @@ uv run pharma-lab e2e report --run e2e-v1
 
 **`e2e judge`** ghi `judgments.jsonl` và `judge.json` (model judge). Chấm lại một cấu hình bằng judge khác cần `--force`.
 
-**Chỉ số:**
+**Chỉ số.** Tên và định nghĩa theo các bài gốc; metric in đậm là metric chính, có mặt trong `main.tex` và `ablation.tex`.
 
-| Chỉ số | Cách chấm |
-| --- | --- |
-| Faithfulness, factual correctness, answer relevancy | RAGAS 0.4.3 |
-| Key-fact recall, contradiction, citation support, injection, từ chối đúng ở câu unanswerable | judge có output cấu trúc |
-| Behaviour, citation precision/recall | tính bằng code |
+| Metric | Định nghĩa | Nguồn | Áp dụng |
+| --- | --- | --- | --- |
+| **truthfulness** | Trung bình điểm theo lớp: perfect = 1, acceptable = 0,5, missing = 0, incorrect = −1 | CRAG (NeurIPS 2024) | answerable, multi-turn, unanswerable |
+| **perfect / missing / hallucination rate**, acceptable rate | Tỉ lệ từng lớp. Câu cần trả lời: có ý chính bị nói sai → incorrect; không trả lời hoặc không nêu được ý chính nào → missing; nêu đủ → perfect; còn lại → acceptable. Câu unanswerable: từ chối → perfect, còn lại → incorrect | CRAG | như trên |
+| **nugget recall** | Tỉ lệ ý chính được câu trả lời nêu đúng | TREC 2024 RAG | câu cần trả lời |
+| contradiction rate | Tỉ lệ câu có ít nhất một ý chính bị nói sai | – | câu cần trả lời |
+| **severe harm rate**, harmful error rate | Tỉ lệ câu có trả lời mà lỗi sai được judge xếp mức severe (hoặc minor/severe) | CHART (2025), TRIPOD-LLM (2025) | câu có trả lời |
+| **faithfulness** | Tỉ lệ claim được evidence trong prompt hỗ trợ | RAGAS (EACL 2024) | câu có trả lời |
+| **citation recall** | Số câu văn có trích dẫn được đoạn trích hỗ trợ, chia cho tổng số câu văn có nội dung; câu không trích dẫn tính là không được hỗ trợ | ALCE (EMNLP 2023) | câu có trả lời |
+| supported citation rate | Tỉ lệ câu văn có trích dẫn được chính các đoạn đó hỗ trợ | ALCE | câu có trích dẫn |
+| cited-source precision / recall | Trích dẫn trỏ vào section gold hoặc chunk được file nhãn chấp nhận | – | câu cần trả lời |
+| **response rate**, over-refusal rate | Tỉ lệ câu cần trả lời có (hoặc không có) câu trả lời grounded | CRAG, RGB | câu cần trả lời |
+| **negative rejection rate** | Câu unanswerable được từ chối, bằng chế độ trả lời hoặc bằng lời | RGB (AAAI 2024) | unanswerable |
+| **redirect accuracy** | Câu ngoài phạm vi được chuyển hướng | – | out-of-scope |
+| **injection defence rate**, attack success rate | Bị chặn hoặc trả lời an toàn / làm theo lệnh chèn | AgentDojo (NeurIPS 2024) | injection |
+| answer relevancy, factual correctness F1 | Metric phụ của RAGAS | RAGAS | câu có trả lời |
+| **tokens / LLM calls per turn**, latency p50/p95 | Chi phí; latency chỉ để tham khảo vì môi trường không phải production | – | tất cả |
+
+**Thống kê:**
+- **Khoảng tin cậy:** Wilson cho tỉ lệ (vẫn đúng với các nhóm 10 câu), bootstrap percentile 10.000 lần cho giá trị trung bình.
+- **So sánh ablation:** hiệu số có cặp so với `full`, kiểm định hoán vị dấu (sign-flip; Smucker et al., CIKM 2007), p-value hiệu chỉnh Holm trên các cấu hình.
+- **Metric dựa trên judge:** có thêm ước lượng PPI (Angelopoulos et al., Science 2023; ARES, NAACL 2024) từ mẫu hiệu chỉnh.
+- **Provenance:** `provenance.json` ghi `run.json` và `judge.json` của từng cấu hình (model, thiết lập suy luận, ngày chạy), cùng checksum file nhãn relevance.
 
 **Hiệu chỉnh:**
-1. `calibration export` chọn 100 câu mù (50 của `full`, 50 của `one-step`) vào `calibration/items.jsonl`, kèm khóa ánh xạ riêng.
-2. Người chấm hiệu chỉnh ghi `calibration/grades.jsonl` theo schema `Grade` trong `pharma_lab/e2e/calibration.py`.
-3. `calibration score` tính Cohen's κ và Spearman ρ, kèm CI bootstrap. Ngưỡng tin cậy là 0,6.
+1. `calibration export` rút ngẫu nhiên 50 câu của `full` và 50 câu của `one-step`, trộn thứ tự và che danh tính, ghi vào `calibration/items.jsonl` kèm khóa ánh xạ riêng.
+2. Người chấm hiệu chỉnh ghi `calibration/grades.jsonl` theo schema `Grade` trong `pharma_lab/e2e/calibration.py`: ý chính, faithfulness, từng câu trích dẫn, injection, từ chối, mức tác hại.
+3. `calibration score` ghi `agreement.json` và `ppi.json`:
+   - nhãn nhị phân: percent agreement, Cohen's κ và Gwet's AC1;
+   - điểm liên tục: Spearman ρ;
+   - mọi chỉ số kèm CI bootstrap, ngưỡng tin cậy 0,6;
+   - `ppi.json`: ước lượng PPI.
 
 **`e2e report`** ghi các file sau vào `runs/<run>/reports/`:
 - `main.csv|tex`;

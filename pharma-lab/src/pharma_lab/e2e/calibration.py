@@ -1,11 +1,21 @@
-"""Blind calibration of the judge against a stronger grader (spec §8)."""
+"""Blind calibration of the judge against a stronger grader (spec §8).
+
+For each of `full` and `one-step`, a simple random sample of answers is exported, so
+the grades support prediction-powered inference (PPI) as well as agreement
+statistics.
+
+Agreement statistics:
+- binary labels: percent agreement, Cohen's kappa and Gwet's AC1 (robust to
+  skewed labels);
+- scores: Spearman's rho.
+"""
 
 from __future__ import annotations
 
 import json
 import math
 import random
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -13,11 +23,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from scipy.stats import spearmanr
 
 from pharma_lab.e2e.configs import E2EConfig
-from pharma_lab.e2e.golden import Category, GoldenItem
+from pharma_lab.e2e.golden import GoldenItem
 from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
 from pharma_lab.e2e.judging.code_metrics import cited_sentences, context_blocks
 from pharma_lab.e2e.judging.service import JUDGMENTS_FILE
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+from pharma_lab.e2e.statistics import gwet_ac1, percent_agreement, ppi_mean
 from pharma_lab.evaluation.artifact_contracts import write_json
 
 CALIBRATION_DIR = "calibration"
@@ -25,9 +36,9 @@ ITEMS_FILE = "items.jsonl"
 KEY_FILE = "key.json"
 GRADES_FILE = "grades.jsonl"
 AGREEMENT_FILE = "agreement.json"
+PPI_FILE = "ppi.json"
 CONFIGS = (E2EConfig.FULL, E2EConfig.ONE_STEP)
-GROUNDED_PER_CONFIG = 35
-SPECIAL_PER_CONFIG = 15
+SAMPLE_PER_CONFIG = 50
 KAPPA_THRESHOLD = 0.6
 RESAMPLES = 2_000
 
@@ -56,16 +67,12 @@ class Grade(BaseModel):
     faithfulness: float | None = Field(default=None, ge=0, le=1)
     citation_checks: dict[int, bool] = Field(default_factory=dict)
     injection_followed: bool | None = None
+    declined: bool | None = None
+    harm: str | None = None
 
 
 def calibration_dir(run_root: Path) -> Path:
     return Path(run_root) / CALIBRATION_DIR
-
-
-def _pick(rng: random.Random, pool: Sequence[str], count: int, what: str) -> list[str]:
-    if len(pool) < count:
-        raise ValueError(f"need {count} {what} answers, found {len(pool)}")
-    return rng.sample(sorted(pool), count)
 
 
 def export_calibration(
@@ -78,20 +85,14 @@ def export_calibration(
         answers = JsonlStore(
             config_dir(run_root, config) / ANSWERS_FILE, AnswerRecord
         ).latest()
-        grounded = [
-            key
-            for key, record in answers.items()
-            if items[key].category in (Category.ANSWERABLE, Category.MULTI_TURN)
-            and record.answer_mode == "grounded"
-        ]
-        special = [
-            key
-            for key in answers
-            if items[key].category not in (Category.ANSWERABLE, Category.MULTI_TURN)
-        ]
-        chosen = _pick(rng, grounded, GROUNDED_PER_CONFIG, f"{config} grounded")
-        chosen += _pick(rng, special, SPECIAL_PER_CONFIG, f"{config} special")
-        blind.extend((config, answers[key]) for key in chosen)
+        pool = sorted(key for key in answers if key in items)
+        if len(pool) < SAMPLE_PER_CONFIG:
+            raise ValueError(
+                f"need {SAMPLE_PER_CONFIG} {config} answers, found {len(pool)}"
+            )
+        blind.extend(
+            (config, answers[key]) for key in rng.sample(pool, SAMPLE_PER_CONFIG)
+        )
     rng.shuffle(blind)
     directory = calibration_dir(run_root)
     directory.mkdir(parents=True, exist_ok=True)
@@ -101,6 +102,7 @@ def export_calibration(
         blind_id = f"cal-{number:03d}"
         item = items[record.item_id]
         key[blind_id] = {"config": str(config), "item_id": record.item_id}
+        blocks = context_blocks(record.context_text)
         lines.append(
             BlindItem(
                 blind_id=blind_id,
@@ -112,7 +114,7 @@ def export_calibration(
                 cited_sentences=[
                     sentence
                     for sentence, numbers in cited_sentences(record.answer_text)
-                    if set(numbers) & set(context_blocks(record.context_text))
+                    if set(numbers) & set(blocks)
                 ],
             ).model_dump_json()
         )
@@ -123,10 +125,8 @@ def export_calibration(
 
 
 def cohen_kappa(a: Sequence[object], b: Sequence[object]) -> float:
-    if len(a) != len(b) or not a:
-        raise ValueError("kappa needs two equally long, non-empty label lists")
     n = len(a)
-    observed = sum(x == y for x, y in zip(a, b, strict=True)) / n
+    observed = percent_agreement(a, b)
     labels = set(a) | set(b)
     expected = sum(
         (list(a).count(label) / n) * (list(b).count(label) / n) for label in labels
@@ -158,9 +158,10 @@ def bootstrap_interval(
     values.sort()
     if not values:
         return math.nan, math.nan
-    return values[int(0.025 * (len(values) - 1))], values[
-        int(0.975 * (len(values) - 1))
-    ]
+    return (
+        values[int(0.025 * (len(values) - 1))],
+        values[int(0.975 * (len(values) - 1))],
+    )
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,8 @@ def _row(
     statistic: str,
     pairs: list[tuple[object, object]],
     function: Callable[[list[object], list[object]], float],
+    *,
+    threshold: float | None = KAPPA_THRESHOLD,
 ) -> AgreementRow:
     if len(pairs) < 2:
         return AgreementRow(
@@ -186,91 +189,189 @@ def _row(
         )
     value = function([x for x, _ in pairs], [y for _, y in pairs])
     low, high = bootstrap_interval(pairs, function)
-    return AgreementRow(
-        metric,
-        statistic,
-        len(pairs),
-        value,
-        low,
-        high,
-        not math.isnan(value) and value >= KAPPA_THRESHOLD,
-    )
+    reliable = threshold is not None and not math.isnan(value) and value >= threshold
+    return AgreementRow(metric, statistic, len(pairs), value, low, high, reliable)
 
 
 def _floats(a: list[object], b: list[object]) -> float:
     return spearman([float(str(x)) for x in a], [float(str(y)) for y in b])
 
 
-def _finite(row: AgreementRow) -> dict[str, object]:
-    """The row as JSON-safe values: an undefined statistic becomes null."""
+def _finite(row: Mapping[str, object]) -> dict[str, object]:
+    """JSON-safe values: an undefined statistic becomes null."""
     return {
         key: None if isinstance(value, float) and math.isnan(value) else value
-        for key, value in asdict(row).items()
+        for key, value in row.items()
     }
+
+
+# Per-item values compared between the judge and the grader.
+def _nugget_recall(verdicts: list[str] | None) -> float | None:
+    return None if not verdicts else verdicts.count("supported") / len(verdicts)
+
+
+def _contradicted(verdicts: list[str] | None) -> float | None:
+    return None if not verdicts else float("contradicted" in verdicts)
+
+
+def _citation_share(checks: dict[int, bool]) -> float | None:
+    return None if not checks else sum(checks.values()) / len(checks)
+
+
+def _judge_value(metric: str, judged: Judgement) -> float | None:
+    return {
+        "nugget_recall": lambda: judged.key_fact_recall,
+        "contradiction_rate": lambda: (
+            None if judged.contradiction is None else float(judged.contradiction)
+        ),
+        "faithfulness": lambda: judged.faithfulness,
+        "supported_citation_rate": lambda: judged.citation_support,
+    }[metric]()
+
+
+def _grade_value(metric: str, grade: Grade) -> float | None:
+    return {
+        "nugget_recall": lambda: _nugget_recall(grade.key_fact_verdicts),
+        "contradiction_rate": lambda: _contradicted(grade.key_fact_verdicts),
+        "faithfulness": lambda: grade.faithfulness,
+        "supported_citation_rate": lambda: _citation_share(grade.citation_checks),
+    }[metric]()
+
+
+PPI_METRICS = (
+    "nugget_recall",
+    "contradiction_rate",
+    "faithfulness",
+    "supported_citation_rate",
+)
+
+
+def _read_grades(directory: Path) -> dict[str, Grade]:
+    lines = (directory / GRADES_FILE).read_text(encoding="utf-8").splitlines()
+    return {
+        grade.blind_id: grade
+        for grade in (Grade.model_validate_json(line) for line in lines if line.strip())
+    }
+
+
+def _agreement_rows(
+    pairs: dict[str, list[tuple[object, object]]],
+) -> list[AgreementRow]:
+    rows: list[AgreementRow] = []
+    for metric in ("key_fact_supported", "injection_followed", "declined"):
+        rows += [
+            _row(
+                metric,
+                "percent_agreement",
+                pairs[metric],
+                percent_agreement,
+                threshold=None,
+            ),
+            _row(metric, "cohen_kappa", pairs[metric], cohen_kappa),
+            _row(metric, "gwet_ac1", pairs[metric], gwet_ac1),
+        ]
+    for metric in ("nugget_recall", "faithfulness", "supported_citation_rate"):
+        rows.append(_row(metric, "spearman", pairs[metric], _floats))
+    rows.append(
+        _row(
+            "harm",
+            "percent_agreement",
+            pairs["harm"],
+            percent_agreement,
+            threshold=None,
+        )
+    )
+    return rows
 
 
 def score_calibration(run_root: Path) -> list[AgreementRow]:
     directory = calibration_dir(run_root)
     key = json.loads((directory / KEY_FILE).read_text(encoding="utf-8"))
-    grades = {
-        grade.blind_id: grade
-        for grade in (
-            Grade.model_validate_json(line)
-            for line in (directory / GRADES_FILE)
-            .read_text(encoding="utf-8")
-            .splitlines()
-            if line.strip()
-        )
-    }
+    grades = _read_grades(directory)
     judgments = {
         config: JsonlStore(
             config_dir(run_root, config) / JUDGMENTS_FILE, Judgement
         ).latest()
         for config in {entry["config"] for entry in key.values()}
     }
-    facts: list[tuple[object, object]] = []
-    recall: list[tuple[object, object]] = []
-    faithfulness: list[tuple[object, object]] = []
-    citations: list[tuple[object, object]] = []
-    injection: list[tuple[object, object]] = []
+    pairs: dict[str, list[tuple[object, object]]] = {
+        name: []
+        for name in (
+            "key_fact_supported",
+            "injection_followed",
+            "declined",
+            "harm",
+            "nugget_recall",
+            "faithfulness",
+            "supported_citation_rate",
+        )
+    }
+    labelled: dict[str, dict[str, list[tuple[float, float]]]] = {}
     for blind_id, grade in sorted(grades.items()):
         entry = key[blind_id]
         judged = judgments[entry["config"]].get(entry["item_id"])
         if judged is None:
             raise ValueError(f"{blind_id}: {entry['item_id']} has no judgement")
         if grade.key_fact_verdicts is not None and judged.key_fact_verdicts is not None:
-            facts.extend(
+            pairs["key_fact_supported"].extend(
                 (x == "supported", y == "supported")
                 for x, y in zip(
                     judged.key_fact_verdicts, grade.key_fact_verdicts, strict=True
                 )
             )
-            recall.append(
-                (
-                    judged.key_fact_recall,
-                    grade.key_fact_verdicts.count("supported")
-                    / len(grade.key_fact_verdicts),
+        for field in ("injection_followed", "declined"):
+            mine, theirs = getattr(judged, field), getattr(grade, field)
+            if mine is not None and theirs is not None:
+                pairs[field].append((mine, theirs))
+        if judged.contradiction and judged.harm and grade.harm:
+            pairs["harm"].append((judged.harm, grade.harm))
+        for metric in PPI_METRICS:
+            mine_value = _judge_value(metric, judged)
+            theirs_value = _grade_value(metric, grade)
+            if mine_value is None or theirs_value is None:
+                continue
+            if metric in pairs:
+                pairs[metric].append((mine_value, theirs_value))
+            labelled.setdefault(entry["config"], {}).setdefault(metric, []).append(
+                (mine_value, theirs_value)
+            )
+    rows = _agreement_rows(pairs)
+    write_json(
+        directory / AGREEMENT_FILE, {"rows": [_finite(asdict(row)) for row in rows]}
+    )
+    write_json(directory / PPI_FILE, {"rows": _ppi_rows(judgments, labelled)})
+    return rows
+
+
+def _ppi_rows(
+    judgments: dict[str, dict[str, Judgement]],
+    labelled: dict[str, dict[str, list[tuple[float, float]]]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for config, metrics in sorted(labelled.items()):
+        for metric, samples in sorted(metrics.items()):
+            judge_all = [
+                value
+                for judged in judgments[config].values()
+                if judged.error is None
+                and (value := _judge_value(metric, judged)) is not None
+            ]
+            estimate = ppi_mean(
+                judge_all, [x for x, _ in samples], [y for _, y in samples]
+            )
+            rows.append(
+                _finite(
+                    {
+                        "config": config,
+                        "metric": metric,
+                        "n_labelled": estimate.n,
+                        "judge_mean": sum(judge_all) / len(judge_all)
+                        if judge_all
+                        else math.nan,
+                        "ppi": estimate.mean,
+                        "ci_low": estimate.ci_low,
+                        "ci_high": estimate.ci_high,
+                    }
                 )
             )
-        if grade.faithfulness is not None and judged.faithfulness is not None:
-            faithfulness.append((judged.faithfulness, grade.faithfulness))
-        if grade.citation_checks and judged.citation_support is not None:
-            checks = list(grade.citation_checks.values())
-            citations.append((judged.citation_support, sum(checks) / len(checks)))
-        if (
-            grade.injection_followed is not None
-            and judged.injection_followed is not None
-        ):
-            injection.append((judged.injection_followed, grade.injection_followed))
-    rows = [
-        _row("key_fact_supported", "cohen_kappa", facts, cohen_kappa),
-        _row("injection_followed", "cohen_kappa", injection, cohen_kappa),
-        _row("key_fact_recall", "spearman", recall, _floats),
-        _row("faithfulness", "spearman", faithfulness, _floats),
-        _row("citation_support", "spearman", citations, _floats),
-    ]
-    write_json(
-        directory / AGREEMENT_FILE,
-        {"rows": [_finite(row) for row in rows]},
-    )
     return rows

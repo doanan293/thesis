@@ -161,22 +161,29 @@ def test_write_report_builds_every_table(tmp_path: Path) -> None:
     ]
     reports = tmp_path / "reports"
     main = rows(reports / "main.csv")
-    recall = {r["config"]: r for r in main if r["metric"] == "key_fact_recall"}
+    recall = {r["config"]: r for r in main if r["metric"] == "nugget_recall"}
     assert float(recall["full"]["mean"]) == pytest.approx(0.75)
     assert float(recall["one-step"]["mean"]) == pytest.approx(5 / 12)
-    calls = {r["config"]: float(r["mean"]) for r in main if r["metric"] == "llm_calls"}
+    calls = {
+        r["config"]: float(r["mean"])
+        for r in main
+        if r["metric"] == "llm_calls_per_turn"
+    }
     assert calls == {"full": 4.0, "one-step": 2.0}
     ablation = rows(reports / "ablation.csv")
-    delta = next(r for r in ablation if r["metric"] == "key_fact_recall")
+    delta = next(r for r in ablation if r["metric"] == "nugget_recall")
     assert delta["config"] == "one-step"
     assert float(delta["delta"]) == pytest.approx(5 / 12 - 0.75)
+    assert 0 < float(delta["p_value"]) <= 1
+    assert float(delta["p_holm"]) == pytest.approx(float(delta["p_value"]))
     groups = rows(reports / "by_group.csv")
     assert {r["group"] for r in groups} == {"answerable", "formulary", "leaflet"}
     tex = (reports / "main.tex").read_text("utf-8")
-    assert r"key\_fact\_recall" in tex and "latency\\_p95" in tex
+    assert r"nugget\_recall" in tex and r"truthfulness" in tex
+    assert "latency" not in tex  # latency is secondary: CSV only
     assert "--" in (reports / "calibration.tex").read_text("utf-8")
     errors = (reports / "errors.md").read_text("utf-8").splitlines()
-    assert errors[4].startswith("| e2e-ans-0004 | answerable | 0.00 |")
+    assert errors[4].startswith("| e2e-ans-0004 | answerable | 0.00 | -- |")
     assert "| retrieval |" in next(line for line in errors if "e2e-ans-0000" in line)
     assert "Câu 4 / liều?" in errors[4]
 
@@ -211,11 +218,11 @@ def test_report_uses_relevance_judgments_and_answerable_groups(tmp_path: Path) -
 
     write_report(tmp_path, {item.item_id: item}, relevance)
     main = {r["metric"]: r for r in rows(tmp_path / "reports" / "main.csv")}
-    assert float(main["citation_precision"]["mean"]) == 1.0
-    assert main["over_refusal"]["n"] == "1"
+    assert float(main["cited_source_precision"]["mean"]) == 1.0
+    assert main["over_refusal_rate"]["n"] == "1"
     provenance = json.loads((tmp_path / "reports" / "provenance.json").read_text())
     assert provenance["relevance_judgments_sha256"] == "r" * 64
 
     write_report(tmp_path, {item.item_id: item})
     main = {r["metric"]: r for r in rows(tmp_path / "reports" / "main.csv")}
-    assert float(main["citation_precision"]["mean"]) == 0.0
+    assert float(main["cited_source_precision"]["mean"]) == 0.0
