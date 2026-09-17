@@ -8,11 +8,4 @@ To address these challenges, we first construct a Vietnamese drug-information co
 
 The experiments examine which retrieval approach offers the best trade-off between effectiveness and cost, whether the agentic pipeline answers more accurately than single-step RAG and which of its steps contribute, and whether it reliably declines unanswerable, out-of-scope and adversarial requests. Retrieval is evaluated on 10{,}000 benchmark questions, and the complete pipeline on a 500-item golden set that also contains multi-turn, unanswerable, out-of-scope and prompt-injection items. The end-to-end protocol combines established correctness, attribution and safety metrics with paired significance tests and a calibration of the automatic judge. The experiments show that hybrid retrieval followed by reranking gives the best ranking quality, and that a mid-sized embedding model is almost as effective as a model twice its size. \pending{one sentence on the end-to-end findings}
 
-In summary, this paper makes the following contributions.
-\begin{itemize}
-\item A Vietnamese drug-information corpus and a 10{,}000-question retrieval benchmark with known answer locations.
-\item A systematic comparison of sparse, dense, hybrid and reranked retrieval that reports effectiveness together with deployment cost.
-\item An agentic RAG pipeline designed for low-cost models, together with an end-to-end evaluation protocol with ablations, safety cases and judge calibration that quantifies its benefits and limits.
-\end{itemize}
-
-The remainder of this paper is organised as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:method} describes the methodology, Section~\ref{sec:results} presents and discusses the experimental results, and Section~\ref{sec:conclusion} concludes the paper with its limitations and future work.
+This paper makes three contributions. It provides a Vietnamese drug-information corpus together with a 10{,}000-question retrieval benchmark whose answer locations are known, which allows retrieval methods for this domain to be compared reliably. It then reports a systematic comparison of sparse, dense, hybrid and reranked retrieval in which effectiveness is set against deployment cost. Finally, it presents an agentic RAG pipeline designed for low-cost models and an end-to-end evaluation protocol, combining ablations, safety cases and judge calibration, that quantifies the benefits and the limits of this design.
