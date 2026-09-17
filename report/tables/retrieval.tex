@@ -1,0 +1,27 @@
+\begin{table}[tb]
+\centering
+\caption{Retrieval results on the 10{,}000-question benchmark (top 30 candidates; chunk-level questions use a three-chunk window). CER@10: complete-evidence rate on the 500 multi-intent questions. Cost: vector dimension for dense retrieval, and query--chunk pairs scored per second on T4 GPUs for rerankers. Hybrid RRF fuses Qwen3-Embedding-4B with BM25. Best values in bold.}
+\label{tab:retrieval}
+\small
+\setlength{\tabcolsep}{3.3pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+Method & Cost & Hit@3 & Hit@10 & nDCG@10 & MRR@10 & CER@10 \\
+\midrule
+BM25 & sparse & 62.8 & 81.3 & 0.621 & 0.568 & 44.4 \\
+EmbeddingGemma-300M & 768 & 67.5 & 84.0 & 0.640 & 0.587 & 55.4 \\
+BGE-M3 & 1{,}024 & 81.8 & 91.6 & 0.776 & 0.737 & 80.4 \\
+Qwen3-Emb-0.6B & 1{,}024 & 78.7 & 92.2 & 0.753 & 0.704 & 85.8 \\
+Qwen3-Emb-4B & 2{,}560 & 85.5 & 95.4 & 0.820 & 0.779 & \textbf{98.4} \\
+Qwen3-Emb-8B & 4{,}096 & 86.9 & 95.4 & 0.834 & 0.798 & 98.0 \\
+\midrule
+Hybrid RRF, $k{=}60$ & 2{,}560 & 76.8 & 93.7 & 0.747 & 0.694 & 75.6 \\
+Hybrid RRF, $k{=}2$ & 2{,}560 & 84.3 & 95.9 & 0.784 & 0.731 & 92.4 \\
+\midrule
++ BGE-reranker-v2-m3 & 31.2/s & 88.0 & 95.8 & 0.837 & 0.804 & 91.2 \\
++ Qwen3-Reranker-0.6B & 12.3/s & 87.4 & 96.8 & 0.828 & 0.789 & 96.4 \\
++ Qwen3-Reranker-4B & 4.0/s & \textbf{90.6} & \textbf{97.5} & \textbf{0.859} & \textbf{0.827} & 92.6 \\
++ Qwen3-Reranker-8B & 1.5/s & \multicolumn{5}{c}{\pending{8B rescoring}} \\
+\bottomrule
+\end{tabular}
+\end{table}
