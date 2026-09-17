@@ -12,6 +12,8 @@ Before embedding, each chunk is enriched deterministically, without any LLM call
 
 \subsection{Agentic RAG Pipeline}\label{sec:pipeline}
 
+\input{figures/pipeline}
+
 Fig.~\ref{fig:pipeline} shows the pipeline, implemented with LangGraph. Because the system is meant to run on inexpensive LLMs, each step is a single call with a small structured output, and every control decision---routing, loop limits, budget checks and query de-duplication---is made in code rather than delegated to the model.
 
 \textbf{Guard.} Regular expressions catch common injection and jailbreak patterns; an LLM classifier then labels the turn as a drug question, off-topic, or an attack. Attacks are blocked and off-topic turns are redirected without retrieval.
