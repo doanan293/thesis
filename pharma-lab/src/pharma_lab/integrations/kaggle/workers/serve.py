@@ -36,6 +36,8 @@ CLOUDFLARED_URL = (
 )
 TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 PROXY_PORT = 18080
+# llama-server reads --api-key from this variable (not LLAMA_ARG_API_KEY).
+API_KEY_ENV = "LLAMA_API_KEY"
 HEARTBEAT_SECONDS = 300
 
 
@@ -161,7 +163,7 @@ def serve_until(
     api_key: str,
     clock=time.monotonic,
 ) -> dict:
-    os.environ["LLAMA_ARG_API_KEY"] = api_key
+    os.environ[API_KEY_ENV] = api_key
     deadline = min(worker_deadline(config, clock), clock() + hours * 3600)
     stats = ProxyStats()
     report: dict = {"urls": []}

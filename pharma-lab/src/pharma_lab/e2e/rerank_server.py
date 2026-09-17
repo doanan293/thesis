@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import subprocess
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -73,9 +74,13 @@ def find_url(log_text: str) -> str | None:
 
 @dataclass
 class UrlWatcher:
-    """Poll a kernel log and write the env file whenever the tunnel URL changes."""
+    """Follow a kernel log and write the env file whenever the tunnel URL changes.
 
-    read_log: Callable[[], str]
+    A running kernel's log is only readable in follow mode, so `open_log` starts a
+    `kaggle kernels logs -f` process; it is restarted if it ends early.
+    """
+
+    open_log: Callable[[], subprocess.Popen[str] | None]
     target: Path
     model: str
     api_key: str
@@ -85,10 +90,11 @@ class UrlWatcher:
     def __post_init__(self) -> None:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._process: subprocess.Popen[str] | None = None
         self.url: str | None = None
 
-    def check(self) -> None:
-        url = find_url(self.read_log())
+    def feed(self, text: str) -> None:
+        url = find_url(text)
         if url and url != self.url:
             self.url = url
             self.target.parent.mkdir(parents=True, exist_ok=True)
@@ -100,23 +106,35 @@ class UrlWatcher:
             self.log(f"serve url={url} env={self.target}")
 
     def _run(self) -> None:
-        while not self._stop.wait(self.interval):
-            self.check()
+        while not self._stop.is_set():
+            process = self.open_log()
+            self._process = process
+            if process is not None and process.stdout is not None:
+                for line in process.stdout:
+                    self.feed(line)
+                    if self._stop.is_set():
+                        break
+                process.terminate()
+                process.communicate()
+            self._stop.wait(self.interval)
 
     def start(self) -> None:
         self._thread.start()
 
     def stop(self) -> None:
         self._stop.set()
-        self._thread.join(timeout=5)
+        process = self._process
+        if process is not None and process.poll() is None:
+            process.terminate()
+        self._thread.join(timeout=10)
 
 
 def serve_reranker(
     *, model: str, hours: float, kaggle_account: str | None, log: Callable[[str], None]
 ) -> Path:
     """Run one serving session; returns the env file path (removed at the end)."""
+    from pharma_lab.integrations.kaggle.api import kernel_logs_follow_command
     from pharma_lab.integrations.kaggle.auto_profile import ensure_runtime_profile
-    from pharma_lab.integrations.kaggle.kernel_service import KernelService
     from pharma_lab.integrations.kaggle.models import StageName, StageRequest
     from pharma_lab.integrations.kaggle.service import (
         resolve_session_contexts,
@@ -176,9 +194,15 @@ def serve_reranker(
         reference = (
             f"{context.owners.execution}/{job.stage.value}-{job.identity.sha256[:16]}"
         )
-        kernels = KernelService(context.runner, context.owners.execution)
+        runner = context.runner
         watcher = UrlWatcher(
-            lambda: kernels.log_tail(reference), target, model, api_key, log
+            lambda: runner.start(
+                kernel_logs_follow_command(reference), capture_output=True
+            ),
+            target,
+            model,
+            api_key,
+            log,
         )
         log(f"serve kernel={reference} account={reserved.profile} hours={hours}")
         watcher.start()

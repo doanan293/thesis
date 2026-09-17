@@ -18,6 +18,7 @@ from pharma_lab.integrations.kaggle.stages import (
     get_stage_adapter,
 )
 from pharma_lab.integrations.kaggle.workers.serve import (
+    API_KEY_ENV,
     ProxyStats,
     start_proxy,
     start_tunnel,
@@ -193,3 +194,8 @@ def test_serve_without_key_file_is_refused(tmp_path: Path) -> None:
                 runtime_profile=rerank_runtime_profile(MODEL),
             )
         )
+
+
+def test_llama_server_reads_the_api_key_variable() -> None:
+    # llama.cpp common/arg.cpp: --api-key ... set_env("LLAMA_API_KEY")
+    assert API_KEY_ENV == "LLAMA_API_KEY"
