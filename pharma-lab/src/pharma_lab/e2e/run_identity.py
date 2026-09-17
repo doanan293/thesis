@@ -47,6 +47,9 @@ def identity_from_settings(
             "model": endpoint.model,
             "reasoning_effort": endpoint.reasoning_effort,
         }
+        # Recorded only when set, so identities of earlier runs stay unchanged.
+        if endpoint.extra_body:
+            roles[role.value]["extra_body"] = endpoint.extra_body
     return RunIdentity(
         golden_sha256=golden_sha256,
         config=config,

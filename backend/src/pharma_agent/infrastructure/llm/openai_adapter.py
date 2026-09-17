@@ -110,9 +110,12 @@ class OpenAiLlmAdapter:
 
 def _options(endpoint: ResolvedEndpoint) -> dict[str, Any]:
     """Optional request fields, sent only when set so any OpenAI-compatible server accepts the call."""
-    if endpoint.reasoning_effort is None:
-        return {}
-    return {"reasoning_effort": endpoint.reasoning_effort}
+    options: dict[str, Any] = {}
+    if endpoint.reasoning_effort is not None:
+        options["reasoning_effort"] = endpoint.reasoning_effort
+    if endpoint.extra_body:
+        options["extra_body"] = endpoint.extra_body
+    return options
 
 
 def _to_openai(messages: Sequence[ChatMessage]) -> list[dict[str, str]]:

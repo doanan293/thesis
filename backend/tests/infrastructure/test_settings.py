@@ -114,6 +114,31 @@ def test_reasoning_effort_defaults_apply_only_to_built_in_models(
     assert settings.llm.resolve(LlmRole.ANSWER).reasoning_effort is None
 
 
+def test_role_extra_body_is_read_from_json_and_inherits_the_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PHARMA_LLM__DEFAULT__API_KEY", "sk-cloud")
+    monkeypatch.setenv(
+        "PHARMA_LLM__DEFAULT__EXTRA_BODY", '{"chat_template_kwargs": {"x": 1}}'
+    )
+    monkeypatch.setenv(
+        "PHARMA_LLM__ROLES__ANSWER__EXTRA_BODY",
+        '{"chat_template_kwargs": {"enable_thinking": false}}',
+    )
+    settings = Settings(_env_file=None)
+    assert settings.llm.resolve(LlmRole.ANSWER).extra_body == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+    assert settings.llm.resolve(LlmRole.JUDGE).extra_body == {
+        "chat_template_kwargs": {"x": 1}
+    }
+
+
+def test_extra_body_is_unset_by_default() -> None:
+    settings = Settings(_env_file=None, llm={"default": {"api_key": "sk"}})
+    assert settings.llm.resolve(LlmRole.ANSWER).extra_body is None
+
+
 def test_embedding_and_rerank_connection_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

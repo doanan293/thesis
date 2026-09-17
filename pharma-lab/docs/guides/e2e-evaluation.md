@@ -33,6 +33,21 @@ Trong session chạy E2E, nạp file env trước (`set -a; . data/work/serve/qw
 
 **Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Proxy antigravity không có model này. Run `e2e-v1` chấm bằng `--judge-model gemini-3.1-flash-lite`: model này khác model trả lời (`gemini-3.8-flash-high`), nhanh (khoảng 3 giây mỗi lần gọi), và có quota lớn nhất trong các model đã thử.
 
+**Chạy với model open-weight.** Run `e2e-qwen35-9b` dùng Qwen3.5-9B trên DeepInfra cho mọi bước của pipeline; judge vẫn dùng endpoint mặc định trong `backend/.env`. Key đặt trong `pharma-lab/.env` với tên `DEEPINFRA_API_KEY`. Trong tmux session của run, ghi đè endpoint của từng bước trước khi chạy (biến môi trường được ưu tiên hơn `backend/.env`, nên các run khác không bị ảnh hưởng):
+
+```bash
+set -a; . ./.env; set +a
+for ROLE in GUARDRAIL REPHRASE JUDGE REFINE ANSWER SUMMARIZER; do
+  export PHARMA_LLM__ROLES__${ROLE}__BASE_URL=https://api.deepinfra.com/v1/openai
+  export PHARMA_LLM__ROLES__${ROLE}__API_KEY=$DEEPINFRA_API_KEY
+  export PHARMA_LLM__ROLES__${ROLE}__MODEL=Qwen/Qwen3.5-9B
+  export PHARMA_LLM__ROLES__${ROLE}__EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": false}}'
+done
+uv run pharma-lab e2e run --run e2e-qwen35-9b --config full --limit 20 --deadline-seconds 600
+```
+
+`EXTRA_BODY` tắt chế độ suy luận mặc định của Qwen3.5 và được ghi vào `run.json` cùng tên model. Chạy thử `--limit 20` trước để kiểm output có cấu trúc, rồi mới chạy đủ.
+
 **Cấu hình ablation chỉ đặt được từ harness.** Backend không có biến môi trường nào để tắt bước của agent.
 
 | `--config` | Rephrase | Judge/refine | Reranker |

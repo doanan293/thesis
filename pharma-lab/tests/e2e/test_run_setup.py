@@ -120,6 +120,29 @@ def test_identity_records_models_without_secrets() -> None:
     assert "sk-test" not in json.dumps(current.__dict__)
 
 
+def test_identity_records_extra_body_only_when_set() -> None:
+    settings = Settings(
+        _env_file=None,
+        langfuse={"public_key": "pk", "secret_key": "sk"},
+        llm={
+            "default": {"api_key": "sk-test"},
+            "roles": {
+                "answer": {
+                    "model": "Qwen/Qwen3.5-9B",
+                    "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+                }
+            },
+        },
+    )
+    current = identity(settings)
+    assert current.role_models["answer"] == {
+        "model": "Qwen/Qwen3.5-9B",
+        "reasoning_effort": None,
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+    assert "extra_body" not in current.role_models["judge"]
+
+
 def test_open_run_resumes_only_the_same_identity(tmp_path: Path) -> None:
     settings = base_settings()
     open_run(tmp_path, identity(settings), commit="abc")

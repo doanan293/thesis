@@ -237,3 +237,33 @@ async def test_reasoning_tokens_reported_outside_completion_tokens_are_counted()
     client.completions.parse = proxy_style_parse
     _, usage = await adapter.structured(LlmRole.GUARDRAIL, [user("a")], Verdict)
     assert usage == LlmUsage(prompt_tokens=33, completion_tokens=359)
+
+
+async def test_extra_body_is_sent_only_for_roles_that_set_it() -> None:
+    created: dict[tuple, FakeClient] = {}
+
+    def factory(endpoint, timeout, max_retries):
+        client = FakeClient()
+        created[(endpoint.base_url, endpoint.api_key)] = client
+        return client
+
+    no_thinking = {"chat_template_kwargs": {"enable_thinking": False}}
+    settings = LlmSettings(
+        default=LlmEndpoint(api_key="sk-cloud"),
+        roles={
+            LlmRole.ANSWER: LlmEndpoint(
+                base_url="http://open/v1",
+                api_key="open",
+                model="Qwen/Qwen3.5-9B",
+                extra_body=no_thinking,
+            )
+        },
+    )
+    adapter = OpenAiLlmAdapter(settings, client_factory=factory)
+    _ = [d async for d in adapter.stream(LlmRole.ANSWER, [user("hi")])]
+    await adapter.structured(LlmRole.GUARDRAIL, [user("a")], Verdict)
+    assert (
+        created[("http://open/v1", "open")].completions.create_kwargs["extra_body"]
+        == no_thinking
+    )
+    assert "extra_body" not in created[(None, "sk-cloud")].completions.parse_kwargs

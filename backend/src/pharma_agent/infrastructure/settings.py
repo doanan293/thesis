@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from openai.types import ReasoningEffort
 from pydantic import (
@@ -41,6 +41,9 @@ class LlmEndpoint(BaseModel):
     api_key: str | None = None
     model: str | None = None
     reasoning_effort: ReasoningEffort = None
+    # Provider-specific request fields passed as the OpenAI SDK's extra_body, e.g.
+    # {"chat_template_kwargs": {"enable_thinking": false}} for Qwen on vLLM/DeepInfra.
+    extra_body: dict[str, Any] | None = None
 
 
 class ResolvedEndpoint(BaseModel):
@@ -50,6 +53,7 @@ class ResolvedEndpoint(BaseModel):
     api_key: str
     model: str
     reasoning_effort: ReasoningEffort = None
+    extra_body: dict[str, Any] | None = None
 
 
 class LlmSettings(BaseModel):
@@ -81,6 +85,7 @@ class LlmSettings(BaseModel):
             api_key=api_key,
             model=model,
             reasoning_effort=effort,
+            extra_body=override.extra_body or self.default.extra_body,
         )
 
 
