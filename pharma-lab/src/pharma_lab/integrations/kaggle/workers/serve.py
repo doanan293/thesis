@@ -200,7 +200,7 @@ def run_serve_worker(config: dict) -> CloudArtifact:
     request_path = resolve_input_file(config, "serve_request")
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
     report = serve_until(
-        config, hours=float(request["hours"]), api_key=str(request["api_key"])
+        config, hours=float(request["hours"]), api_key=str(config["api_key"])
     )
     output_dir = Path(config.get("output_dir", "/kaggle/working/artifact"))
     output_dir.mkdir(parents=True, exist_ok=True)

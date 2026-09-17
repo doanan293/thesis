@@ -29,9 +29,8 @@ MODEL = "qwen3-reranker:0.6b-fp16"
 
 def request_file(tmp_path: Path, nonce: str) -> Path:
     path = tmp_path / f"request-{nonce}.json"
-    path.write_text(
-        json.dumps({"hours": 1, "api_key": "k", "nonce": nonce}), encoding="utf-8"
-    )
+    path.write_text(json.dumps({"hours": 1, "nonce": nonce}), encoding="utf-8")
+    path.with_suffix(".key").write_text(f"key-{nonce}", encoding="utf-8")
     return path
 
 
@@ -54,6 +53,11 @@ def test_each_serve_request_is_a_new_one_record_job(tmp_path: Path) -> None:
     assert first.worker_module == "pharma_lab.integrations.kaggle.workers.serve"
     assert first.data_filename == SERVE_REPORT_FILENAME
     assert first.worker_config["enable_internet"] is True
+    assert first.worker_config["api_key"] == "key-a"
+    uploaded = [
+        item.source_path.read_text("utf-8") for item in first.input_bundle.files
+    ]
+    assert all("key-a" not in text for text in uploaded)
     assert first.worker_config["runtime_overrides"] == (
         rerank_runtime_profile(MODEL).to_dict()
     )
@@ -175,3 +179,17 @@ def test_tunnel_without_url_fails(tmp_path: Path) -> None:
     binary.chmod(0o755)
     with pytest.raises(RuntimeError, match="did not report"):
         start_tunnel(binary, 18080, timeout=5)
+
+
+def test_serve_without_key_file_is_refused(tmp_path: Path) -> None:
+    path = request_file(tmp_path, "z")
+    path.with_suffix(".key").unlink()
+    with pytest.raises(ValueError, match="private key file"):
+        get_stage_adapter(StageName.RERANK_SERVE).build_job(
+            stage_request(
+                StageName.RERANK_SERVE,
+                MODEL,
+                path,
+                runtime_profile=rerank_runtime_profile(MODEL),
+            )
+        )

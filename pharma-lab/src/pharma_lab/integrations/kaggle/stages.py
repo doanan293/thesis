@@ -343,12 +343,24 @@ class BenchmarkStage:
 SERVE_REPORT_FILENAME = "serve_report.jsonl"
 
 
+def _serve_api_key(request_path: Path) -> str:
+    key_file = Path(request_path).with_suffix(".key")
+    if not key_file.is_file():
+        raise ValueError(f"rerank-serve needs its private key file: {key_file}")
+    key = key_file.read_text(encoding="utf-8").strip()
+    if not key:
+        raise ValueError(f"rerank-serve key file is empty: {key_file}")
+    return key
+
+
 @dataclass(frozen=True)
 class RerankServeStage:
     """Serve a reranker through a tunnel until the session budget or `hours` ends.
 
-    The input is a small request file (hours, API key, nonce); every request is a new
-    job, so a finished session is never mistaken for a reusable artifact.
+    The input is a small request file (hours, nonce); every request is a new job, so a
+    finished session is never mistaken for a reusable artifact. Input datasets are
+    public, so the API key comes from a private `<request>.key` file next to it and
+    only enters the private kernel's config.
     """
 
     name: StageName = StageName.RERANK_SERVE
@@ -390,6 +402,7 @@ class RerankServeStage:
                 "gguf_root": str(request.gguf_root),
                 "job_sha256": identity.sha256,
                 "enable_internet": True,
+                "api_key": _serve_api_key(request.input_path),
             },
         )
 

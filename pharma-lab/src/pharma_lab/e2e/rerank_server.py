@@ -29,7 +29,11 @@ def env_path(model: str) -> Path:
 
 
 def write_request(directory: Path, *, hours: float) -> tuple[Path, str]:
-    """A fresh request (new job identity) with a new API key."""
+    """A fresh request (new job identity) and a new API key.
+
+    The request is uploaded as a (public) pipeline input dataset, so the key stays in
+    a private sibling file that only reaches the private kernel's config.
+    """
     if hours <= 0:
         raise ValueError("--hours must be positive")
     directory.mkdir(parents=True, exist_ok=True)
@@ -37,11 +41,16 @@ def write_request(directory: Path, *, hours: float) -> tuple[Path, str]:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = directory / f"request-{stamp}.json"
     path.write_text(
-        json.dumps({"hours": hours, "api_key": api_key, "nonce": secrets.token_hex(8)}),
-        encoding="utf-8",
+        json.dumps({"hours": hours, "nonce": secrets.token_hex(8)}), encoding="utf-8"
     )
-    path.chmod(0o600)
+    key_file = api_key_path(path)
+    key_file.write_text(api_key, encoding="utf-8")
+    key_file.chmod(0o600)
     return path, api_key
+
+
+def api_key_path(request_path: Path) -> Path:
+    return request_path.with_suffix(".key")
 
 
 def env_lines(*, model: str, url: str, api_key: str) -> str:
@@ -189,4 +198,5 @@ def serve_reranker(
             watcher.stop()
             target.unlink(missing_ok=True)
             request_path.unlink(missing_ok=True)
+            api_key_path(request_path).unlink(missing_ok=True)
     return target

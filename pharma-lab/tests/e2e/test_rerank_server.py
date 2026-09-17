@@ -6,6 +6,7 @@ import pytest
 
 from pharma_lab.e2e.rerank_server import (
     UrlWatcher,
+    api_key_path,
     env_lines,
     find_url,
     write_request,
@@ -15,9 +16,10 @@ from pharma_lab.e2e.rerank_server import (
 def test_each_request_has_a_new_key_and_private_permissions(tmp_path: Path) -> None:
     first, key_a = write_request(tmp_path, hours=2)
     payload = json.loads(first.read_text("utf-8"))
-    assert payload["hours"] == 2 and payload["api_key"] == key_a
-    assert stat.S_IMODE(first.stat().st_mode) == 0o600
-    first.unlink()
+    assert payload["hours"] == 2 and "api_key" not in payload
+    key_file = api_key_path(first)
+    assert key_file.read_text("utf-8") == key_a
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
     _, key_b = write_request(tmp_path, hours=2)
     assert key_a != key_b
     with pytest.raises(ValueError, match="positive"):
