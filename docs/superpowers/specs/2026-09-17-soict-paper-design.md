@@ -50,10 +50,10 @@ các dòng mang tên cấu hình: *Full agent*, *One-step RAG*, *w/o judge–ref
 | Mục | Nội dung | Trang |
 | --- | --- | --- |
 | Abstract + Keywords | Bối cảnh, phương pháp, số chính (có placeholder), 4–6 keyword | 0,3 |
-| 1 Introduction | Bài toán hỏi đáp thuốc tiếng Việt; câu hỏi nghiên cứu (RQ1 retrieval nào tốt nhất theo chất lượng và chi phí; RQ2 agentic RAG có hơn one-step không, bước nào đóng góp; RQ3 hệ thống có an toàn không); Fig. 1; danh sách đóng góp | 1,3 |
+| 1 Introduction | Bài toán hỏi đáp thuốc tiếng Việt; câu hỏi nghiên cứu (RQ1 retrieval nào tốt nhất theo chất lượng và chi phí; RQ2 agentic RAG có hơn one-step không, bước nào đóng góp; RQ3 hệ thống có an toàn không); thách thức, ý tưởng chính, tóm tắt thí nghiệm, đóng góp; không có hình hay chi tiết cài đặt | 1,3 |
 | 2 Related Work | RAG và agentic RAG; retrieval cho QA y khoa; đánh giá RAG; QA y khoa tiếng Việt; đoạn cuối "Research gap" | 1,4 |
-| 3 Methodology | 4.1 Corpus (nguồn, làm sạch, chia section/chunk, enrichment); 4.2 Pipeline (guard → rephrase → hybrid search + rerank → judge/refine → answer có trích dẫn; model theo role); 4.3 Bộ đánh giá (10k retrieval, 500 golden E2E, quota các nhóm); 4.4 Thiết kế thí nghiệm (bảng cấu hình, metric có công thức, judge + hiệu chỉnh, thống kê) | 3,5 |
-| 4 Experimental Results | 5.1 Retrieval; 5.2 E2E chính và ablation (Δ, p Holm); 5.3 An toàn; 5.4 Chi phí và latency. Chỉ báo số, không diễn giải | 3,3 |
+| 3 Methodology | 3.1 Corpus (nguồn, làm sạch, chia section/chunk, enrichment). 3.2 Pipeline (Fig. 1, guard → rephrase → hybrid search + rerank → judge/refine → answer có trích dẫn; model theo role). 3.3 Bộ đánh giá (10k retrieval, 500 golden E2E, quota các nhóm). 3.4 Thiết kế thí nghiệm (bảng cấu hình, metric có công thức, judge + hiệu chỉnh, thống kê) | 3,5 |
+| 4 Experimental Results | 4.1 Retrieval, 4.2 E2E chính và ablation (Δ, p Holm), 4.3 An toàn, 4.4 Chi phí và latency. Chỉ báo số, không diễn giải | 3,3 |
 | 5 Discussion and Conclusion | Nhắc lại vấn đề và ý tưởng chính; trả lời RQ1–RQ3; ý nghĩa thực tiễn; đoạn Limitations (câu hỏi sinh bằng luật, tham số chọn trên cùng benchmark, judge cùng nhà cung cấp, đáp án do LLM soạn, latency trên máy dev, một nguồn tờ HDSD); hướng tiếp theo | 1,5 |
 | References | `splncs04`, không tính trang | – |
 
@@ -61,8 +61,7 @@ Tổng khoảng 11,7 trang, chừa 0,3 trang cho điều chỉnh.
 
 ## 4. Hình và bảng
 
-- **Fig. 1:** sơ đồ pipeline bằng TikZ, đặt trong Introduction theo thói quen các bài
-  SoICT/LNCS.
+- **Fig. 1:** sơ đồ pipeline bằng TikZ, đặt trong mục 3.2 (Methodology).
 - **Table 1** (4.1): thống kê corpus: 3.120 tài liệu, 12.326 section, 24.955 chunk;
   Dược thư 1.668 trang (689 chuyên luận); 2.406 tờ HDSD.
 - **Table 2** (4.3): hai bộ đánh giá theo nhóm câu hỏi.
