@@ -54,15 +54,7 @@ Kỳ vọng: `exit=0`, hai lệnh grep đầu rỗng (trừ khi task ghi rõ ngo
 
 - [ ] **Step 1: Nạp skill** `latex-document-skill` bằng Skill tool; đọc `references/long-form-best-practices.md`. Bước hỏi enrichment đã trả lời trong spec §4.
 
-- [ ] **Step 2: Tạo nhánh**
-
-```bash
-git -C /home/andv/personal/thesis fetch origin
-git -C /home/andv/personal/thesis rev-list --left-right --count origin/main...origin/dev   # vế trái phải là 0
-git -C /home/andv/personal/thesis switch -c soict-paper origin/dev
-```
-
-Nếu `switch` từ chối vì thay đổi chưa commit trong checkout sẽ bị ghi đè: dừng, báo người dùng, không stash, không reset.
+- [ ] **Step 2: Làm trên `dev`.** Checkout chính ở `dev`, `dev` không thiếu commit nào của `main` (`git rev-list --left-right --count origin/main...origin/dev` có vế trái bằng 0). Không tạo nhánh hay worktree riêng.
 
 - [ ] **Step 3: Lấy template Springer**
 
@@ -587,4 +579,4 @@ done
 Nội dung chính phải kết thúc trong 12 trang: References bắt đầu ở trang ≤ 13, và nếu ở trang 13 thì trang 13 chỉ có references. Nếu vượt: chuyển `tab:e2e-calibration` xuống appendix sau references, rồi gộp `tab:eval-sets` vào văn bản, rồi rút gọn Related Work.
 - [ ] **Step 3: Chất lượng:** `bash .agents/skills/latex-document-skill/scripts/latex_lint.sh report/main.tex` (sửa lỗi thật, không tắt rule); Build check không có undefined citation/reference và 0 Overfull; xem mọi trang PNG: bảng không tràn, hình đọc được, tên tiếng Việt đúng dấu, không ký tự lạ (`¡`, `¿`); `pdffonts report/main.pdf` không có font Type 3.
 - [ ] **Step 4: Đối chiếu số:** mọi số trong abstract/introduction/discussion khớp bảng; mọi số trong bảng khớp file nguồn (spot-check từng bảng bằng cách mở file nguồn).
-- [ ] **Step 5: Commit** `git add report && git status --short report` (không có `main.pdf`, `preview/`, file aux) rồi `git commit -m "docs(paper): finalize the SoICT 2026 submission"`; push nhánh `soict-paper` và báo người dùng đường dẫn `report/main.pdf` để nộp EasyChair.
+- [ ] **Step 5: Commit** `git add report && git status --short report` (không có `main.pdf`, `preview/`, file aux) rồi `git commit -m "docs(paper): finalize the SoICT 2026 submission"`; push `dev` và báo người dùng đường dẫn `report/main.pdf` để nộp EasyChair.

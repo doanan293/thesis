@@ -139,6 +139,5 @@ Build: `bash .agents/skills/latex-document-skill/scripts/compile_latex.sh report
 4. Kiểm tra cuối: ≤ 12 trang nội dung, không còn `\pending`, không có warning
    undefined reference/citation, tên tiếng Việt hiển thị đúng.
 
-Commit lên nhánh `soict-paper` tạo từ `dev` (sau khi `dev` đã ngang `main`). Checkout
-chính đang có thay đổi chưa commit của việc khác; các file đó không được stage, chỉ
-stage đường dẫn `report/` và spec/plan này.
+Commit thẳng lên `dev` (giữ ngang `main`), chỉ stage đường dẫn `report/`, spec/plan này và
+file pharma-lab được sửa.
