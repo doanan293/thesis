@@ -186,21 +186,30 @@ Run này dùng embedding API trả phí nên không chạy lại. Candidates đ�
 
 ## 7. Kết quả tham chiếu
 
-| Run / biến thể | Hit@10 | MRR |
-| --- | ---: | ---: |
-| `bm25-qwen4b-k30` | 81,33% | 0,5755 |
-| `dense-gemma300m-k30` | 84,00% | 0,5910 |
-| `dense-bge-m3-k30` | 91,62% | 0,7394 |
-| `dense-qwen06b-k30` | 92,17% | 0,7075 |
-| `dense-qwen4b-k30` | 95,39% | 0,7813 |
-| `dense-qwen8b-k30` | 95,36% | 0,7997 |
-| `dense-text-embedding-3-large-k30` | 94,85% | 0,7506 |
-| `hybrid-qwen4b-p50-k30-rrf60` | 93,74% | 0,6976 |
-| `hybrid-qwen4b-p50-k30-rrf2` | 95,89% | 0,7331 |
-| rrf2 + `bge-reranker-v2-gemma:f16` (logprob, không chạy lại) | 95,30% | 0,7570 |
-| rrf2 + `bge-reranker-v2-m3:f16` | 95,81% | 0,8065 |
-| rrf2 + `qwen3-reranker:0.6b-fp16` | 96,75% | 0,7905 |
-| rrf2 + `qwen3-reranker:4b-fp16` | 97,52% | 0,8280 |
-| rrf2 + `qwen3-reranker:8b-fp16` (bản logprob cũ; đang chấm lại qua `/v1/rerank`) | 89,75% | 0,4797 |
+| Run / biến thể | Hit@10 | nDCG@10 | MRR@10 | MRR@30 |
+| --- | ---: | ---: | ---: | ---: |
+| `bm25-qwen4b-k30` | 81,33% | 0,6205 | 0,5682 | 0,5755 |
+| `dense-gemma300m-k30` | 84,00% | 0,6404 | 0,5866 | 0,5910 |
+| `dense-bge-m3-k30` | 91,62% | 0,7758 | 0,7371 | 0,7394 |
+| `dense-qwen06b-k30` | 92,17% | 0,7526 | 0,7042 | 0,7075 |
+| `dense-qwen4b-k30` | 95,39% | 0,8195 | 0,7792 | 0,7813 |
+| `dense-qwen8b-k30` | 95,36% | 0,8341 | 0,7978 | 0,7997 |
+| `dense-text-embedding-3-large-k30` (gold cũ, xem dưới) | 94,85% | – | – | 0,7506 |
+| `hybrid-qwen4b-p50-k30-rrf60` | 93,74% | 0,7470 | 0,6941 | 0,6976 |
+| `hybrid-qwen4b-p50-k30-rrf2` | 95,89% | 0,7839 | 0,7309 | 0,7331 |
+| rrf2 + `bge-reranker-v2-gemma:f16` (logprob, không chạy lại) | 95,30% | – | – | 0,7570 |
+| rrf2 + `bge-reranker-v2-m3:f16` | 95,81% | 0,8367 | 0,8044 | 0,8065 |
+| rrf2 + `qwen3-reranker:0.6b-fp16` | 96,75% | 0,8283 | 0,7888 | 0,7905 |
+| rrf2 + `qwen3-reranker:4b-fp16` | 97,52% | 0,8586 | 0,8268 | 0,8280 |
+| rrf2 + `qwen3-reranker:8b-fp16` (bản logprob cũ; đang chấm lại qua `/v1/rerank`) | 89,75% | – | – | 0,4797 |
+
+**Cách tính nDCG@10 và MRR@k.** Gain là nhị phân. Mỗi đơn vị bằng chứng chỉ được tính gain một lần, tại chunk đầu tiên thoả nó:
+- câu single hoặc any_acceptable có 1 đơn vị;
+- câu multi_required có mỗi section gold là một đơn vị;
+- chunk được file nhãn chấp nhận cũng thoả đơn vị tương ứng.
+
+IDCG giả định mọi đơn vị nằm ở các vị trí đầu. Với câu một đáp án, nDCG@10 = 1/log2(hạng + 1) của chunk trúng đầu tiên, như benchmark known-item (BEIR, MTEB). MRR@10 tính 0 cho chunk trúng sau hạng 10; MRR@30 xét toàn bộ 30 ứng viên.
+
+Với câu multi_required, `Recall@k` là tỉ lệ section gold có trong top-k; `Complete-evidence rate@k` là tỉ lệ câu có đủ mọi section. Run `dense-text-embedding-3-large-k30` được tính trên bản gold trước khi bộ câu hỏi được dựng lại, và không chạy lại được vì dùng API trả phí, nên không so trực tiếp với các dòng khác.
 
 Số trước khi chuyển layout và bảng so sánh nằm trong commit "rebuild the evaluation runs with the new CLI". Lần dựng lại chấp nhận Hit@10 thấp hơn tối đa 1 điểm phần trăm và MRR thấp hơn tối đa 0,01.

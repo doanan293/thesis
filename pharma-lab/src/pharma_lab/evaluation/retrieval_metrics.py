@@ -1,7 +1,11 @@
+import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 
 DEFAULT_METRIC_KS = (3, 5, 10, 30)
+# Cutoffs of the BEIR/MTEB-style metrics reported next to Hit@k and MRR@top_k.
+NDCG_K = 10
+MRR_K = 10
 
 
 def expected_section_ids(row: dict) -> list[str]:
@@ -75,6 +79,76 @@ def is_hit(
     return False
 
 
+def evidence_units(query_row: dict) -> tuple[str, ...]:
+    """What a query needs found: every section of a multi-part question, otherwise one
+    unit (the expected section, or any of the acceptable ones)."""
+    sections = expected_section_ids(query_row)
+    multi = (
+        query_row.get("answer_mode") == "multi_required"
+        or query_row.get("retrieval_granularity") == "multi_section"
+    )
+    if multi and sections:
+        return tuple(sections)
+    return ("answer",)
+
+
+def satisfied_unit(
+    payload: dict,
+    query_row: dict,
+    window_size: int,
+    judged: Mapping[str, frozenset[str]],
+) -> str | None:
+    """The evidence unit a retrieved chunk satisfies, if any."""
+    units = evidence_units(query_row)
+    if units == ("answer",):
+        accepted = frozenset().union(*judged.values()) if judged else frozenset()
+        return "answer" if is_hit(payload, query_row, window_size, accepted) else None
+    section = payload.get("section_id")
+    if section in units:
+        return section
+    chunk = _chunk_id(payload)
+    return next((unit for unit in units if chunk in judged.get(unit, ())), None)
+
+
+def ranking_scores(
+    retrieved_payloads: list[dict],
+    query_row: dict,
+    *,
+    window_size: int,
+    judged: Mapping[str, frozenset[str]],
+    ndcg_k: int = NDCG_K,
+    mrr_k: int = MRR_K,
+) -> dict[str, float]:
+    """nDCG@k with binary gains and MRR@k over evidence units.
+
+    A unit earns gain once, at the first chunk that satisfies it, so several chunks of
+    one gold section do not inflate the score; the ideal ranking finds every unit in
+    the first positions. For single-answer queries nDCG@k is 1/log2(rank+1) of the
+    first hit, as in known-item retrieval benchmarks.
+    """
+    units = evidence_units(query_row)
+    seen: set[str] = set()
+    dcg = 0.0
+    first_hit: int | None = None
+    for rank, payload in enumerate(retrieved_payloads[:ndcg_k], start=1):
+        unit = satisfied_unit(payload, query_row, window_size, judged)
+        if unit is None or unit in seen:
+            continue
+        seen.add(unit)
+        dcg += 1.0 / math.log2(rank + 1)
+    for rank, payload in enumerate(retrieved_payloads[:mrr_k], start=1):
+        if satisfied_unit(payload, query_row, window_size, judged) is not None:
+            first_hit = rank
+            break
+    ideal = sum(
+        1.0 / math.log2(rank + 1) for rank in range(1, min(len(units), ndcg_k) + 1)
+    )
+    return {
+        f"ndcg@{ndcg_k}": dcg / ideal,
+        f"mrr@{mrr_k}": 0.0 if first_hit is None else 1.0 / first_hit,
+    }
+
+
 def score_ranked_payloads(
     retrieved_payloads: list[dict],
     query_row: dict,
@@ -129,6 +203,12 @@ def score_ranked_payloads(
             first_hit_rank = rank
             break
     hits["mrr"] = 1.0 / first_hit_rank if first_hit_rank else 0.0
+    if top_k >= NDCG_K:
+        hits.update(
+            ranking_scores(
+                retrieved_payloads, query_row, window_size=window_size, judged=judged
+            )
+        )
     return hits
 
 

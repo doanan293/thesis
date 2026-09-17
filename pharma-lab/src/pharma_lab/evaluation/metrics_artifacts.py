@@ -86,9 +86,9 @@ def publish_metrics_artifact(
                 )
         (temporary / "report.md").write_text(
             "# Retrieval Metrics\n\n"
-            + markdown_metric_table(metrics)
+            + markdown_metric_table(metrics, top_k)
             + "\n\n"
-            + markdown_breakdown_tables(breakdowns)
+            + markdown_breakdown_tables(breakdowns, top_k)
             + "\n",
             encoding="utf-8",
         )

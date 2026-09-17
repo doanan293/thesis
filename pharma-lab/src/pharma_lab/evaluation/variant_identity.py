@@ -7,7 +7,8 @@ from pharma_lab.evaluation.artifact_contracts import canonical_sha256
 from pharma_lab.runtime.catalog import require_model
 
 RERANK_VARIANT_CONTRACT_VERSION = 1
-METRICS_CONTRACT_VERSION = 1
+# 2: per-query nDCG@10 and MRR@10.
+METRICS_CONTRACT_VERSION = 2
 
 
 @dataclass(frozen=True)

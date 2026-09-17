@@ -62,7 +62,15 @@ def validate_metrics_cutoff(top_k: int, candidate_k: int) -> None:
         )
 
 
-def markdown_metric_table(metrics: dict) -> str:
+def _ranking_rows(metrics: dict, count: float) -> list[str]:
+    rows = []
+    for key, label in (("ndcg@10", "nDCG@10"), ("mrr@10", "MRR@10")):
+        if key in metrics:
+            rows.append(f"| {label} | {metrics[key] / count:.4f} |")
+    return rows
+
+
+def markdown_metric_table(metrics: dict, top_k: int = 30) -> str:
     lines = [
         "| Metric | Value |",
         "| --- | ---: |",
@@ -74,7 +82,8 @@ def markdown_metric_table(metrics: dict) -> str:
         key = f"hit@{k}"
         if key in metrics:
             lines.append(f"| Hit@{k} | {metrics[key] / metrics['count'] * 100:.2f}% |")
-    lines.append(f"| MRR | {metrics['mrr'] / metrics['count']:.4f} |")
+    lines.extend(_ranking_rows(metrics, metrics["count"]))
+    lines.append(f"| MRR@{top_k} | {metrics['mrr'] / metrics['count']:.4f} |")
     multi_count = int(metrics.get("multi_count", 0))
     if multi_count:
         lines.extend(
@@ -92,12 +101,11 @@ def markdown_metric_table(metrics: dict) -> str:
             all_hit_key = f"multi_all_hit@{k}"
             if recall_key in metrics:
                 lines.append(
-                    f"| Multi-section Recall@{k} | "
-                    f"{metrics[recall_key] / multi_count * 100:.2f}% |"
+                    f"| Recall@{k} | {metrics[recall_key] / multi_count * 100:.2f}% |"
                 )
             if all_hit_key in metrics:
                 lines.append(
-                    f"| Multi-all-hit@{k} | "
+                    f"| Complete-evidence rate@{k} | "
                     f"{metrics[all_hit_key] / multi_count * 100:.2f}% |"
                 )
     return "\n".join(lines)
@@ -109,14 +117,15 @@ def accumulate_breakdown_metrics(breakdowns: dict, hits: dict, row: dict) -> Non
         accumulate_metrics(breakdowns[dimension][value], hits, row)
 
 
-def markdown_breakdown_tables(breakdowns: dict) -> str:
+def markdown_breakdown_tables(breakdowns: dict, top_k: int = 30) -> str:
     sections = []
     for dimension in BREAKDOWN_DIMENSIONS:
         lines = [
             f"## Breakdown by {dimension}",
             "",
-            f"| {dimension} | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | MRR |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            f"| {dimension} | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | nDCG@10 "
+            f"| MRR@10 | MRR@{top_k} |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
         for value, metrics in sorted(breakdowns[dimension].items()):
             count = metrics["count"]
@@ -130,7 +139,10 @@ def markdown_breakdown_tables(breakdowns: dict) -> str:
                 f"{metrics.get(f'hit@{k}', 0.0) / count * 100:.2f}%"
                 for k in DISPLAY_HIT_KS
             )
-            cells.append(f"{metrics.get('mrr', 0.0) / count:.4f}")
+            cells.extend(
+                f"{metrics.get(key, 0.0) / count:.4f}"
+                for key in ("ndcg@10", "mrr@10", "mrr")
+            )
             lines.append("| " + " | ".join(cells) + " |")
         sections.append("\n".join(lines))
     return "\n\n".join(sections)

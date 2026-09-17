@@ -7,37 +7,39 @@
 | Hit@5 | 90.36% |
 | Hit@10 | 95.39% |
 | Hit@30 | 98.59% |
-| MRR | 0.7813 |
+| nDCG@10 | 0.8195 |
+| MRR@10 | 0.7792 |
+| MRR@30 | 0.7813 |
 
 ## Multi-required queries
 
 | Metric | Value |
 | --- | ---: |
 | Total Multi-required Queries | 500 |
-| Multi-section Recall@3 | 83.20% |
-| Multi-all-hit@3 | 69.60% |
-| Multi-section Recall@5 | 92.90% |
-| Multi-all-hit@5 | 87.20% |
-| Multi-section Recall@10 | 99.20% |
-| Multi-all-hit@10 | 98.40% |
-| Multi-section Recall@30 | 100.00% |
-| Multi-all-hit@30 | 100.00% |
+| Recall@3 | 83.20% |
+| Complete-evidence rate@3 | 69.60% |
+| Recall@5 | 92.90% |
+| Complete-evidence rate@5 | 87.20% |
+| Recall@10 | 99.20% |
+| Complete-evidence rate@10 | 98.40% |
+| Recall@30 | 100.00% |
+| Complete-evidence rate@30 | 100.00% |
 
 ## Breakdown by eval_group
 
-| eval_group | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | MRR |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| chunk_level_retrieval | 1000 | 58.30% | 71.80% | 87.20% | 98.30% | 0.4763 |
-| formulary | 5000 | 88.74% | 93.06% | 97.02% | 99.06% | 0.7967 |
-| brand_product_qa | 2500 | 90.44% | 93.36% | 96.68% | 98.64% | 0.8671 |
-| multi_intent | 500 | 96.80% | 98.60% | 100.00% | 100.00% | 0.9059 |
-| noisy_confuser | 500 | 59.60% | 70.80% | 82.60% | 94.00% | 0.5275 |
-| patient_natural | 500 | 96.80% | 96.80% | 97.20% | 97.40% | 0.9377 |
+| eval_group | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | nDCG@10 | MRR@10 | MRR@30 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| chunk_level_retrieval | 1000 | 58.30% | 71.80% | 87.20% | 98.30% | 0.5654 | 0.4690 | 0.4763 |
+| formulary | 5000 | 88.74% | 93.06% | 97.02% | 99.06% | 0.8385 | 0.7954 | 0.7967 |
+| brand_product_qa | 2500 | 90.44% | 93.36% | 96.68% | 98.64% | 0.8903 | 0.8659 | 0.8671 |
+| multi_intent | 500 | 96.80% | 98.60% | 100.00% | 100.00% | 0.8835 | 0.9059 | 0.9059 |
+| noisy_confuser | 500 | 59.60% | 70.80% | 82.60% | 94.00% | 0.5929 | 0.5198 | 0.5275 |
+| patient_natural | 500 | 96.80% | 96.80% | 97.20% | 97.40% | 0.9464 | 0.9375 | 0.9377 |
 
 ## Breakdown by difficulty
 
-| difficulty | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | MRR |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| easy | 985 | 94.42% | 96.24% | 98.88% | 100.00% | 0.8923 |
-| hard | 568 | 95.95% | 97.54% | 99.12% | 99.82% | 0.9022 |
-| medium | 8447 | 83.72% | 89.19% | 94.73% | 98.34% | 0.7603 |
+| difficulty | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | nDCG@10 | MRR@10 | MRR@30 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| easy | 985 | 94.42% | 96.24% | 98.88% | 100.00% | 0.9155 | 0.8915 | 0.8923 |
+| hard | 568 | 95.95% | 97.54% | 99.12% | 99.82% | 0.8836 | 0.9017 | 0.9022 |
+| medium | 8447 | 83.72% | 89.19% | 94.73% | 98.34% | 0.8040 | 0.7579 | 0.7603 |

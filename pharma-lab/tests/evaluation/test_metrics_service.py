@@ -64,6 +64,8 @@ def test_markdown_breakdown_tables_renders_only_compact_metrics():
                 "hit@10": 2,
                 "hit@30": 2,
                 "mrr": 0.75,
+                "ndcg@10": 1.5,
+                "mrr@10": 1.5,
                 "multi_count": 1,
             },
             "leaflet": {
@@ -73,6 +75,8 @@ def test_markdown_breakdown_tables_renders_only_compact_metrics():
                 "hit@10": 1,
                 "hit@30": 1,
                 "mrr": 1.0,
+                "ndcg@10": 1.0,
+                "mrr@10": 1.0,
             },
         },
         "difficulty": {
@@ -90,17 +94,19 @@ def test_markdown_breakdown_tables_renders_only_compact_metrics():
     rendered = markdown_breakdown_tables(breakdowns)
 
     assert "## Breakdown by eval_group" in rendered
-    assert "| eval_group | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | MRR |" in rendered
     assert (
-        "| brand_product_qa | 1 | 100.00% | 100.00% | 100.00% | 100.00% | 1.0000 |"
-        in rendered
+        "| eval_group | Count | Hit@3 | Hit@5 | Hit@10 | Hit@30 | nDCG@10 | MRR@10 "
+        "| MRR@30 |" in rendered
     )
     assert (
-        "| chunk_level_retrieval | 2 | 50.00% | 100.00% | 100.00% | 100.00% | 0.3750 |"
-        in rendered
+        "| brand_product_qa | 1 | 100.00% | 100.00% | 100.00% | 100.00% | 1.0000 "
+        "| 1.0000 | 1.0000 |" in rendered
+    )
+    assert (
+        "| chunk_level_retrieval | 2 | 50.00% | 100.00% | 100.00% | 100.00% | 0.7500 "
+        "| 0.7500 | 0.3750 |" in rendered
     )
     assert "## Breakdown by difficulty" in rendered
     assert "| leaflet |" not in rendered
     assert "| chunk_risk |" not in rendered
-    assert "Multi-section" not in rendered
-    assert "Multi-all-hit" not in rendered
+    assert "Complete-evidence" not in rendered
