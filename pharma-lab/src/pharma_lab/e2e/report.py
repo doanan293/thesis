@@ -203,6 +203,34 @@ METRICS: tuple[Metric, ...] = (
 BY_NAME = {metric.name: metric for metric in METRICS}
 LATENCY = "latency_seconds"
 
+# Names printed in the paper's LaTeX tables.
+METRIC_LABELS: Mapping[str, str] = {
+    "truthfulness": "Truthfulness",
+    "perfect_rate": "Perfect",
+    "missing_rate": "Missing",
+    "hallucination_rate": "Hallucination",
+    "nugget_recall": "Nugget recall",
+    "severe_harm_rate": "Severe harm",
+    "faithfulness": "Faithfulness",
+    "citation_recall": "Citation recall",
+    "response_rate": "Response rate",
+    "negative_rejection_rate": "Negative rejection",
+    "redirect_accuracy": "Redirect accuracy",
+    "injection_defence_rate": "Injection defence",
+    "tokens_per_turn": "Tokens / turn",
+    "llm_calls_per_turn": "LLM calls / turn",
+}
+CONFIG_LABELS: Mapping[str, str] = {
+    E2EConfig.FULL.value: "Full agent",
+    E2EConfig.ONE_STEP.value: "One-step RAG",
+    E2EConfig.NO_JUDGE_REFINE.value: "w/o judge--refine",
+    E2EConfig.NO_REPHRASE.value: "w/o rephrase",
+    E2EConfig.NO_RERANK.value: "w/o rerank",
+}
+# The LNCS text block is 12.2 cm wide: the main table compares the two systems,
+# and the ablation table carries the other configurations as paired deltas.
+PAPER_MAIN_CONFIGS: tuple[str, ...] = (E2EConfig.FULL.value, E2EConfig.ONE_STEP.value)
+
 
 def summarise(metric: Metric, values: Sequence[float]) -> Summary:
     return wilson(values) if metric.binary else bootstrap_mean(values)
@@ -257,10 +285,23 @@ def _load(
     return loaded
 
 
+def _number(value: float) -> str:
+    if abs(value) >= 100:
+        text = f"{value:.0f}"
+    elif abs(value) >= 1:
+        text = f"{value:.1f}"
+    else:
+        text = f"{value:.3f}"
+    return "$-$" + text[1:] if text.startswith("-") else text
+
+
 def _cell(summary: Summary) -> str:
     if summary.n == 0:
         return "--"
-    return f"{summary.mean:.3f} [{summary.ci_low:.3f}, {summary.ci_high:.3f}]"
+    return (
+        f"{_number(summary.mean)} "
+        f"[{_number(summary.ci_low)}, {_number(summary.ci_high)}]"
+    )
 
 
 def _write_csv(
@@ -277,18 +318,24 @@ def _latex(value: str) -> str:
 
 
 def _write_tex(
-    path: Path, caption: str, header: Sequence[str], rows: Sequence[Sequence[str]]
+    path: Path,
+    caption: str,
+    label: str,
+    header: Sequence[str],
+    rows: Sequence[Sequence[str]],
 ) -> None:
+    """A booktabs table; caption, header and cells are already LaTeX."""
     lines = [
-        r"\begin{table}[ht]",
+        r"\begin{table}[tb]",
         r"\centering",
-        rf"\caption{{{_latex(caption)}}}",
-        r"\begin{tabular}{l" + "c" * (len(header) - 1) + "}",
-        r"\hline",
-        " & ".join(_latex(cell) for cell in header) + r" \\",
-        r"\hline",
-        *(" & ".join(_latex(cell) for cell in row) + r" \\" for row in rows),
-        r"\hline",
+        rf"\caption{{{caption}}}\label{{{label}}}",
+        r"\small",
+        r"\begin{tabular}{l" + "r" * (len(header) - 1) + "}",
+        r"\toprule",
+        " & ".join(header) + r" \\",
+        r"\midrule",
+        *(" & ".join(row) + r" \\" for row in rows),
+        r"\bottomrule",
         r"\end{tabular}",
         r"\end{table}",
     ]
@@ -328,8 +375,9 @@ def _main_tables(
 ) -> list[Path]:
     rows: list[list[object]] = []
     tex_rows: list[list[str]] = []
+    paper_configs = [config for config in PAPER_MAIN_CONFIGS if config in configs]
     for metric in METRICS:
-        tex_row = [metric.name]
+        tex_row = [METRIC_LABELS.get(metric.name, metric.name)]
         for config in configs:
             summary = summarise(metric, list(values[config][metric.name].values()))
             rows.append(
@@ -344,7 +392,8 @@ def _main_tables(
                     summary.ci_high,
                 ]
             )
-            tex_row.append(_cell(summary))
+            if config in paper_configs:
+                tex_row.append(_cell(summary))
         if metric.primary:
             tex_rows.append(tex_row)
     for q in (50, 95):
@@ -371,8 +420,10 @@ def _main_tables(
     main_tex = directory / "main.tex"
     _write_tex(
         main_tex,
-        "End-to-end results, mean [95% CI] (Wilson for rates, bootstrap otherwise)",
-        ["metric", *configs],
+        "End-to-end results of the full agent and one-step RAG: mean [95\\% CI] "
+        "(Wilson for rates, percentile bootstrap otherwise).",
+        "tab:e2e-main",
+        ["Metric", *(CONFIG_LABELS[config] for config in paper_configs)],
         tex_rows,
     )
     return [main_csv, main_tex]
@@ -398,7 +449,7 @@ def _ablation_tables(
                 )
             )
         adjusted = holm([test.p_value for test in tests])
-        tex_row = [metric.name]
+        tex_row = [METRIC_LABELS.get(metric.name, metric.name)]
         for config, test, p_holm in zip(others, tests, adjusted, strict=True):
             s = test.summary
             rows.append(
@@ -413,8 +464,8 @@ def _ablation_tables(
                     p_holm,
                 ]
             )
-            mark = "" if math.isnan(p_holm) or p_holm >= 0.05 else "*"
-            tex_row.append(f"{_cell(s)}{mark}")
+            mark = "" if math.isnan(p_holm) or p_holm >= 0.05 else "$^{*}$"
+            tex_row.append("--" if s.n == 0 else f"{_number(s.mean)}{mark}")
         if metric.primary:
             tex_rows.append(tex_row)
     ablation_csv = directory / "ablation.csv"
@@ -426,9 +477,11 @@ def _ablation_tables(
     ablation_tex = directory / "ablation.tex"
     _write_tex(
         ablation_tex,
-        "Change against the full agent: paired mean [95% bootstrap CI]; "
-        "* Holm-adjusted randomization p < 0.05",
-        ["metric", *others],
+        "Paired change of each configuration against the full agent. "
+        "$^{*}$: Holm-adjusted randomization $p<0.05$; confidence intervals are "
+        "in the released CSV.",
+        "tab:e2e-ablation",
+        ["Metric", *(CONFIG_LABELS[config] for config in others)],
         tex_rows,
     )
     return [ablation_csv, ablation_tex]
@@ -506,16 +559,18 @@ def _calibration_tables(directory: Path, run_root: Path) -> list[Path]:
         written.append(directory / "calibration.tex")
         _write_tex(
             written[-1],
-            "Agreement between the judge and the calibration grader",
-            ["metric", "statistic", "n", "value [95% CI]"],
+            "Agreement between the LLM judge and the blind calibration grader.",
+            "tab:e2e-calibration",
+            ["Label", "Statistic", "$n$", "Value [95\\% CI]"],
             [
                 [
-                    row["metric"],
-                    row["statistic"],
+                    _latex(row["metric"]),
+                    _latex(row["statistic"]),
                     str(row["n"]),
                     "--"
                     if row["value"] is None
-                    else f"{row['value']:.3f} [{row['ci_low']:.3f}, {row['ci_high']:.3f}]",
+                    else f"{_number(row['value'])} "
+                    f"[{_number(row['ci_low'])}, {_number(row['ci_high'])}]",
                 ]
                 for row in rows
             ],

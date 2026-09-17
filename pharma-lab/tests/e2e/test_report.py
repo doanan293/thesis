@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from pharma_lab.e2e.calibration import calibration_dir
+from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.golden import GoldenItem
 from pharma_lab.e2e.records import (
     AnswerRecord,
@@ -14,6 +15,9 @@ from pharma_lab.e2e.records import (
     TokenUsage,
 )
 from pharma_lab.e2e.report import (
+    CONFIG_LABELS,
+    METRIC_LABELS,
+    METRICS,
     bootstrap_mean,
     error_label,
     paired_delta,
@@ -179,9 +183,25 @@ def test_write_report_builds_every_table(tmp_path: Path) -> None:
     groups = rows(reports / "by_group.csv")
     assert {r["group"] for r in groups} == {"answerable", "formulary", "leaflet"}
     tex = (reports / "main.tex").read_text("utf-8")
-    assert r"nugget\_recall" in tex and r"truthfulness" in tex
-    assert "latency" not in tex  # latency is secondary: CSV only
-    assert "--" in (reports / "calibration.tex").read_text("utf-8")
+    assert r"\label{tab:e2e-main}" in tex
+    assert r"\toprule" in tex and r"\hline" not in tex
+    assert "Nugget recall" in tex and "Truthfulness" in tex
+    assert "Full agent & One-step RAG" in tex
+    assert "latency" not in tex.lower()  # latency is secondary: CSV only
+    assert "0.750 [" in tex
+    calls_row = next(line for line in tex.splitlines() if line.startswith("LLM calls"))
+    assert calls_row.startswith("LLM calls / turn & 4.0 [")
+    ablation_tex = (reports / "ablation.tex").read_text("utf-8")
+    assert r"\label{tab:e2e-ablation}" in ablation_tex
+    assert "One-step RAG" in ablation_tex
+    nugget_row = next(
+        line for line in ablation_tex.splitlines() if line.startswith("Nugget recall")
+    )
+    assert nugget_row.startswith(r"Nugget recall & $-$0.333")
+    assert "[" not in nugget_row  # CIs stay in ablation.csv
+    calibration_tex = (reports / "calibration.tex").read_text("utf-8")
+    assert r"\label{tab:e2e-calibration}" in calibration_tex
+    assert "--" in calibration_tex
     errors = (reports / "errors.md").read_text("utf-8").splitlines()
     assert errors[4].startswith("| e2e-ans-0004 | answerable | 0.00 | -- |")
     assert "| retrieval |" in next(line for line in errors if "e2e-ans-0000" in line)
@@ -226,3 +246,8 @@ def test_report_uses_relevance_judgments_and_answerable_groups(tmp_path: Path) -
     write_report(tmp_path, {item.item_id: item})
     main = {r["metric"]: r for r in rows(tmp_path / "reports" / "main.csv")}
     assert float(main["cited_source_precision"]["mean"]) == 0.0
+
+
+def test_every_primary_metric_and_config_has_a_paper_label() -> None:
+    assert {m.name for m in METRICS if m.primary} <= set(METRIC_LABELS)
+    assert {c.value for c in E2EConfig} == set(CONFIG_LABELS)

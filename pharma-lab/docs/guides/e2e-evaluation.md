@@ -116,8 +116,10 @@ uv run pharma-lab e2e report --run e2e-v1
    - `ppi.json`: ước lượng PPI.
 
 **`e2e report`** ghi các file sau vào `runs/<run>/reports/`:
-- `main.csv|tex`;
-- `ablation.csv|tex` (Δ so với `full`, paired bootstrap);
+- `main.csv|tex`: CSV có mọi cấu hình; bảng LaTeX chỉ gồm `full` và `one-step`, kèm CI;
+- `ablation.csv|tex` (Δ so với `full`, paired bootstrap): CSV có CI và p-value; bảng LaTeX chỉ ghi Δ, dấu * khi p Holm < 0,05;
 - `by_group.csv`;
 - `calibration.csv|tex`;
+
+Các file `.tex` dùng booktabs, có `\label` (`tab:e2e-main`, `tab:e2e-ablation`, `tab:e2e-calibration`) và tên metric/cấu hình dễ đọc, để copy thẳng vào `report/tables/` (xem `report/README.md`).
 - `errors.md` (20 câu tệ nhất của `full`, gắn nhãn lỗi retrieval / citation / answer).
