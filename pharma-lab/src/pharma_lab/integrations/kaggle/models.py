@@ -122,6 +122,8 @@ class StageName(StrEnum):
     CORPUS_EMBED_BENCHMARK = "corpus-embed-benchmark"
     # A reranker served over a tunnel for a bounded time (E2E evaluation).
     RERANK_SERVE = "rerank-serve"
+    # A chat model served the same way, for E2E runs with an open-weight LLM.
+    LLM_SERVE = "llm-serve"
 
 
 class KernelPresence(StrEnum):

@@ -1,6 +1,13 @@
 import pytest
 
-from pharma_lab.runtime.catalog import MODEL_CATALOG, require_model
+from pharma_lab.runtime.catalog import (
+    MODEL_CATALOG,
+    ModelKind,
+    ModelTopology,
+    require_model,
+)
+
+CHAT_MODEL = "qwen3.5:9b-f16"
 
 VIMED_FILES = {
     "qwen3-reranker:0.6b-fp16": (
@@ -42,3 +49,19 @@ def test_every_gguf_dataset_slug_fits_the_kaggle_limit() -> None:
     }
 
     assert too_long == {}
+
+
+def test_the_open_weight_chat_model_is_served_sharded_with_a_fixed_runtime() -> None:
+    spec = require_model(CHAT_MODEL)
+
+    assert spec.kind is ModelKind.CHAT
+    assert spec.topology is ModelTopology.SHARDED_1X2
+    assert (spec.canonical_filename, spec.byte_size, spec.sha256) == (
+        "qwen3.5-9b-f16.gguf",
+        17_920_697_312,
+        "863a67e28486f4c3ad7a30c49614a398d5a07caf8d0067a018d0e5f0abf79f2d",
+    )
+    assert spec.gguf_dataset_slug == "vector-cache-gguf-qwen3-5-9b-f16"
+    assert spec.serve_runtime is not None
+    assert spec.serve_runtime.context_per_slot >= 16384
+    assert spec.rerank_search_space is None and spec.vector_dimension is None

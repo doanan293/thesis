@@ -29,6 +29,7 @@ pharma-lab e2e judge --run NAME --config CONFIG [--judge-model MODEL] [--force]
 pharma-lab e2e calibration export|score --run NAME
 pharma-lab e2e report --run NAME
 pharma-lab e2e rerank-server --model MODEL --hours H --kaggle-account accN|auto
+pharma-lab e2e llm-server --model MODEL --hours H --kaggle-account accN|auto
 ```
 
 Global `--json` in envelope máy đọc được, `--debug` bật traceback. `uv run pharma-lab COMMAND --help` cho default thực tế.
@@ -157,3 +158,4 @@ Chi tiết trong [e2e-evaluation.md](e2e-evaluation.md).
 | `pharma-lab e2e calibration score --run NAME` | Tính κ và ρ giữa judge và `calibration/grades.jsonl` |
 | `pharma-lab e2e report --run NAME` | Ghi bảng CSV/LaTeX và phân tích lỗi vào `runs/<run>/reports/` |
 | `pharma-lab e2e rerank-server [--model MODEL] [--hours H] [--kaggle-account accN\|auto]` | Phục vụ reranker từ GPU Kaggle qua tunnel cloudflared có API key; ghi `data/work/serve/<model>.env` để các lượt `e2e run` dùng |
+| `pharma-lab e2e llm-server [--model MODEL] [--hours H] [--kaggle-account accN\|auto] [--attach OWNER/SLUG]` | Phục vụ model chat open-weight (mặc định `qwen3.5:9b-f16`, chia trên hai T4) qua tunnel; file env trỏ mọi bước của pipeline vào tunnel |

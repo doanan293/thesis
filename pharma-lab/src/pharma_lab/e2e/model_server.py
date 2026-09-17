@@ -1,8 +1,9 @@
-"""Serve the reranker on a Kaggle GPU for E2E runs (a laptop CPU is far too slow).
+"""Serve a model on Kaggle GPUs for E2E runs (a laptop CPU is far too slow).
 
-`serve_reranker` reserves an account, pushes a `rerank-serve` kernel and blocks until
-the session ends. A watcher reads the kernel log for the tunnel URL and writes an env
-file that `pharma-lab e2e run` sessions source before starting.
+`serve_model` reserves an account, pushes a `rerank-serve` kernel for a reranker or an
+`llm-serve` kernel for a chat model, and blocks until the session ends. A watcher reads
+the kernel log for the tunnel URL and writes an env file that `pharma-lab e2e run`
+sessions source before starting.
 """
 
 from __future__ import annotations
@@ -18,13 +19,25 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from pharma_agent.domain.llm.models import LlmRole
 
 from pharma_lab.config.paths import GGUF_ROOT, WORK_DIR
+from pharma_lab.integrations.kaggle.models import StageName
 from pharma_lab.runtime.catalog import ModelKind, require_model
+from pharma_lab.runtime.runtime_profiles import RuntimeCandidate
+
+if TYPE_CHECKING:
+    from pharma_lab.integrations.kaggle.service import KaggleExecutionContext
 
 SERVE_DIR = WORK_DIR / "serve"
 URL_LINE = re.compile(r"\[serve\] url=(https://\S+)")
 POLL_SECONDS = 20.0
+# Qwen3.5 thinks by default; the pipeline asks for short structured decisions.
+CHAT_EXTRA_BODY = {"chat_template_kwargs": {"enable_thinking": False}}
+# A 9B model on T4s generates a long answer in well over the backend's 60 s default.
+CHAT_TIMEOUT_SECONDS = 600
 
 
 def env_path(model: str) -> Path:
@@ -57,15 +70,29 @@ def api_key_path(request_path: Path) -> Path:
 
 
 def env_lines(*, model: str, url: str, api_key: str) -> str:
-    return "".join(
-        f"{name}={value}\n"
-        for name, value in (
+    """Backend settings that point the served model's consumers at the tunnel."""
+    if require_model(model).kind is ModelKind.CHAT:
+        pairs = [("PHARMA_LLM__TIMEOUT_SECONDS", str(CHAT_TIMEOUT_SECONDS))]
+        for role in LlmRole:
+            prefix = f"PHARMA_LLM__ROLES__{role.name}__"
+            pairs += [
+                (prefix + "BASE_URL", f"{url}/v1"),
+                (prefix + "API_KEY", api_key),
+                (prefix + "MODEL", model),
+                (prefix + "EXTRA_BODY", json.dumps(CHAT_EXTRA_BODY)),
+            ]
+    else:
+        pairs = [
             ("PHARMA_RETRIEVAL__RERANK__PROTOCOL", "native_rerank"),
             ("PHARMA_RETRIEVAL__RERANK__BASE_URL", url),
             ("PHARMA_RETRIEVAL__RERANK__API_KEY", api_key),
             ("PHARMA_RETRIEVAL__RERANK__MODEL", model),
             ("PHARMA_RETRIEVAL__RERANK__TIMEOUT_SECONDS", "300"),
-        )
+        ]
+    # JSON values are single-quoted so that `set -a; . file` keeps them intact.
+    return "".join(
+        f"{name}='{value}'\n" if value.startswith("{") else f"{name}={value}\n"
+        for name, value in pairs
     )
 
 
@@ -132,7 +159,7 @@ class UrlWatcher:
 
 
 def api_key_from_runner(source: str) -> str:
-    """The API key embedded in a pushed rerank-serve kernel's runner script.
+    """The API key embedded in a pushed serve kernel's runner script.
 
     The runner writes its stage config with `config.write_text("<json>", ...)`.
     """
@@ -150,13 +177,22 @@ def api_key_from_runner(source: str) -> str:
             key = json.loads(node.args[0].value).get("api_key")
             if isinstance(key, str) and key:
                 return key
-    raise ValueError("the kernel's runner has no rerank-serve api_key")
+    raise ValueError("the kernel's runner has no serve api_key")
 
 
-def attach_reranker(
+def serve_stage(model: str) -> StageName:
+    kind = require_model(model).kind
+    if kind is ModelKind.RERANKER:
+        return StageName.RERANK_SERVE
+    if kind is ModelKind.CHAT:
+        return StageName.LLM_SERVE
+    raise ValueError(f"--model must select a reranker or a chat model: {model}")
+
+
+def attach_model(
     *, model: str, reference: str, kaggle_account: str, log: Callable[[str], None]
 ) -> Path:
-    """Serve through a rerank-serve kernel that is already running.
+    """Serve through a serve kernel that is already running.
 
     After a local restart the key and env files are gone, but the kernel keeps
     serving: its source holds the key and its log holds the tunnel URL. Blocks until
@@ -202,27 +238,19 @@ def attach_reranker(
     return target
 
 
-def serve_reranker(
-    *, model: str, hours: float, kaggle_account: str | None, log: Callable[[str], None]
-) -> Path:
-    """Run one serving session; returns the env file path (removed at the end)."""
-    from pharma_lab.integrations.kaggle.api import kernel_logs_follow_command
+def _serve_profile(
+    model: str, budget: int, context: KaggleExecutionContext
+) -> RuntimeCandidate:
+    """The benchmarked profile of a reranker, or the fixed layout of a chat model."""
     from pharma_lab.integrations.kaggle.auto_profile import ensure_runtime_profile
-    from pharma_lab.integrations.kaggle.models import StageName, StageRequest
-    from pharma_lab.integrations.kaggle.service import (
-        resolve_session_contexts,
-        run_kaggle_stage,
-        runtime_manifest_sha256,
-    )
-    from pharma_lab.integrations.kaggle.sessions import reserve_session_account
-    from pharma_lab.integrations.kaggle.stages import get_stage_adapter
+    from pharma_lab.integrations.kaggle.models import StageName
+    from pharma_lab.integrations.kaggle.service import runtime_manifest_sha256
 
     spec = require_model(model)
-    if spec.kind is not ModelKind.RERANKER:
-        raise ValueError("--model must select a reranker model")
-    budget = int(hours * 3600) + 1800
-    contexts = resolve_session_contexts(kaggle_account)
-    first = contexts[0]
+    if spec.kind is ModelKind.CHAT:
+        if spec.serve_runtime is None:
+            raise ValueError(f"{model} has no serve runtime")
+        return spec.serve_runtime
 
     def no_benchmark(**_: object) -> object:
         raise RuntimeError(
@@ -238,13 +266,32 @@ def serve_reranker(
         budget_seconds=budget,
         dry_run=False,
         force=False,
-        kaggle_account=first.profile.name if first.profile else None,
-        runtime_sha256=runtime_manifest_sha256(first.runner, first.owners),
+        kaggle_account=context.profile.name if context.profile else None,
+        runtime_sha256=runtime_manifest_sha256(context.runner, context.owners),
         benchmark_runner=no_benchmark,
     )
     if resolution.profile is None:
         raise RuntimeError(f"no Kaggle runtime profile for {model}")
-    profile = resolution.profile.selected
+    return resolution.profile.selected
+
+
+def serve_model(
+    *, model: str, hours: float, kaggle_account: str | None, log: Callable[[str], None]
+) -> Path:
+    """Run one serving session; returns the env file path (removed at the end)."""
+    from pharma_lab.integrations.kaggle.api import kernel_logs_follow_command
+    from pharma_lab.integrations.kaggle.models import StageRequest
+    from pharma_lab.integrations.kaggle.service import (
+        resolve_session_contexts,
+        run_kaggle_stage,
+    )
+    from pharma_lab.integrations.kaggle.sessions import reserve_session_account
+    from pharma_lab.integrations.kaggle.stages import get_stage_adapter
+
+    stage = serve_stage(model)
+    budget = int(hours * 3600) + 1800
+    contexts = resolve_session_contexts(kaggle_account)
+    profile = _serve_profile(model, budget, contexts[0])
     request_path, api_key = write_request(SERVE_DIR, hours=hours)
     output_dir = SERVE_DIR / "kernels"
     target = env_path(model)
@@ -252,9 +299,9 @@ def serve_reranker(
         contexts, requested_budget_seconds=budget, log=log
     ) as reserved:
         context = reserved.context
-        job = get_stage_adapter(StageName.RERANK_SERVE).build_job(
+        job = get_stage_adapter(stage).build_job(
             StageRequest(
-                StageName.RERANK_SERVE,
+                stage,
                 model,
                 request_path,
                 output_dir,
@@ -281,7 +328,7 @@ def serve_reranker(
         watcher.start()
         try:
             run_kaggle_stage(
-                stage=StageName.RERANK_SERVE,
+                stage=stage,
                 model=model,
                 input_path=request_path,
                 output_dir=output_dir,

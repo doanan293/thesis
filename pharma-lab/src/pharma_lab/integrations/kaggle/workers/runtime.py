@@ -374,6 +374,9 @@ def build_server_command(
     ]
     if spec.kind is ModelKind.EMBEDDING:
         command.append("--embedding")
+    elif spec.kind is ModelKind.CHAT:
+        # The GGUF chat template (with chat_template_kwargs) formats the messages.
+        command.append("--jinja")
     else:
         command.extend(["--reranking", "--kv-unified"])
     if spec.topology is ModelTopology.SHARDED_1X2:

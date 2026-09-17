@@ -343,37 +343,46 @@ class BenchmarkStage:
 SERVE_REPORT_FILENAME = "serve_report.jsonl"
 
 
-def _serve_api_key(request_path: Path) -> str:
+def _serve_api_key(stage: StageName, request_path: Path) -> str:
     key_file = Path(request_path).with_suffix(".key")
     if not key_file.is_file():
-        raise ValueError(f"rerank-serve needs its private key file: {key_file}")
+        raise ValueError(f"{stage.value} needs its private key file: {key_file}")
     key = key_file.read_text(encoding="utf-8").strip()
     if not key:
-        raise ValueError(f"rerank-serve key file is empty: {key_file}")
+        raise ValueError(f"{stage.value} key file is empty: {key_file}")
     return key
 
 
 @dataclass(frozen=True)
-class RerankServeStage:
-    """Serve a reranker through a tunnel until the session budget or `hours` ends.
+class ModelServeStage:
+    """Serve a model through a tunnel until the session budget or `hours` ends.
 
     The input is a small request file (hours, nonce); every request is a new job, so a
     finished session is never mistaken for a reusable artifact. Input datasets are
     public, so the API key comes from a private `<request>.key` file next to it and
-    only enters the private kernel's config.
+    only enters the private kernel's config. Rerankers use their benchmarked runtime
+    profile; chat models use the fixed layout of their catalog entry.
     """
 
-    name: StageName = StageName.RERANK_SERVE
+    name: StageName
+    kind: ModelKind
     contract_version: int = 1
 
     def build_job(self, request: StageRequest) -> StageJob:
         spec = require_model(request.model)
-        if spec.kind is not ModelKind.RERANKER:
-            raise ValueError(f"rerank-serve requires a reranker model: {request.model}")
+        if spec.kind is not self.kind:
+            raise ValueError(
+                f"{self.name.value} requires a {self.kind.value} model: {request.model}"
+            )
         input_bundle = InputBundle.create(
             (InputFile.create("serve_request", request.input_path),)
         )
-        profile = _required_runtime_profile(request)
+        if self.kind is ModelKind.CHAT and request.runtime_profile is None:
+            if spec.serve_runtime is None:
+                raise ValueError(f"{request.model} has no serve runtime")
+            profile = spec.serve_runtime
+        else:
+            profile = _required_runtime_profile(request)
         identity = JobIdentity.create(
             stage=self.name,
             contract_version=self.contract_version,
@@ -402,7 +411,7 @@ class RerankServeStage:
                 "gguf_root": str(request.gguf_root),
                 "job_sha256": identity.sha256,
                 "enable_internet": True,
-                "api_key": _serve_api_key(request.input_path),
+                "api_key": _serve_api_key(self.name, request.input_path),
             },
         )
 
@@ -411,7 +420,8 @@ _ADAPTERS: dict[StageName, StageAdapter] = {
     StageName.CORPUS_EMBED: CorpusEmbedStage(),
     StageName.QUERY_EMBED: QueryEmbedStage(),
     StageName.RERANK: RerankStage(),
-    StageName.RERANK_SERVE: RerankServeStage(),
+    StageName.RERANK_SERVE: ModelServeStage(StageName.RERANK_SERVE, ModelKind.RERANKER),
+    StageName.LLM_SERVE: ModelServeStage(StageName.LLM_SERVE, ModelKind.CHAT),
 }
 _ADAPTERS.update(
     {

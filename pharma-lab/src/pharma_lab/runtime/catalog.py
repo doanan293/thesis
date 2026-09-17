@@ -21,6 +21,7 @@ from pharma_lab.runtime.runtime_profiles import (
 class ModelKind(StrEnum):
     EMBEDDING = "embedding"
     RERANKER = "reranker"
+    CHAT = "chat"
 
 
 class ModelTopology(StrEnum):
@@ -87,6 +88,8 @@ class ModelSpec:
     rerank_search_space: RuntimeSearchSpace | None = None
     local_rerank_search_space: RuntimeSearchSpace | None = None
     embedding_search_space: EmbeddingRuntimeSearchSpaces | None = None
+    # Chat models are only served, so their server layout is fixed instead of benchmarked.
+    serve_runtime: RuntimeCandidate | None = None
 
     @property
     def slug(self) -> str:
@@ -302,7 +305,32 @@ RERANKER_MODELS = {
     ),
 }
 
-MODEL_CATALOG = {**EMBEDDING_MODELS, **RERANKER_MODELS}
+CHAT_MODELS = {
+    # Qwen3.5-9B (Apache 2.0) converted from the BF16 GGUF to F16, because T4 GPUs have
+    # no bfloat16 kernels; the derivation is in docs/guides/e2e-evaluation.md. At 17.9 GB
+    # it is split over both T4s. Only 8 of its 32 layers keep a KV cache (32 KiB per
+    # token), so four 16k-token slots fit next to the weights on each GPU.
+    "qwen3.5:9b-f16": ModelSpec(
+        name="qwen3.5:9b-f16",
+        kind=ModelKind.CHAT,
+        canonical_filename="qwen3.5-9b-f16.gguf",
+        byte_size=17_920_697_312,
+        sha256="863a67e28486f4c3ad7a30c49614a398d5a07caf8d0067a018d0e5f0abf79f2d",
+        topology=ModelTopology.SHARDED_1X2,
+        kaggle_parallel=1,
+        kaggle_request_batch_size=1,
+        serve_runtime=RuntimeCandidate(
+            server_slots=4,
+            concurrency=4,
+            request_batch_size=1,
+            context_per_slot=16384,
+            logical_batch_size=2048,
+            physical_batch_size=512,
+        ),
+    ),
+}
+
+MODEL_CATALOG = {**EMBEDDING_MODELS, **RERANKER_MODELS, **CHAT_MODELS}
 
 
 def require_model(name: str) -> ModelSpec:

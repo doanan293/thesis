@@ -24,6 +24,7 @@ from pharma_lab.integrations.kaggle.workers.serve import (
     start_tunnel,
     upstream_ports,
 )
+from pharma_lab.runtime.catalog import require_model
 
 MODEL = "qwen3-reranker:0.6b-fp16"
 
@@ -191,6 +192,41 @@ def test_serve_without_key_file_is_refused(tmp_path: Path) -> None:
                 StageName.RERANK_SERVE,
                 MODEL,
                 path,
+                runtime_profile=rerank_runtime_profile(MODEL),
+            )
+        )
+
+
+CHAT_MODEL = "qwen3.5:9b-f16"
+
+
+def test_llm_serve_uses_the_same_worker_with_the_fixed_chat_runtime(
+    tmp_path: Path,
+) -> None:
+    job = get_stage_adapter(StageName.LLM_SERVE).build_job(
+        stage_request(StageName.LLM_SERVE, CHAT_MODEL, request_file(tmp_path, "c"))
+    )
+    spec_runtime = require_model(CHAT_MODEL).serve_runtime
+    assert spec_runtime is not None
+
+    assert job.stage is StageName.LLM_SERVE
+    assert job.worker_module == "pharma_lab.integrations.kaggle.workers.serve"
+    assert job.worker_config["api_key"] == "key-c"
+    assert job.worker_config["enable_internet"] is True
+    assert job.worker_config["runtime_overrides"] == spec_runtime.to_dict()
+
+
+def test_each_serve_stage_accepts_only_its_model_kind(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="requires a chat model"):
+        get_stage_adapter(StageName.LLM_SERVE).build_job(
+            stage_request(StageName.LLM_SERVE, MODEL, request_file(tmp_path, "d"))
+        )
+    with pytest.raises(ValueError, match="requires a reranker"):
+        get_stage_adapter(StageName.RERANK_SERVE).build_job(
+            stage_request(
+                StageName.RERANK_SERVE,
+                CHAT_MODEL,
+                request_file(tmp_path, "e"),
                 runtime_profile=rerank_runtime_profile(MODEL),
             )
         )

@@ -33,7 +33,40 @@ Trong session chạy E2E, nạp file env trước (`set -a; . data/work/serve/qw
 
 **Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Proxy antigravity không có model này. Run `e2e-v1` chấm bằng `--judge-model gemini-3.1-flash-lite`: model này khác model trả lời (`gemini-3.8-flash-high`), nhanh (khoảng 3 giây mỗi lần gọi), và có quota lớn nhất trong các model đã thử.
 
-**Chạy với model open-weight.** Run `e2e-qwen35-9b` dùng Qwen3.5-9B trên DeepInfra cho mọi bước của pipeline; judge vẫn dùng endpoint mặc định trong `backend/.env`. Key đặt trong `pharma-lab/.env` với tên `DEEPINFRA_API_KEY`. Trong tmux session của run, ghi đè endpoint của từng bước trước khi chạy (biến môi trường được ưu tiên hơn `backend/.env`, nên các run khác không bị ảnh hưởng):
+**Chạy với model open-weight.** Run `e2e-qwen35-9b` dùng Qwen3.5-9B (9,65 tỉ tham số, Apache 2.0) cho mọi bước của pipeline; judge vẫn dùng endpoint mặc định trong `backend/.env`.
+
+*Chuẩn bị file GGUF F16* (một lần, ở thư mục gốc repo). T4 không có kernel bfloat16, nên bản BF16 được chuyển sang F16 bằng `llama-quantize` của cùng bản build llama.cpp với compose:
+
+```bash
+mkdir -p ai-models/downloads
+curl -fL -C - -o ai-models/downloads/Qwen3.5-9B-BF16.gguf \
+  https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/3885219b6810b007914f3a7950a8d1b469d598a5/Qwen3.5-9B-BF16.gguf
+echo "daebe40eeea7057c1cdf35ac56d13f507d8bf12171bbb7a6b6b0d3f05439159a  ai-models/downloads/Qwen3.5-9B-BF16.gguf" | sha256sum -c -
+docker run --rm -v "$PWD/ai-models:/models" --entrypoint /app/llama-quantize \
+  ghcr.io/ggml-org/llama.cpp:full-b10920 \
+  /models/downloads/Qwen3.5-9B-BF16.gguf /models/gguf/qwen3.5-9b-f16.gguf F16
+echo "863a67e28486f4c3ad7a30c49614a398d5a07caf8d0067a018d0e5f0abf79f2d  ai-models/gguf/qwen3.5-9b-f16.gguf" | sha256sum -c -
+```
+
+Kích thước và sha256 của file F16 được ghi trong catalog (`qwen3.5:9b-f16`). So từng tensor với file BF16: 250/427 tensor được đổi (8,95 tỉ giá trị, trọng số lớn nhất 1,07), sai lệch tuyệt đối lớn nhất 3,0×10⁻⁸, 17.320 giá trị nhỏ hơn khoảng 3×10⁻⁸ bị làm tròn về 0; các tensor F32 giữ nguyên. Chạy thử bằng `server-b10920` trên CPU cho output JSON đúng schema và không sinh phần suy luận khi `enable_thinking` là `false`. Lần chạy stage đầu tiên tự đưa file lên dataset Kaggle `vector-cache-gguf-qwen3-5-9b-f16`. Bản llama.cpp trên Kaggle (b9637) đã hỗ trợ kiến trúc `qwen35`.
+
+*Phục vụ trên Kaggle.* Model 17,9 GB được chia đôi trên hai T4 (4 slot, mỗi slot 16.384 token). Hai GPU dành cho LLM, nên reranker chạy ở một kernel khác:
+
+```bash
+uv run pharma-lab e2e llm-server --model qwen3.5:9b-f16 --hours 10 --kaggle-account auto
+uv run pharma-lab e2e rerank-server --model qwen3-reranker:4b-fp16 --hours 10 --kaggle-account auto
+```
+
+`llm-server` ghi `data/work/serve/qwen3_5_9b_f16.env`: endpoint của cả sáu bước trỏ vào tunnel, `EXTRA_BODY` tắt chế độ suy luận mặc định của Qwen3.5, và timeout 600 giây. Trong tmux session của run, nạp cả hai file env rồi chạy thử `--limit 20` trước:
+
+```bash
+set -a; . data/work/serve/qwen3_5_9b_f16.env; . data/work/serve/qwen3_reranker_4b_fp16.env; set +a
+uv run pharma-lab e2e run --run e2e-qwen35-9b --config full --limit 20 --deadline-seconds 900
+```
+
+Biến môi trường được ưu tiên hơn `backend/.env`, nên các run khác không bị ảnh hưởng. `EXTRA_BODY` và tên model được ghi vào `run.json`.
+
+*Qua API thay cho Kaggle.* Cùng model có trên DeepInfra (key `DEEPINFRA_API_KEY` trong `pharma-lab/.env`); khi đó đặt endpoint từng bước bằng tay:
 
 ```bash
 set -a; . ./.env; set +a
@@ -43,10 +76,7 @@ for ROLE in GUARDRAIL REPHRASE JUDGE REFINE ANSWER SUMMARIZER; do
   export PHARMA_LLM__ROLES__${ROLE}__MODEL=Qwen/Qwen3.5-9B
   export PHARMA_LLM__ROLES__${ROLE}__EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": false}}'
 done
-uv run pharma-lab e2e run --run e2e-qwen35-9b --config full --limit 20 --deadline-seconds 600
 ```
-
-`EXTRA_BODY` tắt chế độ suy luận mặc định của Qwen3.5 và được ghi vào `run.json` cùng tên model. Chạy thử `--limit 20` trước để kiểm output có cấu trúc, rồi mới chạy đủ.
 
 **Cấu hình ablation chỉ đặt được từ harness.** Backend không có biến môi trường nào để tắt bước của agent.
 

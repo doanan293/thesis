@@ -37,8 +37,8 @@ from pharma_lab.e2e.golden import (
 from pharma_lab.e2e.harness import E2ERunRequest, run_e2e
 from pharma_lab.e2e.judging.service import JudgeRequest, run_judge
 from pharma_lab.e2e.judging.structured import JUDGE_MODEL
+from pharma_lab.e2e.model_server import attach_model, env_path, serve_model
 from pharma_lab.e2e.report import write_report
-from pharma_lab.e2e.rerank_server import attach_reranker, env_path, serve_reranker
 from pharma_lab.e2e.sampling import (
     replacement_candidates,
     sample_answerable,
@@ -412,42 +412,84 @@ def report(
     run_handler(state_from_context(ctx), handler)
 
 
-@e2e_app.command("rerank-server")
-def rerank_server(
+def _serve(
     ctx: typer.Context,
-    model: Annotated[str, typer.Option("--model")] = "qwen3-reranker:4b-fp16",
-    hours: Annotated[float, typer.Option("--hours", min=0.1, max=11.0)] = 8.0,
-    kaggle_account: Annotated[
-        str | None, typer.Option("--kaggle-account", help="accN or auto")
-    ] = "auto",
-    attach: Annotated[
-        str | None,
-        typer.Option(
-            "--attach",
-            help="OWNER/SLUG of a running rerank-serve kernel to reuse "
-            "(with --kaggle-account accN)",
-        ),
-    ] = None,
+    command: str,
+    *,
+    model: str,
+    hours: float,
+    kaggle_account: str | None,
+    attach: str | None,
 ) -> None:
-    """Serve the reranker from a Kaggle GPU; E2E runs source the printed env file."""
-
     def handler() -> CommandResult:
         target = env_path(model)
         typer.echo(f"env file (while serving): {target}")
 
         def log(line: str) -> None:
-            typer.echo(f"[rerank-server] {line}")
+            typer.echo(f"[{command}] {line}")
 
         if attach is not None:
             if kaggle_account is None or kaggle_account == "auto":
                 raise ValueError("--attach needs the owning --kaggle-account accN")
-            attach_reranker(
+            attach_model(
                 model=model, reference=attach, kaggle_account=kaggle_account, log=log
             )
         else:
-            serve_reranker(
+            serve_model(
                 model=model, hours=hours, kaggle_account=kaggle_account, log=log
             )
-        return CommandResult("e2e rerank-server", CommandStatus.COMPLETE, target)
+        return CommandResult(f"e2e {command}", CommandStatus.COMPLETE, target)
 
     run_handler(state_from_context(ctx), handler)
+
+
+HoursOption = Annotated[float, typer.Option("--hours", min=0.1, max=11.0)]
+AccountOption = Annotated[
+    str | None, typer.Option("--kaggle-account", help="accN or auto")
+]
+
+
+def _attach_option(stage: str) -> object:
+    return typer.Option(
+        "--attach",
+        help=f"OWNER/SLUG of a running {stage} kernel to reuse "
+        "(with --kaggle-account accN)",
+    )
+
+
+@e2e_app.command("rerank-server")
+def rerank_server(
+    ctx: typer.Context,
+    model: Annotated[str, typer.Option("--model")] = "qwen3-reranker:4b-fp16",
+    hours: HoursOption = 8.0,
+    kaggle_account: AccountOption = "auto",
+    attach: Annotated[str | None, _attach_option("rerank-serve")] = None,
+) -> None:
+    """Serve the reranker from a Kaggle GPU; E2E runs source the printed env file."""
+    _serve(
+        ctx,
+        "rerank-server",
+        model=model,
+        hours=hours,
+        kaggle_account=kaggle_account,
+        attach=attach,
+    )
+
+
+@e2e_app.command("llm-server")
+def llm_server(
+    ctx: typer.Context,
+    model: Annotated[str, typer.Option("--model")] = "qwen3.5:9b-f16",
+    hours: HoursOption = 8.0,
+    kaggle_account: AccountOption = "auto",
+    attach: Annotated[str | None, _attach_option("llm-serve")] = None,
+) -> None:
+    """Serve an open-weight chat model from two Kaggle T4s for every pipeline role."""
+    _serve(
+        ctx,
+        "llm-server",
+        model=model,
+        hours=hours,
+        kaggle_account=kaggle_account,
+        attach=attach,
+    )

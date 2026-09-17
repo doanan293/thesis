@@ -1,4 +1,5 @@
 import json
+import shlex
 import stat
 import subprocess
 import sys
@@ -6,15 +7,20 @@ import time
 from pathlib import Path
 
 import pytest
+from pharma_agent.domain.llm.models import LlmRole
 
-from pharma_lab.e2e.rerank_server import (
+from pharma_lab.e2e.model_server import (
     UrlWatcher,
     api_key_from_runner,
     api_key_path,
     env_lines,
     find_url,
+    serve_stage,
     write_request,
 )
+from pharma_lab.integrations.kaggle.models import StageName
+
+RERANKER = "qwen3-reranker:4b-fp16"
 
 
 def test_each_request_has_a_new_key_and_private_permissions(tmp_path: Path) -> None:
@@ -31,10 +37,36 @@ def test_each_request_has_a_new_key_and_private_permissions(tmp_path: Path) -> N
 
 
 def test_env_lines_configure_the_backend_reranker() -> None:
-    text = env_lines(model="m", url="https://x.trycloudflare.com", api_key="k")
+    text = env_lines(
+        model="qwen3-reranker:4b-fp16", url="https://x.trycloudflare.com", api_key="k"
+    )
     assert "PHARMA_RETRIEVAL__RERANK__BASE_URL=https://x.trycloudflare.com\n" in text
     assert "PHARMA_RETRIEVAL__RERANK__API_KEY=k\n" in text
-    assert "PHARMA_RETRIEVAL__RERANK__MODEL=m\n" in text
+    assert "PHARMA_RETRIEVAL__RERANK__MODEL=qwen3-reranker:4b-fp16\n" in text
+
+
+def test_env_lines_route_every_llm_role_to_the_served_chat_model() -> None:
+    text = env_lines(
+        model="qwen3.5:9b-f16", url="https://y.trycloudflare.com", api_key="k"
+    )
+    values = dict(shlex.split(line)[0].split("=", 1) for line in text.splitlines())
+    for role in LlmRole:
+        prefix = f"PHARMA_LLM__ROLES__{role.name}__"
+        assert values[prefix + "BASE_URL"] == "https://y.trycloudflare.com/v1"
+        assert values[prefix + "API_KEY"] == "k"
+        assert values[prefix + "MODEL"] == "qwen3.5:9b-f16"
+        assert json.loads(values[prefix + "EXTRA_BODY"]) == {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }
+    assert "PHARMA_RETRIEVAL__RERANK__BASE_URL" not in values
+    assert values["PHARMA_LLM__TIMEOUT_SECONDS"] == "600"
+
+
+def test_serve_stage_follows_the_model_kind() -> None:
+    assert serve_stage("qwen3-reranker:4b-fp16") is StageName.RERANK_SERVE
+    assert serve_stage("qwen3.5:9b-f16") is StageName.LLM_SERVE
+    with pytest.raises(ValueError, match="reranker or a chat model"):
+        serve_stage("qwen3-embedding:4b-fp16")
 
 
 def test_find_url_takes_the_latest_tunnel() -> None:
@@ -68,7 +100,7 @@ def test_watcher_writes_the_env_file_once_per_url(tmp_path: Path) -> None:
             ]
         ),
         target,
-        "m",
+        RERANKER,
         "k",
         messages.append,
         interval=0.05,
@@ -87,7 +119,9 @@ def test_watcher_writes_the_env_file_once_per_url(tmp_path: Path) -> None:
 
 
 def test_watcher_follows_a_restarted_tunnel(tmp_path: Path) -> None:
-    watcher = UrlWatcher(lambda: None, tmp_path / "m.env", "m", "k", lambda _: None)
+    watcher = UrlWatcher(
+        lambda: None, tmp_path / "m.env", RERANKER, "k", lambda _: None
+    )
     watcher.feed("[serve] url=https://a.trycloudflare.com replicas=2")
     watcher.feed("[serve] url=https://b.trycloudflare.com (tunnel restarted)")
     assert "https://b.trycloudflare.com" in (tmp_path / "m.env").read_text("utf-8")
@@ -103,5 +137,5 @@ def test_api_key_is_read_back_from_a_pushed_runner() -> None:
         "runpy.run_module('pharma_lab.integrations.kaggle.workers.serve', run_name='__main__')\n"
     )
     assert api_key_from_runner(runner) == "secret-key"
-    with pytest.raises(ValueError, match="no rerank-serve api_key"):
+    with pytest.raises(ValueError, match="no serve api_key"):
         api_key_from_runner("config.write_text('{}', encoding='utf-8')\n")

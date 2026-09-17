@@ -154,6 +154,31 @@ def test_reranker_command_sizes_the_unified_kv_for_a_batch_and_every_slot_prompt
     assert command[command.index("-c") + 1] == str(4096 * (4 + 1))
 
 
+def test_chat_command_serves_chat_completions_over_both_gpus():
+    command = build_server_command(
+        binary="llama-server",
+        model="model.gguf",
+        port=11434,
+        visible_devices="0,1",
+        spec=require_model("qwen3.5:9b-f16"),
+        runtime_overrides={
+            "server_slots": 4,
+            "context_per_slot": 16384,
+            "logical_batch_size": 2048,
+            "physical_batch_size": 512,
+        },
+    )
+
+    assert command[command.index("-np") + 1] == "4"
+    assert command[command.index("-c") + 1] == str(4 * 16384)
+    assert command[command.index("-ub") + 1] == "512"
+    assert "--jinja" in command
+    assert "--reranking" not in command
+    assert "--embedding" not in command
+    assert "--kv-unified" not in command
+    assert command[command.index("--tensor-split") + 1] == "1,1"
+
+
 def test_sharded_reranker_splits_one_server_over_two_gpus():
     command = build_server_command(
         binary="llama-server",
