@@ -1,0 +1,17 @@
+\begin{table}[tb]
+\centering
+\caption{End-to-end configurations. All use the same retriever settings, answer prompt, answer model and evidence budget.}
+\label{tab:e2e-configs}
+\small
+\begin{tabular}{lccc}
+\toprule
+Configuration & Rephrase & Judge--refine loop & Rerank \\
+\midrule
+Full agent & \checkmark & \checkmark & \checkmark \\
+One-step RAG & -- & -- & \checkmark \\
+w/o judge--refine & \checkmark & -- & \checkmark \\
+w/o rephrase & -- & \checkmark & \checkmark \\
+w/o rerank & \checkmark & \checkmark & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
