@@ -1,0 +1,47 @@
+\documentclass[runningheads]{llncs}
+\usepackage{fontspec}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\usepackage{enumitem}
+\setlist[itemize]{nosep, leftmargin=*, topsep=2pt, partopsep=0pt}
+\setlist[enumerate]{nosep, leftmargin=*, topsep=2pt, partopsep=0pt}
+\usepackage{hyperref}
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+\widowpenalty=10000
+\clubpenalty=10000
+
+% \finaltrue turns every remaining placeholder into a build error.
+\newif\iffinal
+\finalfalse
+\newcommand{\pending}[1]{%
+  \iffinal\PackageError{paper}{Pending result: #1}{Fill in the result.}%
+  \else\textcolor{red}{[#1]}\fi}
+
+\begin{document}
+\title{Benchmarking Retrieval and Agentic RAG for Vietnamese Drug Question Answering with Low-Cost LLMs}
+\titlerunning{Retrieval and Agentic RAG for Vietnamese Drug QA}
+\author{First Author\inst{1}\orcidID{0000-0000-0000-0000} \and
+Second Author\inst{1}\orcidID{0000-0000-0000-0000}}
+\authorrunning{F. Author and S. Author}
+\institute{Affiliation, City, Country\\
+\email{first.author@example.com}}
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related-work}
+\input{sections/research-gap}
+\input{sections/methodology}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+\end{document}
