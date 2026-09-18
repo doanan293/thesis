@@ -10,6 +10,7 @@ from pharma_lab.e2e.calibration import (
     calibration_dir,
     cohen_kappa,
     export_calibration,
+    mean_abs_diff,
     score_calibration,
     spearman,
 )
@@ -116,6 +117,12 @@ def test_kappa_and_spearman_known_values() -> None:
     assert math.isnan(spearman([1, 1, 1], [1, 2, 3]))
 
 
+def test_mean_absolute_difference_known_value() -> None:
+    assert mean_abs_diff([1.0, 0.5, 0.0], [0.8, 0.5, 0.3]) == pytest.approx(
+        (0.2 + 0.0 + 0.3) / 3
+    )
+
+
 def test_bootstrap_interval_brackets_a_perfect_statistic() -> None:
     pairs = [(float(n), float(n)) for n in range(20)]
     low, high = bootstrap_interval(
@@ -170,6 +177,13 @@ def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
     assert rows[("key_fact_supported", "gwet_ac1")].value == 1.0
     assert rows[("faithfulness", "spearman")].value == pytest.approx(1.0)
     assert rows[("supported_citation_rate", "spearman")].value == pytest.approx(1.0)
+    # Bounded scores near the ceiling: the level of agreement is reported too.
+    mad = rows[("faithfulness", "mean_abs_diff")]
+    assert mad.value == pytest.approx(0.0) and not mad.reliable
+    assert (
+        rows[("nugget_recall", "mean_abs_diff")].n
+        == rows[("nugget_recall", "spearman")].n
+    )
     assert rows[("injection_followed", "cohen_kappa")].n == 0
     assert not rows[("injection_followed", "cohen_kappa")].reliable
     stored = json.loads((directory / "agreement.json").read_text("utf-8"))

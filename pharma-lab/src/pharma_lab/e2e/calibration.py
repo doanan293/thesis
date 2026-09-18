@@ -141,6 +141,13 @@ def spearman(a: Sequence[float], b: Sequence[float]) -> float:
     return float(spearmanr(a, b).statistic)
 
 
+def mean_abs_diff(a: Sequence[float], b: Sequence[float]) -> float:
+    """Mean absolute difference between two raters' scores on the same items."""
+    if len(a) != len(b) or not a:
+        return math.nan
+    return sum(abs(x - y) for x, y in zip(a, b, strict=True)) / len(a)
+
+
 def bootstrap_interval(
     pairs: Sequence[tuple[object, object]],
     statistic: Callable[[list[object], list[object]], float],
@@ -195,6 +202,10 @@ def _row(
 
 def _floats(a: list[object], b: list[object]) -> float:
     return spearman([float(str(x)) for x in a], [float(str(y)) for y in b])
+
+
+def _absolute_gap(a: list[object], b: list[object]) -> float:
+    return mean_abs_diff([float(str(x)) for x in a], [float(str(y)) for y in b])
 
 
 def _finite(row: Mapping[str, object]) -> dict[str, object]:
@@ -271,7 +282,12 @@ def _agreement_rows(
             _row(metric, "gwet_ac1", pairs[metric], gwet_ac1),
         ]
     for metric in ("nugget_recall", "faithfulness", "supported_citation_rate"):
-        rows.append(_row(metric, "spearman", pairs[metric], _floats))
+        # Scores cluster near 1, where rank correlation says little about agreement;
+        # the mean absolute difference reports the level of agreement as well.
+        rows += [
+            _row(metric, "spearman", pairs[metric], _floats),
+            _row(metric, "mean_abs_diff", pairs[metric], _absolute_gap, threshold=None),
+        ]
     rows.append(
         _row(
             "harm",
