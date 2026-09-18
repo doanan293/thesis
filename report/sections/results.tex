@@ -13,13 +13,26 @@ The fusion constant has a large effect on hybrid retrieval. With the common sett
 Complete retrieval of multi-intent questions behaves differently from single-answer ranking. The dense Qwen3-Embedding-4B retriever finds all gold sections within the top ten for 98.4\% of these questions, while the hybrid retriever with $k=2$ and its reranked variants reach between 91.2\% and 96.4\%. Noisy and confusable questions remain the most difficult group, with Hit@10 ranging from 54.4\% for BM25 to 82.6\% for Qwen3-Embedding-4B.
 
 \subsection{End-to-End Evaluation}\label{sec:results-e2e}
-\pending{end-to-end results}
+
+\input{tables/e2e-main}
+
+Table~\ref{tab:e2e-main} compares the full agent with one-step RAG in the hosted model setting. The full agent reaches a truthfulness of 0.804 against 0.776 for one-step RAG, and a nugget recall of 0.842 against 0.795. The share of perfect answers is the same for both systems (0.715 and 0.714), whereas the full agent leaves fewer questions missing (4.4\% against 11.9\%). Hallucinations are rare in both systems (2.1\% and 1.5\%), and severe harm affects 1.1\% of the answers of each. One-step RAG obtains higher faithfulness (0.977 against 0.953) and citation recall (0.714 against 0.675). One item of one-step RAG is excluded from these figures because the judge provider returned an empty response for it in every attempt.
+
+\input{tables/e2e-ablation}
+
+Table~\ref{tab:e2e-ablation} reports the paired change of each configuration against the full agent. Removing the agentic steps (one-step RAG) or only the rephrase step increases the missing rate by about 7.5 points and lowers nugget recall by about 0.05, and both changes remain significant after the Holm correction. Removing the reranker leaves correctness unchanged but lowers faithfulness by 0.038. Differences in truthfulness are not significant for any configuration. \pending{w/o judge--refine column once its judging is complete}
+
+The effect of the agentic steps depends on the type of question. On the 50 multi-turn items, whose follow-up question refers to the drug only by a pronoun, nugget recall is 0.912 for the full agent and 0.040 for one-step RAG. On the 420 single-turn answerable questions the order is reversed, with 0.834 for the full agent and 0.885 for one-step RAG. The gap is largest for noisy and confusable questions, where the missing rate is 15.7\% for the full agent and 4.3\% for one-step RAG.
+
+The judge agrees closely with the blind calibration grader on key facts, with Cohen's $\kappa$ of 0.934 and Gwet's AC1 of 0.958 over 351 facts, and on nugget recall, with Spearman's $\rho$ of 0.939. Rank agreement is weaker for faithfulness ($\rho=0.469$) and supported citation rate ($\rho=0.184$), but the mean absolute differences are small (0.031 and 0.034) because both raters give most answers a score close to 1. Corrected with the calibration labels, nugget recall of the full agent rises from 0.842 to 0.875, which indicates that the judge is slightly stricter than the grader. \pending{open-weight setting: Qwen3.5-9B full agent and one-step RAG}
 
 \subsection{Safety}\label{sec:results-safety}
-\pending{safety results}
+
+Both systems handled every safety case correctly. They declined all 10 unanswerable questions, redirected all 10 out-of-scope requests and resisted all 10 prompt injections, so the attack success rate is 0. With ten items per case, the 95\% Wilson interval of each rate is [0.722, 1.000]. No answerable question was refused by either system.
 
 \subsection{Cost and Latency}\label{sec:results-cost}
-\pending{cost and latency}
+
+The full agent uses 5.2 LLM calls and 11{,}278 tokens per turn, against 2.0 calls and 7{,}416 tokens for one-step RAG. Removing the reranker adds 1{,}227 tokens per turn. The median latency of the full agent is 104~s and its 95th percentile 419~s on the development setup, where every rerank request travels to a remote GPU. These latencies are reported for completeness and do not represent a production deployment.
 
 \subsection{Discussion}\label{sec:discussion}
 % Interpret the results above in prose (write once the end-to-end results are final):

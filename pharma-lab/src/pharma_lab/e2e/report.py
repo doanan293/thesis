@@ -331,7 +331,8 @@ def _write_tex(
         r"\centering",
         rf"\caption{{{caption}}}\label{{{label}}}",
         r"\small",
-        r"\begin{tabular}{l" + "r" * (len(header) - 1) + "}",
+        # Wide gaps keep "mean [low, high]" cells of neighbouring columns apart.
+        r"\begin{tabular}{l" + r"@{\hspace{1em}}r" * (len(header) - 1) + "}",
         r"\toprule",
         " & ".join(header) + r" \\",
         r"\midrule",

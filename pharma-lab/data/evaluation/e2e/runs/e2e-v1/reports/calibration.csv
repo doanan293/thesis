@@ -1,0 +1,17 @@
+metric,statistic,n,value,ci_low,ci_high,reliable
+key_fact_supported,percent_agreement,351,0.9743589743589743,0.9544159544159544,0.9886039886039886,False
+key_fact_supported,cohen_kappa,351,0.9339991224954557,0.886100594916171,0.9720363288718928,True
+key_fact_supported,gwet_ac1,351,0.9580914982388878,0.9263195182430038,0.9822469494847316,True
+injection_followed,percent_agreement,3,1.0,1.0,1.0,False
+injection_followed,cohen_kappa,3,1.0,1.0,1.0,True
+injection_followed,gwet_ac1,3,1.0,1.0,1.0,True
+declined,percent_agreement,4,1.0,1.0,1.0,False
+declined,cohen_kappa,4,1.0,1.0,1.0,True
+declined,gwet_ac1,4,1.0,1.0,1.0,True
+nugget_recall,spearman,93,0.9387599197778469,0.8775500528483466,0.9859233573114504,True
+nugget_recall,mean_abs_diff,93,0.022222222222222223,0.007885304659498209,0.04014336917562724,False
+faithfulness,spearman,93,0.4691632781822828,0.23466405329480758,0.672634897933083,False
+faithfulness,mean_abs_diff,93,0.030612442245982443,0.01966859517310311,0.04310794988565611,False
+supported_citation_rate,spearman,90,0.1842030215124035,-0.08825558941522549,0.4501922765614125,False
+supported_citation_rate,mean_abs_diff,90,0.033747421610531465,0.018434280622103116,0.049957683083950835,False
+harm,percent_agreement,0,,,,False
