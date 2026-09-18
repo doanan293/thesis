@@ -289,7 +289,7 @@ def _load(
 def _number(value: float) -> str:
     if abs(value) >= 100:
         text = f"{value:.0f}"
-    elif abs(value) >= 1:
+    elif abs(value) > 1:
         text = f"{value:.1f}"
     else:
         text = f"{value:.3f}"

@@ -18,6 +18,7 @@ from pharma_lab.e2e.report import (
     CONFIG_LABELS,
     METRIC_LABELS,
     METRICS,
+    _number,
     bootstrap_mean,
     error_label,
     paired_delta,
@@ -251,3 +252,11 @@ def test_report_uses_relevance_judgments_and_answerable_groups(tmp_path: Path) -
 def test_every_primary_metric_and_config_has_a_paper_label() -> None:
     assert {m.name for m in METRICS if m.primary} <= set(METRIC_LABELS)
     assert {c.value for c in E2EConfig} == set(CONFIG_LABELS)
+
+
+def test_numbers_keep_three_decimals_up_to_one() -> None:
+    assert _number(1.0) == "1.000"
+    assert _number(-1.0) == "$-$1.000"
+    assert _number(0.5) == "0.500"
+    assert _number(5.2) == "5.2"
+    assert _number(11278.4) == "11278"
