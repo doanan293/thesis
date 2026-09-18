@@ -20,7 +20,7 @@ Table~\ref{tab:e2e-main} compares the full agent with one-step RAG in the hosted
 
 \input{tables/e2e-ablation}
 
-Table~\ref{tab:e2e-ablation} reports the paired change of each configuration against the full agent. Removing the agentic steps (one-step RAG) or only the rephrase step increases the missing rate by about 7.5 points and lowers nugget recall by about 0.05, and both changes remain significant after the Holm correction. Removing the reranker leaves correctness unchanged but lowers faithfulness by 0.038. Differences in truthfulness are not significant for any configuration. \pending{w/o judge--refine column once its judging is complete}
+Table~\ref{tab:e2e-ablation} reports the paired change of each configuration against the full agent. Removing the agentic steps (one-step RAG) or only the rephrase step increases the missing rate by about 7.5 points and lowers nugget recall by about 0.05, and both changes remain significant after the Holm correction. Removing the reranker leaves correctness unchanged but lowers faithfulness by 0.038. Removing the judge--refine loop changes none of the quality metrics significantly, while it saves 3{,}328 tokens and 2.2 LLM calls per turn. Differences in truthfulness are not significant for any configuration.
 
 The effect of the agentic steps depends on the type of question. On the 50 multi-turn items, whose follow-up question refers to the drug only by a pronoun, nugget recall is 0.912 for the full agent and 0.040 for one-step RAG. On the 420 single-turn answerable questions the order is reversed, with 0.834 for the full agent and 0.885 for one-step RAG. The gap is largest for noisy and confusable questions, where the missing rate is 15.7\% for the full agent and 4.3\% for one-step RAG.
 
