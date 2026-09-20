@@ -1,0 +1,24 @@
+% Standalone abstract in LNCS format, for the SoICT abstract submission.
+% Title, authors and abstract text are shared with main.tex, so the two cannot drift.
+\documentclass{llncs}
+\usepackage{fontspec}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+\emergencystretch=1.5em
+
+% Any placeholder left in the abstract is a build error here.
+\newif\iffinal
+\finaltrue
+\newcommand{\pending}[1]{%
+  \iffinal\PackageError{paper}{Pending result: #1}{Fill in the result.}%
+  \else\textcolor{red}{[#1]}\fi}
+
+\begin{document}
+\input{sections/titleblock}
+\maketitle
+
+\input{sections/abstract}
+\end{document}
