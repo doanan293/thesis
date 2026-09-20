@@ -35,8 +35,11 @@ Both systems handled every safety case correctly. They declined all 10 unanswera
 The full agent uses 5.2 LLM calls and 11{,}278 tokens per turn, against 2.0 calls and 7{,}416 tokens for one-step RAG. Removing the reranker adds 1{,}227 tokens per turn. The median latency of the full agent is 104~s and its 95th percentile 419~s on the development setup, where every rerank request travels to a remote GPU. These latencies are reported for completeness and do not represent a production deployment.
 
 \subsection{Discussion}\label{sec:discussion}
-% Interpret the results above in prose (write once the end-to-end results are final):
-% - what the retrieval results imply for a deployable configuration;
-% - whether the agentic steps help low-cost models, according to the ablations;
-% - the safety behaviour and its uncertainty with ten items per case.
-\pending{discussion}
+
+The retrieval results show that a self-hostable configuration is competitive with the largest models we tested. Qwen3-Embedding-4B matches its 8B counterpart in Hit@10 and needs a 1.6 times smaller vector, and fusing it with BM25 at $k=2$ and reranking the top 30 with Qwen3-Reranker-4B gives the best ranking quality of the benchmark. The choice of the fusion constant matters as much as the choice of model: the common default $k=60$ ranks below the dense retriever alone, because it spreads weight over candidates that only one retriever ranks highly. Reranking also has a clear price. Qwen3-Reranker-4B scores four query--chunk pairs per second on a T4, whereas BGE-reranker-v2-m3 scores 31 and recovers most of the nDCG gain, which makes it the better choice when throughput matters more than the first hit.
+
+The end-to-end results show that the value of the agentic steps depends on the conversation rather than on the model. Overall the full agent answers more questions than one-step RAG and leaves fewer questions unanswered, but the difference comes almost entirely from multi-turn items: a follow-up question that refers to the drug by a pronoun is unanswerable without the rephrase step, and nugget recall there falls from 0.912 to 0.040 when the step is removed. On single-turn questions the same step is harmful, most visibly for questions with typos or look-alike drug names, where rewriting the question can replace a misspelled product with a different one and the missing rate triples. The judge--refine loop changed no quality metric significantly while it consumed 2.2 additional model calls and 3{,}328 tokens per turn, so on this benchmark its cost is not repaid. A practical reading is to make the agentic steps conditional: rewrite only when the turn depends on the conversation history, and search again only when the evidence is demonstrably insufficient.
+
+The safety behaviour was correct in every case, but the evidence is thin. Ten items per case give a 95\% Wilson interval of [0.722, 1.000] for each rate, so these results exclude only a high failure rate. The same caution applies to harm: severe harm appears in 1.1\% of the answers of both systems, and with 500 items that estimate is compatible with rates between 0.5\% and 2.5\%.
+
+\pending{open-weight setting: what Qwen3.5-9B implies for self-hosted deployment}

@@ -1,15 +1,9 @@
 \section{Conclusion}\label{sec:conclusion}
-% Structure follows the research-paper-writing conclusion guide:
-% 1. Restate the problem and the core idea (control flow in code, small structured calls).
-% 2. Summarise the strongest evidence.
-% 3. Practical implications for deploying Vietnamese drug QA on low-cost models.
-% 4. Limitations paragraph, scope boundaries first:
-%    - benchmark questions are rule-generated, so natural user questions may be harder;
-%    - the fusion constant and the reranker instruction were selected on the same benchmark;
-%    - the answer and judge models come from the same provider, and calibration measures
-%      but cannot remove possible self-preference;
-%    - reference answers were written by an LLM and not reviewed by a pharmacist;
-%    - latency was measured on a development machine with a remote GPU reranker;
-%    - leaflets come from a single online source.
-% 5. Concrete future work (expert review, real user questions, more sources).
-\pending{conclusion}
+
+This paper studied evidence-grounded question answering over Vietnamese drug information under a limited inference budget. We built a corpus from the national drug formulary and package leaflets, generated a 10{,}000-question retrieval benchmark whose answer locations are known, and evaluated an agentic RAG pipeline whose control flow is fixed in code so that every model call is a single small decision.
+
+The retrieval study shows that hybrid fusion with a mid-sized reranker gives the best ranking quality, at 97.5\% Hit@10 and an nDCG@10 of 0.859, and that a 4B embedding model is as effective as an 8B one at a smaller vector size. End to end, the agentic steps raise nugget recall from 0.795 to 0.842 and reduce unanswered questions from 11.9\% to 4.4\%, but the gain comes from multi-turn questions, while the same steps lower accuracy on single-turn questions with noisy spelling. The judge--refine loop added cost without a measurable gain. For a deployment, this suggests a compact self-hosted retriever, a reranker chosen by its throughput, and agentic steps that are triggered by the turn rather than applied to every question. \pending{one sentence on the open-weight setting}
+
+Several limitations bound these conclusions. The benchmark questions are generated from the corpus by rules, so they are more regular than questions asked by patients, and the fusion constant and the reranker instruction were selected on the same benchmark. The reference answers of the golden set were written by a language model and were not reviewed by a pharmacist, and the automatic judge shares a provider with the answer model of the hosted setting. Calibration measures this risk but cannot remove it. Each safety case contains ten items, which bounds the precision of those rates. The leaflets come from a single online source, and latency was measured on a development machine with a remote reranker, so it does not describe a production deployment.
+
+Future work should replace the automatic judge with pharmacist review on a subset, extend the golden set with questions collected from real users, and test whether triggering the rephrase and judge--refine steps by turn type recovers their benefit without their cost.
