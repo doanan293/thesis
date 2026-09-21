@@ -237,12 +237,23 @@ class BoundedLogCollector:
         return data.decode("utf-8", errors="replace").strip()
 
 
+WORKER_MARGIN_FLOOR_SECONDS = 900.0
+WORKER_MARGIN_FRACTION = 0.05
+
+
 def worker_deadline(config: dict, clock=time.monotonic) -> float:
-    """Return a safety-margin deadline for bounded worker execution."""
+    """Return the time at which a bounded worker stops starting new work.
+
+    Kaggle counts the kernel --timeout from the kernel start, before this worker
+    runs, and the worker still has to drain in-flight requests and write its output
+    after the deadline. The margin covers both, so the kernel ends on its own
+    instead of being killed at the limit.
+    """
     budget = float(
         config.get("budget_seconds", config.get("total_budget_seconds", 21_600))
     )
-    margin = float(config.get("budget_margin_seconds", min(120.0, budget * 0.05)))
+    default_margin = max(WORKER_MARGIN_FLOOR_SECONDS, budget * WORKER_MARGIN_FRACTION)
+    margin = float(config.get("budget_margin_seconds", default_margin))
     return clock() + max(0.0, budget - margin)
 
 

@@ -3,7 +3,10 @@ from pathlib import Path
 from tests.integrations.kaggle.factories import stage_job
 
 from pharma_lab.integrations.kaggle.errors import KaggleOutputUnavailable
-from pharma_lab.integrations.kaggle.kernel_reconciler import KernelReconciler
+from pharma_lab.integrations.kaggle.kernel_reconciler import (
+    KERNEL_COLLECT_GRACE_SECONDS,
+    KernelReconciler,
+)
 from pharma_lab.integrations.kaggle.models import (
     ActionVerb,
     KernelPresence,
@@ -75,3 +78,18 @@ def test_error_without_output_is_recoverable(tmp_path):
 
     assert result.output_root is None
     assert result.remote.status is KernelStatus.ERROR
+
+
+def test_submit_waits_past_the_kernel_budget_to_collect_its_output(tmp_path):
+    # The local clock starts at push, before the kernel queues and boots, while
+    # Kaggle counts the --timeout from the kernel start. Waiting only the budget
+    # gives up on a kernel that is still finishing within its own limit.
+    remote = KernelRemoteState("owner/job", KernelPresence.EXISTS, KernelStatus.QUEUED)
+    kernels = FakeKernels(remote)
+
+    KernelReconciler(kernels).submit(
+        stage_job(tmp_path), tmp_path / "bundle", tmp_path, timeout_seconds=21_600
+    )
+
+    assert kernels.pushes == [(tmp_path / "bundle", 21_600)]
+    assert kernels.waits == [("owner/job", 21_600 + KERNEL_COLLECT_GRACE_SECONDS)]

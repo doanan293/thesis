@@ -18,6 +18,12 @@ from pharma_lab.integrations.kaggle.models import (
     StageJob,
 )
 
+# Extra time the local watcher waits beyond a kernel's budget. The watcher's clock
+# starts at push, before the kernel queues and boots, while Kaggle counts the
+# --timeout from the kernel start and enforces it itself, so waiting only the budget
+# gives up on a kernel that is still finishing inside its own limit.
+KERNEL_COLLECT_GRACE_SECONDS = 1_800
+
 
 @dataclass(frozen=True)
 class KernelResolution:
@@ -76,7 +82,8 @@ class KernelReconciler:
                 )
             )
             status = self.kernels.wait_for_terminal(
-                remote.reference, timeout_seconds=timeout_seconds
+                remote.reference,
+                timeout_seconds=timeout_seconds + KERNEL_COLLECT_GRACE_SECONDS,
             )
             remote = replace(remote, status=status)
         if status not in {KernelStatus.COMPLETE, KernelStatus.ERROR}:

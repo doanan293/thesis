@@ -10,6 +10,7 @@ from pharma_lab.integrations.kaggle.workers.runtime import (
     build_server_command,
     managed_model_servers,
     resolve_input_file,
+    worker_deadline,
 )
 from pharma_lab.runtime.catalog import require_model
 from pharma_lab.runtime.client import LlamaCppRequestError
@@ -655,3 +656,21 @@ def test_managed_model_servers_can_leave_telemetry_open_and_name_restart_logs(
         "restarted server\n"
     )
     assert not (output / "server-0.log").exists()
+
+
+def test_worker_deadline_leaves_time_for_boot_drain_and_output():
+    # Kaggle counts --timeout from the kernel start, before the worker runs, and
+    # the worker still has to drain in-flight requests and write its output.
+    deadline = worker_deadline({"budget_seconds": 21_600}, clock=lambda: 1_000.0)
+
+    assert deadline == 1_000.0 + 21_600 - 1_080
+
+
+def test_worker_deadline_keeps_a_floor_margin_for_short_budgets():
+    assert worker_deadline({"budget_seconds": 3_600}, clock=lambda: 0.0) == 2_700
+
+
+def test_worker_deadline_honours_an_explicit_margin():
+    config = {"budget_seconds": 3_600, "budget_margin_seconds": 60}
+
+    assert worker_deadline(config, clock=lambda: 0.0) == 3_540
