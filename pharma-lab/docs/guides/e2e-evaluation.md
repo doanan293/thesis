@@ -159,7 +159,7 @@ uv run pharma-lab e2e report --run e2e-v1
 - **Provenance:** `provenance.json` ghi `run.json` và `judge.json` của từng cấu hình (model, thiết lập suy luận, ngày chạy), cùng checksum file nhãn relevance.
 
 **Hiệu chỉnh:**
-1. `calibration export` rút ngẫu nhiên 50 câu của `full` và 50 câu của `one-step`, trộn thứ tự và che danh tính, ghi vào `calibration/items.jsonl` kèm khóa ánh xạ riêng.
+1. `calibration export` rút ngẫu nhiên 50 câu cho mỗi cấu hình (mặc định `full` và `one-step`; lặp `--config` để chọn, ví dụ thêm `--config closed-book`), trộn thứ tự và che danh tính, ghi vào `calibration/items.jsonl` kèm khóa ánh xạ riêng. Run `e2e-v2` và `e2e-qwen35-9b-v2` hiệu chỉnh cả ba cấu hình của bảng chính: `--config full --config one-step --config closed-book`.
 2. Người chấm hiệu chỉnh ghi `calibration/grades.jsonl` theo schema `Grade` trong `pharma_lab/e2e/calibration.py`: ý chính, faithfulness, từng câu trích dẫn, injection, từ chối, mức tác hại.
 3. `calibration score` ghi `agreement.json` và `ppi.json`:
    - nhãn nhị phân: percent agreement, Cohen's κ và Gwet's AC1;

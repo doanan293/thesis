@@ -14,6 +14,7 @@ from pharma_lab.e2e.calibration import (
     score_calibration,
     spearman,
 )
+from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.golden import GoldenItem
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
 
@@ -62,8 +63,12 @@ def golden_set() -> dict[str, GoldenItem]:
     return {item.item_id: item for item in items}
 
 
-def write_run(root: Path, items: dict[str, GoldenItem]) -> None:
-    for config in ("full", "one-step"):
+def write_run(
+    root: Path,
+    items: dict[str, GoldenItem],
+    configs: tuple[str, ...] = ("full", "one-step"),
+) -> None:
+    for config in configs:
         store = JsonlStore(root / config / "answers.jsonl", AnswerRecord)
         for key in items:
             store.append(
@@ -98,6 +103,28 @@ def test_export_is_a_blind_random_sample_per_config(tmp_path: Path) -> None:
     full_items = {e["item_id"] for e in key.values() if e["config"] == "full"}
     assert len(full_items) == 50
     assert export_calibration(tmp_path, items, seed=8).read_text("utf-8") != first
+
+
+def test_export_samples_every_requested_configuration(tmp_path: Path) -> None:
+    # The paper calibrates every configuration of its main table, including the
+    # closed-book baseline.
+    items = golden_set()
+    write_run(tmp_path, items, ("full", "one-step", "closed-book"))
+
+    export_calibration(
+        tmp_path,
+        items,
+        configs=(E2EConfig.FULL, E2EConfig.ONE_STEP, E2EConfig.CLOSED_BOOK),
+    )
+
+    key = json.loads((calibration_dir(tmp_path) / "key.json").read_text("utf-8"))
+    configs = [entry["config"] for entry in key.values()]
+    assert len(configs) == 150
+    assert {c: configs.count(c) for c in set(configs)} == {
+        "full": 50,
+        "one-step": 50,
+        "closed-book": 50,
+    }
 
 
 def test_export_needs_enough_answers(tmp_path: Path) -> None:

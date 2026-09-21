@@ -21,6 +21,7 @@ from pharma_lab.config.paths import (
     GOLDEN_E2E_PATH,
     e2e_run_dir,
 )
+from pharma_lab.e2e.calibration import CONFIGS as CALIBRATION_CONFIGS
 from pharma_lab.e2e.calibration import export_calibration, score_calibration
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.corpus_text import chunk_texts, corpus_text, load_corpus_text
@@ -348,12 +349,21 @@ def calibration_export(
     run_name: Annotated[str, typer.Option("--run")],
     golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
     seed: Annotated[int, typer.Option("--seed")] = 0,
+    configs: Annotated[
+        list[E2EConfig] | None,
+        typer.Option("--config", help="Repeat to choose configurations"),
+    ] = None,
 ) -> None:
-    """Write 100 blind items from the full and one-step runs for grading."""
+    """Write 50 blind items per configuration (default: full, one-step) for grading."""
 
     def handler() -> CommandResult:
         items = {item.item_id: item for item in load_golden(golden)}
-        path = export_calibration(e2e_run_dir(run_name), items, seed=seed)
+        path = export_calibration(
+            e2e_run_dir(run_name),
+            items,
+            seed=seed,
+            configs=tuple(configs) if configs else CALIBRATION_CONFIGS,
+        )
         return CommandResult("e2e calibration export", CommandStatus.COMPLETE, path)
 
     run_handler(state_from_context(ctx), handler)

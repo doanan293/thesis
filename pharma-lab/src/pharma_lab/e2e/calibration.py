@@ -1,8 +1,8 @@
 """Blind calibration of the judge against a stronger grader (spec §8).
 
-For each of `full` and `one-step`, a simple random sample of answers is exported, so
-the grades support prediction-powered inference (PPI) as well as agreement
-statistics.
+For each configuration (by default `full` and `one-step`), a simple random sample of
+answers is exported, so the grades support prediction-powered inference (PPI) as well
+as agreement statistics.
 
 Agreement statistics:
 - binary labels: percent agreement, Cohen's kappa and Gwet's AC1 (robust to
@@ -76,12 +76,16 @@ def calibration_dir(run_root: Path) -> Path:
 
 
 def export_calibration(
-    run_root: Path, items: dict[str, GoldenItem], *, seed: int = 0
+    run_root: Path,
+    items: dict[str, GoldenItem],
+    *,
+    seed: int = 0,
+    configs: Sequence[E2EConfig] = CONFIGS,
 ) -> Path:
     """Write the blind grading file and the key that maps it back."""
     rng = random.Random(seed)
     blind: list[tuple[E2EConfig, AnswerRecord]] = []
-    for config in CONFIGS:
+    for config in configs:
         answers = JsonlStore(
             config_dir(run_root, config) / ANSWERS_FILE, AnswerRecord
         ).latest()
