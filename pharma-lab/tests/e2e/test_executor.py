@@ -150,6 +150,28 @@ async def test_a_failed_answer_is_a_retryable_record() -> None:
     assert record.error is not None and record.error.startswith("ANSWER_FAILED")
 
 
+@pytest.mark.parametrize(
+    ("role", "step"),
+    [
+        (LlmRole.GUARDRAIL, "guard"),
+        (LlmRole.REPHRASE, "rephrase"),
+        (LlmRole.JUDGE, "judge"),
+    ],
+)
+async def test_a_step_that_fell_back_is_a_retryable_record(role, step) -> None:
+    # In production a failed LLM step falls back and the turn goes on. In an
+    # evaluation that silently turns the item into another configuration, so the
+    # record must be an error that --retry-errors runs again.
+    fake = llm(judge=True, rephrase=True)
+    fake.scripts[role] = [LlmError("quota exhausted")]
+    retriever = FakeRetriever([make_hit("a", SECTION, score=0.9)])
+
+    record = await executor(fake, retriever, E2EConfig.FULL).execute(item())
+
+    assert record.retryable
+    assert record.error is not None and f"degraded: {step}" in record.error
+
+
 class CountingExecutor:
     def __init__(self, failing: set[str]) -> None:
         self.failing = failing

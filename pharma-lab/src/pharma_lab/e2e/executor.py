@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 
 from pharma_agent.application.chat.context import PipelineOptions, TurnDeps
 from pharma_agent.application.chat.graph import ChatGraph
 from pharma_agent.application.chat.runner import ChatTurnRunner, TurnOutcome
-from pharma_agent.domain.agent.actions import ActionKind
+from pharma_agent.domain.agent.actions import Action, ActionKind
 from pharma_agent.domain.agent.budget import BudgetLimits
 from pharma_agent.domain.agent.run import AnswerMode, RunStatus
 from pharma_agent.domain.conversation.models import ConversationContext, Turn
@@ -43,6 +44,27 @@ def conversation_for(item: GoldenItem) -> ConversationContext:
     )
 
 
+_FALLBACK_KINDS = (ActionKind.REPHRASE, ActionKind.JUDGE, ActionKind.REFINE)
+
+
+def degraded_steps(entries: Sequence[Action]) -> list[str]:
+    """Steps whose LLM call failed and fell back.
+
+    Production keeps the turn going after such a failure. In an evaluation the item
+    then silently runs another configuration, so the harness treats it as an error.
+    """
+    steps: list[str] = []
+    for action in entries:
+        fell_back = (
+            action.payload.get("llm_failed") is True
+            if action.kind is ActionKind.GUARD
+            else action.kind in _FALLBACK_KINDS and action.outcome == "failed"
+        )
+        if fell_back and action.kind.value not in steps:
+            steps.append(action.kind.value)
+    return steps
+
+
 def answer_record(
     item: GoldenItem,
     config: str,
@@ -70,6 +92,7 @@ def answer_record(
         )
     entries = run.actions.entries
     failed = run.status in (RunStatus.ERROR, RunStatus.TIMEOUT)
+    degraded = degraded_steps(entries)
     return AnswerRecord(
         item_id=item.item_id,
         config=config,
@@ -100,9 +123,11 @@ def answer_record(
         error=(
             f"{run.error_code.value}: {run.error_detail}".strip()
             if run.error_code is not None
+            else f"degraded: {', '.join(degraded)}"
+            if degraded
             else None
         ),
-        retryable=failed,
+        retryable=failed or bool(degraded),
     )
 
 
