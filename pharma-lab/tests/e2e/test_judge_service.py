@@ -364,3 +364,15 @@ async def test_harm_is_backfilled_for_older_judgements(tmp_path: Path) -> None:
         force=False,
     )
     assert again.judged == 0
+
+
+async def test_ragas_scorer_leaves_faithfulness_undefined_without_context() -> None:
+    # Faithfulness measures support by retrieved passages. A closed-book answer has
+    # none, so the score is undefined rather than zero.
+    faithfulness = FakeFaithfulness()
+    ragas = RagasScorer(faithfulness, FakeFactual(), FakeRelevancy())
+
+    scores = await ragas.score(question="q", answer="a", contexts=[], reference="r")
+
+    assert scores == RagasScores(None, 0.5, 0.9)
+    assert faithfulness.calls == []

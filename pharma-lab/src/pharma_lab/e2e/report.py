@@ -227,6 +227,7 @@ CONFIG_LABELS: Mapping[str, str] = {
     E2EConfig.NO_JUDGE_REFINE.value: "w/o judge--refine",
     E2EConfig.NO_REPHRASE.value: "w/o rephrase",
     E2EConfig.NO_RERANK.value: "w/o rerank",
+    E2EConfig.CLOSED_BOOK.value: "Closed-book LLM",
 }
 # The LNCS text block is 12.2 cm wide: the main table compares the two systems,
 # and the ablation table carries the other configurations as paired deltas.

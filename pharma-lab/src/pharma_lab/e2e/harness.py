@@ -13,8 +13,13 @@ from pharma_agent.application.chat.graph import build_chat_graph
 from pharma_agent.infrastructure.composition import build_application
 from pharma_agent.infrastructure.settings import Settings
 
-from pharma_lab.e2e.configs import E2EConfig, pipeline_for, settings_for
-from pharma_lab.e2e.executor import BackendTurnExecutor
+from pharma_lab.e2e.configs import (
+    E2EConfig,
+    pipeline_for,
+    settings_for,
+    uses_retrieval,
+)
+from pharma_lab.e2e.executor import BackendTurnExecutor, ClosedBookExecutor
 from pharma_lab.e2e.golden import Category, GoldenItem, load_golden
 from pharma_lab.e2e.records import AnswerRecord, JsonlStore
 from pharma_lab.e2e.run_identity import git_commit, identity_from_settings, open_run
@@ -22,6 +27,9 @@ from pharma_lab.evaluation.artifact_contracts import sha256_file
 from pharma_lab.evaluation.backend_retrieval import current_release_id
 
 ANSWERS_FILE = "answers.jsonl"
+
+
+NO_RELEASE = "none"
 
 
 class TurnExecutor(Protocol):
@@ -124,7 +132,12 @@ def run_e2e(request: E2ERunRequest) -> RunSummary:
     app = build_application(settings)
     with asyncio.Runner() as runner:
         try:
-            release_id = runner.run(current_release_id(app.retrieval.service, probe))
+            # The closed-book baseline reads no corpus, so it has no release.
+            release_id = (
+                runner.run(current_release_id(app.retrieval.service, probe))
+                if uses_retrieval(request.config)
+                else NO_RELEASE
+            )
             open_run(
                 directory,
                 identity_from_settings(
@@ -136,13 +149,17 @@ def run_e2e(request: E2ERunRequest) -> RunSummary:
                 ),
                 commit=git_commit(Path(__file__).resolve().parent),
             )
-            executor = BackendTurnExecutor(
-                graph=build_chat_graph(),
-                llm=app.deps.llm,
-                retrieval=app.retrieval.service,
-                limits=settings.budget,
-                pipeline=pipeline,
-                config=str(request.config),
+            executor: TurnExecutor = (
+                BackendTurnExecutor(
+                    graph=build_chat_graph(),
+                    llm=app.deps.llm,
+                    retrieval=app.retrieval.service,
+                    limits=settings.budget,
+                    pipeline=pipeline,
+                    config=str(request.config),
+                )
+                if uses_retrieval(request.config)
+                else ClosedBookExecutor(llm=app.deps.llm, config=str(request.config))
             )
             return runner.run(
                 run_items(

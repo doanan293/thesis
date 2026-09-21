@@ -87,8 +87,13 @@ done
 | `no-judge-refine` | bật | tắt | bật |
 | `no-rephrase` | tắt | bật | bật |
 | `no-rerank` | bật | bật | tắt |
+| `closed-book` | – | – | – |
 
 `one-step` là guard → search (câu hỏi gốc) → answer, dùng cùng retriever, prompt trả lời và ngân sách evidence như `full`.
+
+`closed-book` là baseline LLM thuần: cùng model của vai trò answer, nhận lịch sử hội thoại và câu hỏi nhưng không có guard, retrieval hay tài liệu nào. Nó đo phần mà corpus và pipeline đóng góp. Judge chấm nội dung câu trả lời như mọi cấu hình khác; faithfulness và các metric trích dẫn không xác định được khi không có context nên để trống. Cấu hình này không gọi retrieval nên không cần reranker server.
+
+**Phiên bản prompt.** Run `e2e-v2` và `e2e-qwen35-9b-v2` dùng prompt answer đã sửa: bước answer luôn thấy câu hỏi gốc của người dùng (kèm câu viết lại khi rephrase có đổi), và quy tắc cho người hỏi là người dân không còn yêu cầu viết ngắn gọn. Khi câu hỏi không bị viết lại, prompt giữ nguyên từng byte (test `test_answer_prompt_is_unchanged_when_the_question_was_not_rewritten`), nên `one-step` và `no-rephrase` của bản cũ được chép sang run mới thay vì chạy lại. Không chạy tiếp một run cũ bằng code mới: harness bỏ qua câu đã có và sẽ trộn hai phiên bản.
 
 ## 2. Bộ golden
 

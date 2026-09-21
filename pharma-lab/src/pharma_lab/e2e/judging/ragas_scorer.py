@@ -74,8 +74,13 @@ class RagasScorer:
         contexts: list[str],
         reference: str | None,
     ) -> RagasScores:
-        faithfulness = await self._faithfulness.ascore(
-            user_input=question, response=answer, retrieved_contexts=contexts
+        # Faithfulness is support by retrieved passages; without any it is undefined.
+        faithfulness = (
+            await self._faithfulness.ascore(
+                user_input=question, response=answer, retrieved_contexts=contexts
+            )
+            if contexts
+            else None
         )
         factual = (
             await self._factual.ascore(response=answer, reference=reference)
@@ -84,7 +89,7 @@ class RagasScorer:
         )
         relevancy = await self._relevancy.ascore(user_input=question, response=answer)
         return RagasScores(
-            faithfulness=_number(faithfulness),
+            faithfulness=None if faithfulness is None else _number(faithfulness),
             factual_correctness=None if factual is None else _number(factual),
             answer_relevancy=_number(relevancy),
         )

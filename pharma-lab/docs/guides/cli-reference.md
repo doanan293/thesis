@@ -152,7 +152,7 @@ Chi tiết trong [e2e-evaluation.md](e2e-evaluation.md).
 | `pharma-lab e2e golden resample --slots IDS [--per-slot N]` | Đưa N câu chưa dùng cùng tầng cho các slot mà section gold không trả lời câu hỏi, ghi `replacement-NN.todo.jsonl` |
 | `pharma-lab e2e golden check FILE` | Kiểm một lô `*.authored.jsonl` (quote nằm trong section, hành vi theo nhóm, `absent_terms` vắng trong corpus) |
 | `pharma-lab e2e golden build` | Kiểm đủ số lượng từng nhóm rồi ghi `golden_e2e.jsonl` và manifest |
-| `pharma-lab e2e run --run NAME --config full\|one-step\|no-judge-refine\|no-rephrase\|no-rerank [--limit N] [--concurrency N] [--deadline-seconds S] [--retry-errors]` | Chạy agent trên bộ golden, ghi `runs/<run>/<config>/answers.jsonl`; chạy lại để resume |
+| `pharma-lab e2e run --run NAME --config full\|one-step\|no-judge-refine\|no-rephrase\|no-rerank\|closed-book [--limit N] [--concurrency N] [--deadline-seconds S] [--retry-errors]` | Chạy agent trên bộ golden, ghi `runs/<run>/<config>/answers.jsonl`; chạy lại để resume |
 | `pharma-lab e2e judge --run NAME --config CONFIG [--judge-model MODEL] [--concurrency N] [--items IDS] [--force]` | Chấm bằng RAGAS và judge cấu trúc, ghi `judgments.jsonl` |
 | `pharma-lab e2e calibration export --run NAME [--seed S]` | Xuất 100 câu mù để chấm hiệu chỉnh |
 | `pharma-lab e2e calibration score --run NAME` | Tính κ và ρ giữa judge và `calibration/grades.jsonl` |

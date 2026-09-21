@@ -1,4 +1,4 @@
-"""The five E2E configurations (spec §5)."""
+"""The E2E configurations: five pipeline variants and a closed-book baseline."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ class E2EConfig(StrEnum):
     NO_JUDGE_REFINE = "no-judge-refine"
     NO_REPHRASE = "no-rephrase"
     NO_RERANK = "no-rerank"
+    # The answer model alone, with no retrieval: what the corpus and pipeline add.
+    CLOSED_BOOK = "closed-book"
 
 
 _PIPELINES: dict[E2EConfig, PipelineOptions] = {
@@ -22,11 +24,16 @@ _PIPELINES: dict[E2EConfig, PipelineOptions] = {
     E2EConfig.NO_JUDGE_REFINE: PipelineOptions(judge_refine=False),
     E2EConfig.NO_REPHRASE: PipelineOptions(rephrase=False),
     E2EConfig.NO_RERANK: PipelineOptions(),
+    E2EConfig.CLOSED_BOOK: PipelineOptions(rephrase=False, judge_refine=False),
 }
 
 
 def pipeline_for(config: E2EConfig) -> PipelineOptions:
     return _PIPELINES[config]
+
+
+def uses_retrieval(config: E2EConfig) -> bool:
+    return config is not E2EConfig.CLOSED_BOOK
 
 
 def settings_for(base: Settings, config: E2EConfig) -> Settings:
