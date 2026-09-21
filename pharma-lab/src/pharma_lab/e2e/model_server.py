@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import json
+import queue
 import re
 import secrets
 import subprocess
@@ -19,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING
 
 from pharma_agent.domain.llm.models import LlmRole
 
@@ -34,6 +35,9 @@ if TYPE_CHECKING:
 SERVE_DIR = WORK_DIR / "serve"
 URL_LINE = re.compile(r"\[serve\] url=(https://\S+)")
 POLL_SECONDS = 20.0
+# A served kernel prints an `alive` line every 5 minutes, so a log stream that stays
+# silent for 10 minutes is stuck and is opened again.
+LOG_IDLE_SECONDS = 600.0
 # Qwen3.5 thinks by default; the pipeline asks for short structured decisions.
 CHAT_EXTRA_BODY = {"chat_template_kwargs": {"enable_thinking": False}}
 # A 9B model on T4s generates a long answer in well over the backend's 60 s default.
@@ -115,6 +119,7 @@ class UrlWatcher:
     api_key: str
     log: Callable[[str], None]
     interval: float = POLL_SECONDS
+    idle_seconds: float = LOG_IDLE_SECONDS
 
     def __post_init__(self) -> None:
         self._stop = threading.Event()
@@ -139,13 +144,39 @@ class UrlWatcher:
             process = self.open_log()
             self._process = process
             if process is not None and process.stdout is not None:
-                for line in process.stdout:
-                    self.feed(line)
-                    if self._stop.is_set():
-                        break
+                reader = self._read(process.stdout)
                 process.terminate()
-                process.communicate()
+                process.wait()
+                reader.join(timeout=10)
+                for pipe in (process.stdout, process.stderr):
+                    if pipe is not None:
+                        pipe.close()
             self._stop.wait(self.interval)
+
+    def _read(self, stream: IO[str]) -> threading.Thread:
+        """Feed lines until the stream ends, goes silent or the watcher stops.
+
+        Returns the thread that drains the stream, which ends once the log process
+        is terminated.
+        """
+        lines: queue.Queue[str | None] = queue.Queue()
+
+        def pump() -> None:
+            for line in stream:
+                lines.put(line)
+            lines.put(None)
+
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        while not self._stop.is_set():
+            try:
+                line = lines.get(timeout=self.idle_seconds)
+            except queue.Empty:
+                break
+            if line is None:
+                break
+            self.feed(line)
+        return reader
 
     def start(self) -> None:
         self._thread.start()

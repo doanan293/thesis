@@ -139,3 +139,36 @@ def test_api_key_is_read_back_from_a_pushed_runner() -> None:
     assert api_key_from_runner(runner) == "secret-key"
     with pytest.raises(ValueError, match="no serve api_key"):
         api_key_from_runner("config.write_text('{}', encoding='utf-8')\n")
+
+
+def test_watcher_reopens_a_log_stream_that_stays_silent(tmp_path: Path) -> None:
+    # `kaggle kernels logs -f` can hang without output or exit while the Kaggle
+    # log API is degraded. The watcher must not wait on it forever.
+    def silent() -> subprocess.Popen[str]:
+        return subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    streams = iter(
+        [silent, follow(["[serve] url=https://a.trycloudflare.com replicas=1"])]
+    )
+    watcher = UrlWatcher(
+        lambda: next(streams, lambda: None)(),
+        tmp_path / "m.env",
+        RERANKER,
+        "k",
+        lambda _: None,
+        interval=0.05,
+        idle_seconds=0.5,
+    )
+
+    watcher.start()
+    deadline = time.monotonic() + 10
+    while watcher.url is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    watcher.stop()
+
+    assert watcher.url == "https://a.trycloudflare.com"
