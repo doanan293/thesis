@@ -24,8 +24,8 @@ ASSISTANT_ROLE = (
 
 _AUDIENCE_RULES = {
     Audience.GENERAL_PUBLIC: (
-        "Người hỏi là người dân: viết ngắn gọn, dễ hiểu, giải thích thuật ngữ khi cần, "
-        "nêu liều và cách dùng cụ thể, nói rõ dấu hiệu cần đi khám ngay nếu tài liệu đề cập."
+        "Người hỏi là người dân: nêu đầy đủ mọi thông tin tài liệu có cho câu hỏi, kể cả liều "
+        "và cách dùng cụ thể; dùng lời lẽ dễ hiểu và giải thích thuật ngữ chuyên môn khi dùng đến."
     ),
     Audience.PROFESSIONAL: (
         "Người hỏi là dược sĩ hoặc nhân viên y tế (chuyên môn): trả lời đầy đủ, dùng đúng thuật ngữ, "
@@ -159,6 +159,22 @@ _PARTIAL_NOTE = (
 )
 
 
+def _question_block(run: AgentRun) -> str:
+    """The user's own question, plus the rewrite when rephrase changed it.
+
+    The rewrite resolves references to earlier turns and steers retrieval, but it
+    can also drop details of a self-contained question, so the answer model always
+    sees what the user actually asked.
+    """
+    if run.standalone_query == run.original_query:
+        return f"Câu hỏi: {run.original_query}"
+    return (
+        f"Câu hỏi: {run.original_query}\n"
+        f"Câu hỏi viết lại theo ngữ cảnh hội thoại: {run.standalone_query}\n"
+        "Trả lời đúng câu hỏi của người dùng; câu viết lại chỉ giúp hiểu ngữ cảnh."
+    )
+
+
 def answer_messages(
     run: AgentRun, plan: AnswerPlan, context_text: str
 ) -> list[ChatMessage]:
@@ -170,7 +186,7 @@ def answer_messages(
     ]
     if plan.mode is AnswerMode.GROUNDED and plan.partial:
         system_parts.append(_PARTIAL_NOTE)
-    user_parts = [f"Câu hỏi: {run.standalone_query}"]
+    user_parts = [_question_block(run)]
     if plan.mode is AnswerMode.GROUNDED:
         user_parts.append(f"Tài liệu:\n{context_text}")
     return [system("\n\n".join(system_parts)), user("\n\n".join(user_parts))]
