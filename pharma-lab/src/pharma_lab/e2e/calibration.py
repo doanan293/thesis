@@ -40,6 +40,7 @@ CALIBRATION_DIR = "calibration"
 ITEMS_FILE = "items.jsonl"
 KEY_FILE = "key.json"
 GRADES_FILE = "grades.jsonl"
+SUPERSEDED_GRADES_FILE = "grades.superseded.jsonl"
 AGREEMENT_FILE = "agreement.json"
 PPI_FILE = "ppi.json"
 CONFIGS = (E2EConfig.FULL, E2EConfig.ONE_STEP)
@@ -106,31 +107,100 @@ def export_calibration(
     directory = calibration_dir(run_root)
     directory.mkdir(parents=True, exist_ok=True)
     key: dict[str, dict[str, str]] = {}
-    lines: list[str] = []
+    blind_items: list[BlindItem] = []
     for number, (config, record) in enumerate(blind, start=1):
         blind_id = f"cal-{number:03d}"
-        item = items[record.item_id]
         key[blind_id] = {"config": str(config), "item_id": record.item_id}
-        blocks = context_blocks(record.context_text)
-        lines.append(
-            BlindItem(
-                blind_id=blind_id,
-                category=item.category.value,
-                turns=[turn.model_dump() for turn in item.turns],
-                key_facts=[fact.fact for fact in item.reference.key_facts],
-                context_text=record.context_text,
-                answer_text=record.answer_text,
-                cited_sentences=[
-                    sentence
-                    for sentence, numbers in cited_sentences(record.answer_text)
-                    if set(numbers) & set(blocks)
-                ],
-            ).model_dump_json()
-        )
-    path = directory / ITEMS_FILE
-    path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        blind_items.append(_blind_item(blind_id, items[record.item_id], record))
+    path = _write_items(directory, blind_items)
     write_json(directory / KEY_FILE, key)
     return path
+
+
+def _blind_item(blind_id: str, item: GoldenItem, record: AnswerRecord) -> BlindItem:
+    blocks = context_blocks(record.context_text)
+    return BlindItem(
+        blind_id=blind_id,
+        category=item.category.value,
+        turns=[turn.model_dump() for turn in item.turns],
+        key_facts=[fact.fact for fact in item.reference.key_facts],
+        context_text=record.context_text,
+        answer_text=record.answer_text,
+        cited_sentences=[
+            sentence
+            for sentence, numbers in cited_sentences(record.answer_text)
+            if set(numbers) & set(blocks)
+        ],
+    )
+
+
+def _write_items(directory: Path, blind_items: Sequence[BlindItem]) -> Path:
+    path = directory / ITEMS_FILE
+    path.write_text(
+        "".join(entry.model_dump_json() + "\n" for entry in blind_items),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _current_items(
+    run_root: Path, items: dict[str, GoldenItem]
+) -> tuple[list[BlindItem], list[BlindItem]]:
+    """The exported blind items and what they would be for the current run."""
+    directory = calibration_dir(run_root)
+    key = json.loads((directory / KEY_FILE).read_text(encoding="utf-8"))
+    stored = [
+        BlindItem.model_validate_json(line)
+        for line in (directory / ITEMS_FILE).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    answers = {
+        config: JsonlStore(
+            config_dir(run_root, config) / ANSWERS_FILE, AnswerRecord
+        ).latest()
+        for config in {entry["config"] for entry in key.values()}
+    }
+    current: list[BlindItem] = []
+    for entry in stored:
+        location = key[entry.blind_id]
+        record = answers[location["config"]][location["item_id"]]
+        if record.retryable:
+            raise ValueError(
+                f"{entry.blind_id}: the answer to {location['item_id']} "
+                f"({location['config']}) has not been rerun yet"
+            )
+        current.append(_blind_item(entry.blind_id, items[location["item_id"]], record))
+    return stored, current
+
+
+def refresh_calibration(run_root: Path, items: dict[str, GoldenItem]) -> list[str]:
+    """Re-export blind items whose answer or golden item changed; drop their grades.
+
+    The sample itself is kept, so the prediction-powered estimates stay valid; only
+    the changed items need grading again. Dropped grades move to
+    `grades.superseded.jsonl`.
+    """
+    directory = calibration_dir(run_root)
+    stored, current = _current_items(run_root, items)
+    changed = [
+        new.blind_id for old, new in zip(stored, current, strict=True) if old != new
+    ]
+    if not changed:
+        return changed
+    _write_items(directory, current)
+    grades_path = directory / GRADES_FILE
+    if grades_path.is_file():
+        kept: list[str] = []
+        dropped: list[str] = []
+        for line in grades_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            blind_id = Grade.model_validate_json(line).blind_id
+            (dropped if blind_id in changed else kept).append(line)
+        with (directory / SUPERSEDED_GRADES_FILE).open("a", encoding="utf-8") as out:
+            out.write("".join(line + "\n" for line in dropped))
+        grades_path.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
+    return changed
 
 
 def cohen_kappa(a: Sequence[object], b: Sequence[object]) -> float:
@@ -309,8 +379,19 @@ def _agreement_rows(
     return rows
 
 
-def score_calibration(run_root: Path) -> list[AgreementRow]:
+def score_calibration(
+    run_root: Path, items: dict[str, GoldenItem]
+) -> list[AgreementRow]:
     directory = calibration_dir(run_root)
+    stored, current = _current_items(run_root, items)
+    stale = [
+        old.blind_id for old, new in zip(stored, current, strict=True) if old != new
+    ]
+    if stale:
+        raise ValueError(
+            f"{len(stale)} calibration items changed since export (e.g. {stale[0]}); "
+            "run `pharma-lab e2e calibration refresh` and grade them again"
+        )
     key = json.loads((directory / KEY_FILE).read_text(encoding="utf-8"))
     grades = _read_grades(directory)
     judgments = {

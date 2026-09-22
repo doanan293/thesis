@@ -22,7 +22,11 @@ from pharma_lab.config.paths import (
     e2e_run_dir,
 )
 from pharma_lab.e2e.calibration import CONFIGS as CALIBRATION_CONFIGS
-from pharma_lab.e2e.calibration import export_calibration, score_calibration
+from pharma_lab.e2e.calibration import (
+    export_calibration,
+    refresh_calibration,
+    score_calibration,
+)
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.corpus_text import chunk_texts, corpus_text, load_corpus_text
 from pharma_lab.e2e.golden import (
@@ -369,15 +373,38 @@ def calibration_export(
     run_handler(state_from_context(ctx), handler)
 
 
+@calibration_app.command("refresh")
+def calibration_refresh(
+    ctx: typer.Context,
+    run_name: Annotated[str, typer.Option("--run")],
+    golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
+) -> None:
+    """Re-export blind items whose answer or golden item changed, for regrading."""
+
+    def handler() -> CommandResult:
+        items = {item.item_id: item for item in load_golden(golden)}
+        changed = refresh_calibration(e2e_run_dir(run_name), items)
+        return CommandResult(
+            "e2e calibration refresh",
+            CommandStatus.COMPLETE,
+            e2e_run_dir(run_name) / "calibration",
+            {"regrade": ",".join(changed) or "none"},
+        )
+
+    run_handler(state_from_context(ctx), handler)
+
+
 @calibration_app.command("score")
 def calibration_score(
     ctx: typer.Context,
     run_name: Annotated[str, typer.Option("--run")],
+    golden: Annotated[Path, typer.Option("--golden", dir_okay=False)] = GOLDEN_E2E_PATH,
 ) -> None:
     """Measure agreement between the judge and calibration/grades.jsonl."""
 
     def handler() -> CommandResult:
-        rows = score_calibration(e2e_run_dir(run_name))
+        items = {item.item_id: item for item in load_golden(golden)}
+        rows = score_calibration(e2e_run_dir(run_name), items)
         return CommandResult(
             "e2e calibration score",
             CommandStatus.COMPLETE,

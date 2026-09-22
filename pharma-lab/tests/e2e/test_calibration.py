@@ -5,12 +5,14 @@ from pathlib import Path
 import pytest
 
 from pharma_lab.e2e.calibration import (
+    BlindItem,
     Grade,
     bootstrap_interval,
     calibration_dir,
     cohen_kappa,
     export_calibration,
     mean_abs_diff,
+    refresh_calibration,
     score_calibration,
     spearman,
 )
@@ -160,15 +162,29 @@ def test_bootstrap_interval_brackets_a_perfect_statistic() -> None:
 
 
 def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
+    items = golden_set()
+    write_run(tmp_path, items, ("full",))
     directory = calibration_dir(tmp_path)
     directory.mkdir(parents=True)
     key = {}
     grades = []
+    blind_items = []
     judgments = JsonlStore(tmp_path / "full" / "judgments.jsonl", Judgement)
     for n in range(10):
         blind = f"cal-{n:03d}"
         item = f"e2e-ans-{n:04d}"
         key[blind] = {"config": "full", "item_id": item}
+        blind_items.append(
+            BlindItem(
+                blind_id=blind,
+                category="answerable",
+                turns=[turn.model_dump() for turn in items[item].turns],
+                key_facts=["f1", "f2"],
+                context_text="[1] A\nnội dung",
+                answer_text="Có [1].",
+                cited_sentences=["Có [1]."],
+            )
+        )
         verdicts = ["supported", "missing"] if n % 2 else ["supported", "supported"]
         judgments.append(
             Judgement(
@@ -192,11 +208,16 @@ def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
             )
         )
     (directory / "key.json").write_text(json.dumps(key), encoding="utf-8")
+    (directory / "items.jsonl").write_text(
+        "".join(b.model_dump_json() + "\n" for b in blind_items), encoding="utf-8"
+    )
     (directory / "grades.jsonl").write_text(
         "".join(g.model_dump_json() + "\n" for g in grades), encoding="utf-8"
     )
 
-    rows = {(row.metric, row.statistic): row for row in score_calibration(tmp_path)}
+    rows = {
+        (row.metric, row.statistic): row for row in score_calibration(tmp_path, items)
+    }
 
     kappa = rows[("key_fact_supported", "cohen_kappa")]
     assert (kappa.value, kappa.n, kappa.reliable) == (1.0, 20, True)
@@ -220,3 +241,48 @@ def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
     # Identical judge and grader labels: the correction is zero.
     assert recall["ppi"] == pytest.approx(recall["judge_mean"])
     assert recall["n_labelled"] == 10
+
+
+def test_refresh_regrades_only_items_whose_answer_or_reference_changed(
+    tmp_path: Path,
+) -> None:
+    items = golden_set()
+    write_run(tmp_path, items, ("full",))
+    export_calibration(tmp_path, items, configs=(E2EConfig.FULL,))
+    directory = calibration_dir(tmp_path)
+    key = json.loads((directory / "key.json").read_text("utf-8"))
+    graded = sorted(key)
+    (directory / "grades.jsonl").write_text(
+        "".join(
+            Grade(blind_id=b, grader="claude-opus-5").model_dump_json() + "\n"
+            for b in graded
+        ),
+        encoding="utf-8",
+    )
+    reanswered, revised = graded[0], graded[1]
+    JsonlStore(tmp_path / "full" / "answers.jsonl", AnswerRecord).append(
+        AnswerRecord(
+            item_id=key[reanswered]["item_id"],
+            config="full",
+            status="completed",
+            answer_text="Câu trả lời mới.",
+        )
+    )
+    changed_item = items[key[revised]["item_id"]]
+    reference = changed_item.reference.model_copy(
+        update={"key_facts": changed_item.reference.key_facts[:1]}
+    )
+    items[changed_item.item_id] = changed_item.model_copy(
+        update={"reference": reference}
+    )
+
+    with pytest.raises(ValueError, match="calibration refresh"):
+        score_calibration(tmp_path, items)
+    changed = refresh_calibration(tmp_path, items)
+
+    assert changed == sorted([reanswered, revised])
+    kept = (directory / "grades.jsonl").read_text("utf-8")
+    assert reanswered not in kept and revised not in kept and graded[2] in kept
+    dropped = (directory / "grades.superseded.jsonl").read_text("utf-8")
+    assert reanswered in dropped and revised in dropped
+    assert refresh_calibration(tmp_path, items) == []
