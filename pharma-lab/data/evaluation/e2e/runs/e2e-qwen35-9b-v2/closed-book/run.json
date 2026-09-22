@@ -1,0 +1,92 @@
+{
+  "budget": {
+    "deadline_seconds": 900.0,
+    "max_evidence_chars": 24000,
+    "max_llm_calls": 10,
+    "max_search_rounds": 3,
+    "max_tokens": 40000
+  },
+  "config": "closed-book",
+  "created_at": "2026-09-21T12:24:33+00:00",
+  "git_commit": "66348554cbbc04f0fbf845cbbafbbfb3df0ceb07",
+  "golden_sha256": "2ffe7dcacd9560ea68dc1b32db8a5ef830b861a02b7def98effa1a6daa9664de",
+  "pipeline": {
+    "judge_refine": false,
+    "rephrase": false
+  },
+  "release_id": "none",
+  "rerank": {
+    "max_candidates": 40,
+    "model": "qwen3-reranker:4b-fp16",
+    "protocol": "native_rerank",
+    "top_n": 8
+  },
+  "retrieval": {
+    "candidate_k": 30,
+    "collections": [
+      "formulary"
+    ],
+    "embedding_model": "qwen3-embedding:4b-fp16",
+    "hydrate_window": 1,
+    "mode": "hybrid",
+    "prefetch_k": 50,
+    "qdrant_collection": "chunks_current",
+    "rrf_k": 2
+  },
+  "role_models": {
+    "answer": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model": "qwen3.5:9b-f16",
+      "reasoning_effort": null
+    },
+    "guardrail": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model": "qwen3.5:9b-f16",
+      "reasoning_effort": null
+    },
+    "judge": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model": "qwen3.5:9b-f16",
+      "reasoning_effort": null
+    },
+    "refine": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model": "qwen3.5:9b-f16",
+      "reasoning_effort": null
+    },
+    "rephrase": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model": "qwen3.5:9b-f16",
+      "reasoning_effort": null
+    },
+    "summarizer": {
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model": "qwen3.5:9b-f16",
+      "reasoning_effort": null
+    }
+  }
+}
