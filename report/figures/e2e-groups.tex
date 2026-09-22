@@ -1,0 +1,29 @@
+\begin{figure}[tb]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=9mm},
+  ybar, width=0.5\textwidth, height=3.2cm,
+  ymin=0, ymax=1.02, ytick={0,0.25,0.5,0.75,1},
+  symbolic x coords={Single-turn, Multi-turn, Noisy},
+  xtick=data, enlarge x limits=0.28,
+  tick label style={font=\scriptsize}, label style={font=\scriptsize},
+  title style={font=\scriptsize, yshift=-1.5ex},
+  ymajorgrids, grid style={gray!25}, axis line style={gray!60},
+  every axis plot/.append style={draw=none, bar width=4.2pt},
+  legend style={font=\scriptsize, draw=none, fill=none, at={(1.08,-0.36)}, anchor=north, legend columns=3, column sep=6pt},
+]
+\nextgroupplot[title={Hosted}, ylabel={Nugget recall}]
+\addplot[fill=cbclosed] coordinates {(Single-turn,0.529) (Multi-turn,0.433) (Noisy,0.433)};
+\addplot[fill=cbone] coordinates {(Single-turn,0.909) (Multi-turn,0.040) (Noisy,0.845)};
+\addplot[fill=cbfull] coordinates {(Single-turn,0.928) (Multi-turn,0.948) (Noisy,0.934)};
+\legend{Closed-book LLM, One-step RAG, Full agent}
+\nextgroupplot[title={Open-weight (Qwen3.5-9B)}, yticklabels={}]
+\addplot[fill=cbclosed] coordinates {(Single-turn,0.234) (Multi-turn,0.261) (Noisy,0.248)};
+\addplot[fill=cbone] coordinates {(Single-turn,0.855) (Multi-turn,0.089) (Noisy,0.706)};
+\addplot[fill=cbfull] coordinates {(Single-turn,0.858) (Multi-turn,0.866) (Noisy,0.762)};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Nugget recall by question type: the 420 single-turn questions, the 50 multi-turn follow-ups that name the drug only by a pronoun, and the 70 noisy single-turn questions with misspellings or look-alike names.}
+\label{fig:groups}
+\end{figure}

@@ -1,0 +1,15 @@
+\begin{table}[tb]
+\centering
+\caption{A multi-turn golden item answered by the hosted models.}
+\label{tab:example}
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Turn 1 & \textit{Cần lưu ý gì khi dùng phenoxymethylpenicilin trong thời kỳ cho con bú?} (precautions for phenoxymethylpenicillin while breastfeeding) \\
+Follow-up & \textit{Vậy thuốc này bảo quản ở nhiệt độ bao nhiêu?} (So at what temperature should this drug be stored?) \\
+\midrule
+One-step RAG & ``Since the question does not name a drug, here are the storage temperatures of the drugs in the documents: Capsaicin: 15--30\,°C~[1] \ldots'' (no key fact) \\
+Full agent & Rewritten query: \textit{Phenoxymethylpenicilin cần được bảo quản ở nhiệt độ bao nhiêu?} Answer: ``\ldots stored at room temperature, 20--35\,°C~[1].'' (all key facts) \\
+\bottomrule
+\end{tabularx}
+\end{table}
