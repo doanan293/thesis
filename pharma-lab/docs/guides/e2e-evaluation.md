@@ -108,6 +108,10 @@ uv run pharma-lab e2e golden build
 
 `golden build` ghi `data/evaluation/e2e/golden_e2e.jsonl` và `golden_e2e.manifest.json`; manifest được commit, bộ golden lưu cùng `pharma-lab data push`.
 
+**Sửa bộ golden khi đã có run.** Sửa item trong các file `*.authored.jsonl`, kiểm bằng `golden check`, rồi `golden build`. Build giữ bản cũ thành `golden_e2e.<sha256>.jsonl`. Lần `e2e run` hoặc `e2e judge` kế tiếp trên một run cũ so hai bản theo từng item: item đổi lượt hội thoại thì câu trả lời và điểm bị thay (`status=superseded`) và được chạy lại, item chỉ đổi đáp án chuẩn hoặc hành vi mong đợi thì chỉ được chấm lại, các item khác giữ nguyên. Vì vậy chạy lại đúng các lệnh `e2e run` (không cần `--retry-errors`) rồi `e2e judge` của mọi cấu hình. Không sửa golden khi một tiến trình `e2e judge` còn đang chạy trên run đó, vì nó chấm theo bản cũ đã nạp.
+
+Lần rà soát ngày 22/09/2026 sửa 57 item theo tiêu chí cố định, áp như nhau cho mọi hệ thống: câu hỏi không nêu đối tượng (mẫu "tên biệt dược này"), gợi ý "(phần …)" lệch với câu hỏi, câu chép từ tài liệu không phải câu hỏi, câu hỏi "tra ở đâu" trong khi đáp án là nội dung, slug lọt vào câu hỏi (42 item sửa câu hỏi); ý chính nằm ngoài phạm vi câu hỏi hoặc không có trong đoạn trích (15 item chỉ sửa đáp án). Lỗi chính tả, không dấu và tên thuốc dễ nhầm của các nhóm `noisy_confuser`, `patient_natural` là độ khó có chủ đích nên giữ nguyên.
+
 ## 3. Chạy, chấm và báo cáo
 
 Mỗi cấu hình chạy trong một tmux session riêng; chạy lại cùng lệnh sẽ resume.

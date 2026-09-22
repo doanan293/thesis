@@ -21,13 +21,11 @@ from pharma_lab.e2e.configs import (
 )
 from pharma_lab.e2e.executor import BackendTurnExecutor, ClosedBookExecutor
 from pharma_lab.e2e.golden import Category, GoldenItem, load_golden
-from pharma_lab.e2e.records import AnswerRecord, JsonlStore
+from pharma_lab.e2e.golden_changes import SUPERSEDED, reconcile_golden
+from pharma_lab.e2e.records import ANSWERS_FILE, AnswerRecord, JsonlStore
 from pharma_lab.e2e.run_identity import git_commit, identity_from_settings, open_run
 from pharma_lab.evaluation.artifact_contracts import sha256_file
 from pharma_lab.evaluation.backend_retrieval import current_release_id
-
-ANSWERS_FILE = "answers.jsonl"
-
 
 NO_RELEASE = "none"
 
@@ -52,7 +50,10 @@ async def run_items(
     concurrency: int,
     retry_errors: bool,
 ) -> RunSummary:
-    """Answer every item without a final record; errors rerun only on request."""
+    """Answer every item without a final record; errors rerun only on request.
+
+    Answers superseded by a revised golden item always run again.
+    """
     if concurrency < 1:
         raise ValueError("--concurrency must be >= 1")
     latest = store.latest()
@@ -60,6 +61,7 @@ async def run_items(
         item
         for item in items
         if item.item_id not in latest
+        or latest[item.item_id].status == SUPERSEDED
         or (retry_errors and latest[item.item_id].retryable)
     ]
     semaphore = asyncio.Semaphore(concurrency)
@@ -119,13 +121,15 @@ def config_dir(run_root: Path, config: E2EConfig | str) -> Path:
 
 
 def run_e2e(request: E2ERunRequest) -> RunSummary:
-    items = spread(load_golden(request.golden_path), request.limit)
+    golden = load_golden(request.golden_path)
+    items = spread(golden, request.limit)
     settings = settings_for(
         Settings(_env_file=request.backend_env_file), request.config
     )
     settings = with_deadline(settings, request.deadline_seconds)
     pipeline = pipeline_for(request.config)
     directory = config_dir(request.run_root, request.config)
+    reconcile_golden(directory, request.golden_path, golden)
     probe = next(
         item.question for item in items if item.category is Category.ANSWERABLE
     )

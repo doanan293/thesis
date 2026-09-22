@@ -24,10 +24,15 @@ from scipy.stats import spearmanr
 
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.golden import GoldenItem
-from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
+from pharma_lab.e2e.harness import config_dir
 from pharma_lab.e2e.judging.code_metrics import cited_sentences, context_blocks
-from pharma_lab.e2e.judging.service import JUDGMENTS_FILE
-from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+from pharma_lab.e2e.records import (
+    ANSWERS_FILE,
+    JUDGMENTS_FILE,
+    AnswerRecord,
+    JsonlStore,
+    Judgement,
+)
 from pharma_lab.e2e.statistics import gwet_ac1, percent_agreement, ppi_mean
 from pharma_lab.evaluation.artifact_contracts import write_json
 

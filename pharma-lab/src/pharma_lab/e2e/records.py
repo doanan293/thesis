@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 _RECORD = ConfigDict(extra="forbid")
+ANSWERS_FILE = "answers.jsonl"
+JUDGMENTS_FILE = "judgments.jsonl"
 
 
 class TokenUsage(BaseModel):

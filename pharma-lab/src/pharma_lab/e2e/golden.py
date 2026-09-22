@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -135,6 +136,11 @@ class GoldenManifest(BaseModel):
 
 def manifest_path(golden_path: Path) -> Path:
     return golden_path.with_name(golden_path.stem + ".manifest.json")
+
+
+def archive_path(golden_path: Path, sha256: str) -> Path:
+    """Where `golden build` keeps the version it replaced, by content hash."""
+    return golden_path.with_name(f"{golden_path.stem}.{sha256}.jsonl")
 
 
 def read_items(path: Path) -> tuple[list[GoldenItem], list[str]]:
@@ -282,6 +288,11 @@ def build_golden(
         ),
         encoding="utf-8",
     )
+    if output.is_file():
+        # Runs made with the replaced version resume against it item by item.
+        previous = archive_path(output, sha256_file(output))
+        if not previous.is_file():
+            shutil.copy2(output, previous)
     staging.replace(output)
     counts = Counter(str(item.category) for item in items)
     groups = Counter(

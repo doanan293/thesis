@@ -12,7 +12,8 @@ from pharma_agent.infrastructure.settings import Settings
 
 from pharma_lab.e2e.configs import E2EConfig
 from pharma_lab.e2e.golden import Category, ExpectedBehavior, GoldenItem, load_golden
-from pharma_lab.e2e.harness import ANSWERS_FILE, config_dir
+from pharma_lab.e2e.golden_changes import reconcile_golden
+from pharma_lab.e2e.harness import config_dir
 from pharma_lab.e2e.judging.code_metrics import context_blocks
 from pharma_lab.e2e.judging.ragas_scorer import RagasScores, build_ragas_scorer
 from pharma_lab.e2e.judging.structured import (
@@ -21,10 +22,15 @@ from pharma_lab.e2e.judging.structured import (
     StructuredJudge,
     judge_llm,
 )
-from pharma_lab.e2e.records import AnswerRecord, JsonlStore, Judgement
+from pharma_lab.e2e.records import (
+    ANSWERS_FILE,
+    JUDGMENTS_FILE,
+    AnswerRecord,
+    JsonlStore,
+    Judgement,
+)
 from pharma_lab.evaluation.artifact_contracts import write_json
 
-JUDGMENTS_FILE = "judgments.jsonl"
 JUDGE_FILE = "judge.json"
 
 
@@ -222,7 +228,9 @@ def run_judge(request: JudgeRequest) -> JudgeSummary:
     if not answers_path.is_file():
         raise ValueError(f"no answers to judge: {answers_path}")
     settings = Settings(_env_file=request.backend_env_file)
-    items = {item.item_id: item for item in load_golden(request.golden_path)}
+    golden = load_golden(request.golden_path)
+    reconcile_golden(directory, request.golden_path, golden)
+    items = {item.item_id: item for item in golden}
     pin_judge(directory, model=request.judge_model, force=request.force)
     return asyncio.run(
         judge_records(
