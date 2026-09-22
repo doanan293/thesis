@@ -29,6 +29,6 @@
 \draw[exit] (rephrase.north) -- ++(0,3.5mm) -| node[note, pos=0.3, above] {chit-chat: no retrieval} ([xshift=-2mm]answer.north);
 \node[note, below=1.5mm of answer, text width=14.5mm, align=center] {grounded, partial or abstain};
 \end{tikzpicture}
-\caption{Overview of the agentic RAG pipeline. Each step is one small LLM call with structured output, while routing, budgets and query de-duplication run in code. Dashed steps are removed in the ablation configurations (Table~\ref{tab:e2e-configs}).}
+\caption{Overview of the agentic RAG pipeline. Each step is one small LLM call with structured output, while routing, budgets and query de-duplication run in code. Dashed steps are removed one at a time in the ablations of Sect.~\ref{sec:design}.}
 \label{fig:pipeline}
 \end{figure}
