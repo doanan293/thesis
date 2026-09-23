@@ -13,12 +13,12 @@
   every axis plot/.append style={draw=none, bar width=4.2pt},
   legend style={font=\scriptsize, draw=none, fill=none, at={(1.08,-0.36)}, anchor=north, legend columns=3, column sep=6pt},
 ]
-\nextgroupplot[title={API}, ylabel={Nugget recall}]
+\nextgroupplot[title={Gemini 3.8 Flash}, ylabel={Nugget recall}]
 \addplot[fill=cbclosed] coordinates {(Single-turn,0.529) (Multi-turn,0.433) (Noisy,0.433)};
 \addplot[fill=cbone] coordinates {(Single-turn,0.909) (Multi-turn,0.040) (Noisy,0.845)};
 \addplot[fill=cbfull] coordinates {(Single-turn,0.928) (Multi-turn,0.948) (Noisy,0.934)};
 \legend{Closed-book LLM, One-step RAG, Full agent}
-\nextgroupplot[title={Open-weight (Qwen3.5-9B)}, yticklabels={}]
+\nextgroupplot[title={Qwen3.5-9B}, yticklabels={}]
 \addplot[fill=cbclosed] coordinates {(Single-turn,0.234) (Multi-turn,0.261) (Noisy,0.248)};
 \addplot[fill=cbone] coordinates {(Single-turn,0.855) (Multi-turn,0.089) (Noisy,0.706)};
 \addplot[fill=cbfull] coordinates {(Single-turn,0.858) (Multi-turn,0.866) (Noisy,0.762)};
