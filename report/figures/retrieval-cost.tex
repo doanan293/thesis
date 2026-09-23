@@ -3,7 +3,7 @@
 \begin{tikzpicture}
 \begin{groupplot}[
   group style={group size=2 by 1, horizontal sep=12mm},
-  width=0.5\textwidth, height=3.2cm,
+  width=0.5\textwidth, height=2.9cm,
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
   title style={font=\scriptsize, yshift=-1.5ex},
   ymajorgrids, grid style={gray!25}, axis line style={gray!60},
@@ -14,13 +14,13 @@
 \nextgroupplot[title={Dense retrievers}, xlabel={Embedding dimension}, ylabel={nDCG@10}, xmin=500, xmax=6200, ymin=0.60, ymax=0.87]
 \addplot coordinates {(768,0.640) [Gemma-300M] (1024,0.776) [BGE-M3] (1024,0.753) [Qwen3-0.6B] (4096,0.834) [Qwen3-8B]};
 \addplot[every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(2560,0.820) [Qwen3-4B]};
-\nextgroupplot[title={Rerankers on hybrid top 30}, xlabel={Pairs scored per second (T4)}, ylabel={Hit@3 (\%)}, xmode=log, xmin=1, xmax=400, ymin=83, ymax=93.5, log ticks with fixed point, xtick={1,10,100}]
-\addplot coordinates {(31.2,88.0) [BGE-v2-m3] (4.0,90.6) [Qwen3-4B] (1.5,91.8) [Qwen3-8B]};
-\addplot[every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(12.3,87.4) [Qwen3-0.6B]};
-\addplot[no marks, mark=none, dashed, gray!70!black, thick, domain=1:400, samples=2, point meta=none, nodes near coords={}] {84.3};
-\node[font=\tiny, anchor=south east] at (axis cs:380,84.4) {hybrid, no reranker};
+\nextgroupplot[title={Rerankers on hybrid top 30}, xlabel={Pairs scored per second}, ylabel={Hit@5 (\%)}, xmode=log, xmin=1, xmax=400, ymin=89, ymax=96.5, ytick={90,92,94,96}, log ticks with fixed point, xtick={1,10,100}]
+\addplot coordinates {(31.2,92.1) [BGE-v2-m3] (4.0,94.4) [Qwen3-4B] (1.5,95.2) [Qwen3-8B]};
+\addplot[every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(12.3,92.0) [Qwen3-0.6B]};
+\draw[dashed, gray!70!black, thick] (axis cs:1,90.7) -- (axis cs:400,90.7);
+\node[font=\tiny, anchor=north east] at (axis cs:380,90.55) {hybrid, no reranker};
 \end{groupplot}
 \end{tikzpicture}
-\caption{Effectiveness against cost: dense retrievers by embedding dimension (left) and rerankers on the hybrid top 30 by throughput on one T4 GPU (right).}
+\caption{Effectiveness against cost: dense retrievers by embedding dimension (left) and rerankers on the hybrid top 30 by reranking throughput (right).}
 \label{fig:cost}
 \end{figure}

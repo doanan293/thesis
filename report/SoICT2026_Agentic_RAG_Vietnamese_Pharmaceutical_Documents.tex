@@ -1,6 +1,7 @@
+% !TEX program = pdflatex
 \documentclass{llncs}
-\usepackage{fontspec}
-\usepackage{amsmath,amssymb}
+\usepackage[T5]{fontenc}
+\usepackage[utf8]{inputenc}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -17,11 +18,18 @@
 \setlist[itemize]{nosep, leftmargin=*, topsep=2pt, partopsep=0pt}
 \setlist[enumerate]{nosep, leftmargin=*, topsep=2pt, partopsep=0pt}
 \usepackage[hidelinks]{hyperref}
+\hypersetup{
+  pdftitle={Agentic Retrieval-Augmented Generation for Vietnamese Pharmaceutical Documents},
+  pdfauthor={Van-An Doan and Quoc-Tuan Nguyen},
+  pdfsubject={SoICT 2026},
+  pdfkeywords={Retrieval-augmented generation, Agentic RAG, Drug information retrieval, Pharmaceutical documents, Retrieval benchmark, LLM-as-a-judge},
+}
 \renewcommand\UrlFont{\color{blue}\rmfamily}
 \urlstyle{rm}
 \widowpenalty=10000
 \clubpenalty=10000
 \emergencystretch=1.5em
+\raggedbottom
 
 % \finaltrue turns every remaining placeholder into a build error.
 \newif\iffinal

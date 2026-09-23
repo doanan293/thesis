@@ -538,7 +538,9 @@ def _published(tmp_path: Path, *, block_section: str = "drug:a:b") -> Path:
             }
         ],
     )
-    (final_dir / "validation_report.json").write_text('{"ok": true}\n', encoding="utf-8")
+    (final_dir / "validation_report.json").write_text(
+        '{"ok": true}\n', encoding="utf-8"
+    )
     manifest = build_manifest(
         final_dir,
         build_id="build",
@@ -600,7 +602,12 @@ CONTRACT_FILES = frozenset(
         "validation_report.json",
     }
 )
-TRACKED_FILES = ("sections.jsonl", "blocks.jsonl", "chunks.jsonl", "validation_report.json")
+TRACKED_FILES = (
+    "sections.jsonl",
+    "blocks.jsonl",
+    "chunks.jsonl",
+    "validation_report.json",
+)
 ```
 
 Replace `build_manifest`:
@@ -670,7 +677,9 @@ def validate_contract_directory(path: Path) -> dict[str, Any]:
         raise ContractError("Final contract JSONL files must not be empty")
     if any(not record.get("id") or not record.get("text") for record in sections):
         raise ContractError("Every section requires id and text")
-    if any(not record.get("block_id") or not record.get("section_id") for record in blocks):
+    if any(
+        not record.get("block_id") or not record.get("section_id") for record in blocks
+    ):
         raise ContractError("Every block requires block_id and section_id")
     if any(
         not record.get("chunk_id")
@@ -1307,7 +1316,9 @@ def document_for_section(row: Mapping[str, Any]) -> DocumentRecord:
             title=title,
             source=SourceInfo(title=source_title),
         )
-    raise ValueError(f"Section {section_key} has unsupported content_type {content_type!r}")
+    raise ValueError(
+        f"Section {section_key} has unsupported content_type {content_type!r}"
+    )
 
 
 def export_bundle(request: ExportRequest) -> ExportResult:
@@ -1351,7 +1362,9 @@ def export_bundle(request: ExportRequest) -> ExportResult:
                 key=section_key,
                 document_key=document.key,
                 heading=heading,
-                context_path=[str(part) for part in row.get("context_path") or [heading]],
+                context_path=[
+                    str(part) for part in row.get("context_path") or [heading]
+                ],
                 ordinal=ordinals[document.key],
                 start_page=_page(row.get("start_page")),
                 end_page=_page(row.get("end_page")),
@@ -1433,7 +1446,9 @@ class _MappingCollector:
                     key=key,
                     aliases=[str(alias) for alias in compact.get("aliases", [])],
                     visual_sign=str(compact.get("visual_sign", "")),
-                    product_names=[str(name) for name in compact.get("product_names", [])],
+                    product_names=[
+                        str(name) for name in compact.get("product_names", [])
+                    ],
                     section_keys=list(draft.section_keys),
                 )
             )
@@ -1472,7 +1487,9 @@ def _formulary_blocks(
                 markdown=markdown,
                 start_page=_page(row.get("page_start")),
                 end_page=_page(row.get("page_end")),
-                table_key=str(row["table_id"]) if is_table and row.get("table_id") else None,
+                table_key=str(row["table_id"])
+                if is_table and row.get("table_id")
+                else None,
             )
         )
     return blocks
@@ -1989,14 +2006,22 @@ def check_chunk_parity(
         strategy = hydrate_strategy_for(item.section).value
         if len(old) != len(item.drafts):
             report.record(
-                ParityMismatch(section_key, None, "chunk_count", len(old), len(item.drafts))
+                ParityMismatch(
+                    section_key, None, "chunk_count", len(old), len(item.drafts)
+                )
             )
         for chunk, draft in zip(old, item.drafts, strict=False):
             report.chunks_checked += 1
             old_ordinal = int(chunk["chunk_index"])
             if old_ordinal != draft.ordinal:
                 report.record(
-                    ParityMismatch(section_key, draft.ordinal, "ordinal", old_ordinal, draft.ordinal)
+                    ParityMismatch(
+                        section_key,
+                        draft.ordinal,
+                        "ordinal",
+                        old_ordinal,
+                        draft.ordinal,
+                    )
                 )
             before = legacy_chunk_view(chunk)
             after = draft_view(draft, strategy)
@@ -2006,7 +2031,9 @@ def check_chunk_parity(
             for name in COMPARED_FIELDS:
                 if before[name] != after[name]:
                     report.record(
-                        ParityMismatch(section_key, draft.ordinal, name, before[name], after[name])
+                        ParityMismatch(
+                            section_key, draft.ordinal, name, before[name], after[name]
+                        )
                     )
     for section_key, chunks in sorted(old_by_section.items()):
         report.record(
@@ -2072,7 +2099,9 @@ def parity_command(
 @bundle_app.command("parity")
 def parity(
     ctx: typer.Context,
-    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False, resolve_path=True)],
+    bundle: Annotated[
+        Path, typer.Option("--bundle", file_okay=False, resolve_path=True)
+    ],
     old_chunks: Annotated[
         Path, typer.Option("--old-chunks", dir_okay=False, resolve_path=True)
     ],
@@ -2245,8 +2274,16 @@ def test_embed_missing_only_embeds_new_texts(tmp_path: Path) -> None:
     first = embed_missing(inputs, cache, [client], batch_size=1)
     second = embed_missing(inputs, cache, [client], batch_size=1)
 
-    assert (first.total, first.cached, first.embedded, first.stopped_early) == (3, 1, 2, False)
-    assert sorted(text for call in client.calls for text in call) == ["mới hai", "mới một"]
+    assert (first.total, first.cached, first.embedded, first.stopped_early) == (
+        3,
+        1,
+        2,
+        False,
+    )
+    assert sorted(text for call in client.calls for text in call) == [
+        "mới hai",
+        "mới một",
+    ]
     assert (second.cached, second.embedded) == (3, 0)
     assert cache.get(text_sha256("mới một")) == _vector(float(len("mới một")))
 
@@ -2644,7 +2681,10 @@ from seed_pipeline.embeddings.text_cache import (
     embed_missing,
     read_embedding_inputs,
 )
-from seed_pipeline.integrations.kaggle.job_lock import kaggle_cache_lock, kaggle_job_lock
+from seed_pipeline.integrations.kaggle.job_lock import (
+    kaggle_cache_lock,
+    kaggle_job_lock,
+)
 from seed_pipeline.runtime.catalog import ModelKind, require_model
 from seed_pipeline.runtime.client import LlamaCppClient
 from seed_pipeline.runtime.compose import LlamaCppComposeManager, resolve_server
@@ -2794,8 +2834,8 @@ class KaggleTextEmbeddingBackend:
 In `seed-pipeline/src/seed_pipeline/integrations/kaggle/stages.py`, inside `CorpusEmbedStage`: set `contract_version: int = 3`, and in the returned `StageJob` use:
 
 ```python
-            local_cache_path=output_dir / "text_embeddings.jsonl",
-            data_filename="text_embeddings.jsonl",
+local_cache_path = (output_dir / "text_embeddings.jsonl",)
+data_filename = ("text_embeddings.jsonl",)
 ```
 
 In `seed-pipeline/src/seed_pipeline/integrations/kaggle/kernels.py`, the checkpoint filename map entry becomes:
@@ -3155,7 +3195,8 @@ def test_collect_embedding_inputs_is_unique_and_hashed(tmp_path: Path) -> None:
         item.embedding_text_sha256 for item in inputs
     )
     assert all(
-        item.embedding_text_sha256 == text_sha256(item.embedding_text) for item in inputs
+        item.embedding_text_sha256 == text_sha256(item.embedding_text)
+        for item in inputs
     )
 
 
@@ -3500,7 +3541,9 @@ def embed_command(
         raise invalid_bundle(exc) from exc
     return CommandResult(
         command="bundle embed",
-        status=CommandStatus.INCOMPLETE if result.incomplete else CommandStatus.COMPLETE,
+        status=CommandStatus.INCOMPLETE
+        if result.incomplete
+        else CommandStatus.COMPLETE,
         artifact=bundle,
         details={
             "inputs": result.inputs,
@@ -3514,7 +3557,9 @@ def embed_command(
 @bundle_app.command("embed")
 def embed(
     ctx: typer.Context,
-    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False, resolve_path=True)],
+    bundle: Annotated[
+        Path, typer.Option("--bundle", file_okay=False, resolve_path=True)
+    ],
     backend: Annotated[Backend, typer.Option("--backend")],
     model: Annotated[str, typer.Option("--model")],
     cache: Annotated[Path | None, typer.Option("--cache", dir_okay=False)] = None,
@@ -3882,7 +3927,9 @@ def evaluation_build_command(
 def evaluation_build(
     ctx: typer.Context,
     sections: Annotated[Path, typer.Option("--sections")] = RAG_FINAL_SECTIONS_PATH,
-    bundle: Annotated[Path, typer.Option("--bundle", file_okay=False)] = DEFAULT_BUNDLE_DIR,
+    bundle: Annotated[
+        Path, typer.Option("--bundle", file_okay=False)
+    ] = DEFAULT_BUNDLE_DIR,
     chunks_output: Annotated[
         Path, typer.Option("--chunks-output", dir_okay=False)
     ] = EVALUATION_CHUNKS_PATH,
@@ -4492,7 +4539,9 @@ def cached_query_embedder(
             )
         vectors[query_hash(text)] = vector
     return (
-        CachedQueryEmbedder(vectors, model=model, dimension=dimension, source=cache.path),
+        CachedQueryEmbedder(
+            vectors, model=model, dimension=dimension, source=cache.path
+        ),
         subset.sha256,
     )
 ```
@@ -4628,7 +4677,9 @@ def query_cache_for(
             f"{spec.vector_dimension} for {model}"
         )
     return QueryEmbeddingCache(
-        query_embedding_cache_path(model), vector_dim=dimension, model_sha256=spec.sha256
+        query_embedding_cache_path(model),
+        vector_dim=dimension,
+        model_sha256=spec.sha256,
     )
 
 
@@ -4736,7 +4787,9 @@ def run_retrieval(
     query_embeddings_sha256: str | None = None
     if request.retriever != "bm25":
         embedder, query_embeddings_sha256 = cached_query_embedder(
-            query_cache_for(request, model=embedding.model, dimension=embedding.dimension),
+            query_cache_for(
+                request, model=embedding.model, dimension=embedding.dimension
+            ),
             rows,
             model=embedding.model,
             dimension=embedding.dimension,
@@ -5027,7 +5080,9 @@ def _published(tmp_path: Path, *, block_section: str = "drug:a:b") -> Path:
         final_dir / "blocks.jsonl",
         [{"block_id": "block-000001", "section_id": block_section, "text": "Văn bản"}],
     )
-    (final_dir / "validation_report.json").write_text('{"ok": true}\n', encoding="utf-8")
+    (final_dir / "validation_report.json").write_text(
+        '{"ok": true}\n', encoding="utf-8"
+    )
     manifest = build_manifest(
         final_dir,
         build_id="build",
@@ -5178,7 +5233,9 @@ def validate_contract_directory(path: Path) -> dict[str, Any]:
         raise ContractError("Final contract JSONL files must not be empty")
     if any(not record.get("id") or not record.get("text") for record in sections):
         raise ContractError("Every section requires id and text")
-    if any(not record.get("block_id") or not record.get("section_id") for record in blocks):
+    if any(
+        not record.get("block_id") or not record.get("section_id") for record in blocks
+    ):
         raise ContractError("Every block requires block_id and section_id")
     section_ids = {record["id"] for record in sections}
     if len(section_ids) != len(sections):

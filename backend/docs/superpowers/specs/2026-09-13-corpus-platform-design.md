@@ -174,11 +174,13 @@ CHUNKER_VERSION = "chunker-v1"
 MAX_CHUNK_CHARS = 3000
 FULL_SECTION_MAX_CHARS = 16000
 
+
 def chunk_section(
-    section: SectionInput,          # key, heading, context_path, retrieval, blocks
+    section: SectionInput,  # key, heading, context_path, retrieval, blocks
     glossary: Sequence[GlossaryEntry],
     mappings: Sequence[ColloquialMapping],
-    *, max_chars: int = MAX_CHUNK_CHARS,
+    *,
+    max_chars: int = MAX_CHUNK_CHARS,
 ) -> list[ChunkDraft]: ...
 ```
 

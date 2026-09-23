@@ -32,6 +32,11 @@
       "artifact_dir": "rerank/qwen3_reranker_4b_fp16",
       "model": "qwen3-reranker:4b-fp16",
       "variant_sha256": "9fcf83e514b2f86ec721e36c43afb88fbbf46da6fce283aa02a77707ca3a5750"
+    },
+    "qwen3_reranker_8b_fp16": {
+      "artifact_dir": "rerank/qwen3_reranker_8b_fp16",
+      "model": "qwen3-reranker:8b-fp16",
+      "variant_sha256": "f992be617d5605983d137a9665f0361cbe4bf06b9476d67d73d6010103bebb4b"
     }
   },
   "schema_version": 3

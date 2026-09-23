@@ -11,15 +11,28 @@ Paper tiếng Anh nộp SoICT 2026 (Springer CCIS, định dạng LNCS, tối đ
 Chạy từ thư mục gốc repo, dùng script của skill `latex-document-skill`:
 
 ```bash
-bash .agents/skills/latex-document-skill/scripts/compile_latex.sh report/main.tex \
-  --engine lualatex --use-latexmk --preview --preview-dir report/preview
+bash .agents/skills/latex-document-skill/scripts/compile_latex.sh \
+  report/SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.tex \
+  --engine pdflatex --use-latexmk --preview --preview-dir preview
 ```
 
-Kết quả là `report/main.pdf` và ảnh xem trước trong `report/preview/`. Dùng LuaLaTeX vì pdfLaTeX với T5 hiển thị và trích xuất tiếng Việt sai.
+Kết quả là `report/SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.pdf` (file `.tex` chính mang luôn tên bản nộp, nên PDF sinh ra dùng được để nộp ngay) và ảnh xem trước trong `report/preview/`. Bài dùng pdfLaTeX với bảng mã T5 như bản mẫu của Springer, nên Overleaf biên dịch được với compiler mặc định.
+
+## Overleaf
+
+Nén đúng các file nguồn rồi tải lên bằng "New Project → Upload Project":
+
+```bash
+cd report && zip -r SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.zip \
+  SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.tex \
+  llncs.cls splncs04.bst references.bib sections tables figures && cd ..
+```
+
+Overleaf biên dịch ngay với compiler mặc định (pdfLaTeX). Main document được nhận tự động vì chỉ có một file `.tex` ở gốc.
 
 ## Kết quả chưa có
 
-Số chưa có được viết bằng `\pending{...}` (chữ đỏ). Trước khi nộp, đổi `\finalfalse` thành `\finaltrue` trong `main.tex`: build sẽ lỗi nếu còn `\pending`.
+Số chưa có được viết bằng `\pending{...}` (chữ đỏ). Trước khi nộp, đổi `\finalfalse` thành `\finaltrue` trong file `.tex` chính: build sẽ lỗi nếu còn `\pending`.
 
 ## Bảng end-to-end
 
