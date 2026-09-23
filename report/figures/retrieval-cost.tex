@@ -7,20 +7,23 @@
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
   title style={font=\scriptsize, yshift=-1.5ex},
   ymajorgrids, grid style={gray!25}, axis line style={gray!60},
-  every axis plot/.append style={only marks, mark=*, mark size=1.8pt, mark options={fill=cbfull, draw=cbfull}},
-  nodes near coords, every node near coord/.append style={font=\tiny, anchor=west, xshift=2pt},
+  tick pos=left,
+  pt/.style={only marks, mark=*, mark size=1.8pt, color=cbfull},
+  nodes near coords, every node near coord/.append style={font=\tiny, text=black, anchor=west, xshift=2pt},
   point meta=explicit symbolic,
 ]
 \nextgroupplot[title={Dense retrievers}, xlabel={Embedding dimension}, ylabel={nDCG@10}, xmin=500, xmax=6200, ymin=0.60, ymax=0.87]
-\addplot coordinates {(768,0.640) [Gemma-300M] (1024,0.776) [BGE-M3] (1024,0.753) [Qwen3-0.6B] (4096,0.834) [Qwen3-8B]};
-\addplot[every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(2560,0.820) [Qwen3-4B]};
+\addplot[pt] coordinates {(768,0.640) [Gemma-300M] (4096,0.834) [Qwen3-8B]};
+\addplot[pt, every node near coord/.append style={yshift=-4pt}] coordinates {(2560,0.820) [Qwen3-4B]};
+\addplot[pt, every node near coord/.append style={yshift=2.5pt}] coordinates {(1024,0.776) [BGE-M3]};
+\addplot[pt, every node near coord/.append style={yshift=-2.5pt}] coordinates {(1024,0.753) [Qwen3-0.6B]};
 \nextgroupplot[title={Rerankers on hybrid top 30}, xlabel={Pairs scored per second}, ylabel={Hit@5 (\%)}, xmode=log, xmin=1, xmax=400, ymin=89, ymax=96.5, ytick={90,92,94,96}, log ticks with fixed point, xtick={1,10,100}]
-\addplot coordinates {(31.2,92.1) [BGE-v2-m3] (4.0,94.4) [Qwen3-4B] (1.5,95.2) [Qwen3-8B]};
-\addplot[every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(12.3,92.0) [Qwen3-0.6B]};
+\addplot[pt] coordinates {(31.2,92.1) [BGE-v2-m3] (1.5,95.2) [Qwen3-8B]};
+\addplot[pt, every node near coord/.append style={yshift=-1.5pt}] coordinates {(4.0,94.4) [Qwen3-4B]};
+\addplot[pt, every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(12.3,92.0) [Qwen3-0.6B]};
 \draw[dashed, gray!70!black, thick] (axis cs:1,90.7) -- (axis cs:400,90.7);
-\node[font=\tiny, anchor=north east] at (axis cs:380,90.55) {hybrid, no reranker};
 \end{groupplot}
 \end{tikzpicture}
-\caption{Effectiveness against cost: dense retrievers by embedding dimension (left) and rerankers on the hybrid top 30 by reranking throughput (right).}
+\caption{Effectiveness against cost: dense retrievers by embedding dimension (left) and rerankers on the hybrid top 30 by reranking throughput (right). The dashed line marks the hybrid retriever without a reranker.}
 \label{fig:cost}
 \end{figure}
