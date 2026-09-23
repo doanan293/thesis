@@ -7,7 +7,7 @@
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
   title style={font=\scriptsize, yshift=-1.5ex},
   ymajorgrids, grid style={gray!25}, axis line style={gray!60},
-  tick pos=left,
+  tick pos=left, tick align=outside,
   pt/.style={only marks, mark=*, mark size=1.8pt, color=cbfull},
   nodes near coords, every node near coord/.append style={font=\tiny, text=black, anchor=west, xshift=2pt},
   point meta=explicit symbolic,
@@ -22,8 +22,9 @@
 \addplot[pt, every node near coord/.append style={yshift=-1.5pt}] coordinates {(4.0,94.4) [Qwen3-4B]};
 \addplot[pt, every node near coord/.append style={anchor=east, xshift=-2pt}] coordinates {(12.3,92.0) [Qwen3-0.6B]};
 \draw[dashed, gray!70!black, thick] (axis cs:1,90.7) -- (axis cs:400,90.7);
+\node[font=\tiny, fill=white, inner sep=1pt, anchor=north east] at (axis cs:380,90.5) {hybrid, no reranker};
 \end{groupplot}
 \end{tikzpicture}
-\caption{Effectiveness against cost: dense retrievers by embedding dimension (left) and rerankers on the hybrid top 30 by reranking throughput (right). The dashed line marks the hybrid retriever without a reranker.}
+\caption{Effectiveness against cost: dense retrievers by embedding dimension (left) and rerankers on the hybrid top 30 by reranking throughput (right).}
 \label{fig:cost}
 \end{figure}
