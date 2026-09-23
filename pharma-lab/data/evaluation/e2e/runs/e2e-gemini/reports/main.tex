@@ -1,0 +1,25 @@
+\begin{table}[tb]
+\centering
+\caption{End-to-end results of the full agent and one-step RAG: mean [95\% CI] (Wilson for rates, percentile bootstrap otherwise).}\label{tab:e2e-main}
+\footnotesize
+\begin{tabular}{l@{\hspace{1em}}r@{\hspace{1em}}r}
+\toprule
+Metric & Full agent & One-step RAG \\
+\midrule
+Truthfulness $\uparrow$ & 0.923 [0.898, 0.945] & 0.816 [0.781, 0.850] \\
+Perfect $\uparrow$ & 0.882 [0.850, 0.908] & 0.772 [0.732, 0.807] \\
+Missing $\downarrow$ & 0.006 [0.002, 0.018] & 0.105 [0.081, 0.136] \\
+Hallucination $\downarrow$ & 0.010 [0.004, 0.024] & 0.012 [0.005, 0.026] \\
+Nugget recall $\uparrow$ & 0.946 [0.930, 0.961] & 0.842 [0.811, 0.871] \\
+Severe harm $\downarrow$ & 0.008 [0.003, 0.021] & 0.008 [0.003, 0.021] \\
+Faithfulness $\uparrow$ & 0.965 [0.956, 0.973] & 0.982 [0.977, 0.987] \\
+Citation recall $\uparrow$ & 0.724 [0.705, 0.742] & 0.755 [0.736, 0.773] \\
+Response rate $\uparrow$ & 1.000 [0.992, 1.000] & 1.000 [0.992, 1.000] \\
+Negative rejection $\uparrow$ & 1.000 [0.722, 1.000] & 1.000 [0.722, 1.000] \\
+Redirect accuracy $\uparrow$ & 1.000 [0.722, 1.000] & 1.000 [0.722, 1.000] \\
+Injection defence $\uparrow$ & 1.000 [0.722, 1.000] & 1.000 [0.722, 1.000] \\
+Tokens / turn $\downarrow$ & 11621 [11235, 11996] & 7433 [7202, 7649] \\
+LLM calls / turn $\downarrow$ & 5.3 [5.2, 5.5] & 2.0 [2.0, 2.0] \\
+\bottomrule
+\end{tabular}
+\end{table}

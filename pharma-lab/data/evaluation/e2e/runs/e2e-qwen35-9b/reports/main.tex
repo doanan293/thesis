@@ -1,25 +1,25 @@
 \begin{table}[tb]
 \centering
 \caption{End-to-end results of the full agent and one-step RAG: mean [95\% CI] (Wilson for rates, percentile bootstrap otherwise).}\label{tab:e2e-main}
-\small
+\footnotesize
 \begin{tabular}{l@{\hspace{1em}}r@{\hspace{1em}}r}
 \toprule
 Metric & Full agent & One-step RAG \\
 \midrule
-Truthfulness $\uparrow$ & 0.666 [0.625, 0.704] & 0.732 [0.689, 0.773] \\
-Perfect $\uparrow$ & 0.508 [0.464, 0.553] & 0.631 [0.585, 0.676] \\
-Missing $\downarrow$ & 0.083 [0.062, 0.111] & 0.068 [0.048, 0.096] \\
-Hallucination $\downarrow$ & 0.031 [0.019, 0.051] & 0.033 [0.020, 0.054] \\
-Nugget recall $\uparrow$ & 0.731 [0.700, 0.762] & 0.808 [0.777, 0.836] \\
-Severe harm $\downarrow$ & 0.021 [0.012, 0.039] & 0.016 [0.008, 0.034] \\
-Faithfulness $\uparrow$ & 0.817 [0.802, 0.832] & 0.928 [0.915, 0.940] \\
-Citation recall $\uparrow$ & 0.454 [0.437, 0.471] & 0.547 [0.527, 0.567] \\
-Response rate $\uparrow$ & 0.991 [0.978, 0.997] & 1.000 [0.991, 1.000] \\
-Negative rejection $\uparrow$ & 0.800 [0.490, 0.943] & -- \\
-Redirect accuracy $\uparrow$ & 0.900 [0.596, 0.982] & 0.800 [0.490, 0.943] \\
+Truthfulness $\uparrow$ & 0.913 [0.887, 0.938] & 0.792 [0.758, 0.825] \\
+Perfect $\uparrow$ & 0.870 [0.837, 0.897] & 0.752 [0.711, 0.789] \\
+Missing $\downarrow$ & 0.008 [0.003, 0.021] & 0.112 [0.087, 0.143] \\
+Hallucination $\downarrow$ & 0.012 [0.005, 0.026] & 0.018 [0.009, 0.034] \\
+Nugget recall $\uparrow$ & 0.938 [0.920, 0.954] & 0.828 [0.798, 0.856] \\
+Severe harm $\downarrow$ & 0.010 [0.004, 0.024] & 0.010 [0.004, 0.024] \\
+Faithfulness $\uparrow$ & 0.952 [0.941, 0.962] & 0.965 [0.956, 0.973] \\
+Citation recall $\uparrow$ & 0.695 [0.676, 0.714] & 0.718 [0.699, 0.737] \\
+Response rate $\uparrow$ & 1.000 [0.992, 1.000] & 1.000 [0.992, 1.000] \\
+Negative rejection $\uparrow$ & 1.000 [0.722, 1.000] & 1.000 [0.722, 1.000] \\
+Redirect accuracy $\uparrow$ & 0.900 [0.596, 0.982] & 0.900 [0.596, 0.982] \\
 Injection defence $\uparrow$ & 1.000 [0.722, 1.000] & 1.000 [0.722, 1.000] \\
-Tokens / turn $\downarrow$ & 9686 [9370, 9996] & 6834 [6625, 7034] \\
-LLM calls / turn $\downarrow$ & 4.9 [4.8, 5.1] & 2.0 [2.0, 2.0] \\
+Tokens / turn $\downarrow$ & 10326 [10006, 10665] & 6731 [6525, 6926] \\
+LLM calls / turn $\downarrow$ & 5.2 [5.0, 5.3] & 2.0 [2.0, 2.0] \\
 \bottomrule
 \end{tabular}
 \end{table}

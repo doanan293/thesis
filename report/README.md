@@ -39,8 +39,8 @@ Số chưa có được viết bằng `\pending{...}` (chữ đỏ). Trước kh
 `tables/e2e-*.tex` được sinh bởi `pharma-lab e2e report` và không sửa tay:
 
 ```bash
-cd pharma-lab && uv run pharma-lab e2e report --run e2e-v1 && cd ..
-R=pharma-lab/data/evaluation/e2e/runs/e2e-v1/reports
+cd pharma-lab && uv run pharma-lab e2e report --run e2e-gemini && cd ..
+R=pharma-lab/data/evaluation/e2e/runs/e2e-gemini/reports
 cp "$R/main.tex" report/tables/e2e-main.tex
 cp "$R/ablation.tex" report/tables/e2e-ablation.tex
 cp "$R/calibration.tex" report/tables/e2e-calibration.tex

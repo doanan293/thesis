@@ -1,13 +1,13 @@
 {
   "budget": {
-    "deadline_seconds": 900.0,
+    "deadline_seconds": 600.0,
     "max_evidence_chars": 24000,
     "max_llm_calls": 10,
     "max_search_rounds": 3,
     "max_tokens": 40000
   },
   "config": "full",
-  "created_at": "2026-09-21T12:25:29+00:00",
+  "created_at": "2026-09-21T12:20:37+00:00",
   "git_commit": "66348554cbbc04f0fbf845cbbafbbfb3df0ceb07",
   "golden_sha256": "8bdf0bee15e9719537b255cc9fda009b47923835d48821bf426b29117fd297d6",
   "pipeline": {
@@ -35,57 +35,27 @@
   },
   "role_models": {
     "answer": {
-      "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      },
-      "model": "qwen3.5:9b-f16",
+      "model": "gemini-3.8-flash-high",
       "reasoning_effort": null
     },
     "guardrail": {
-      "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      },
-      "model": "qwen3.5:9b-f16",
+      "model": "gemini-3.1-flash-lite",
       "reasoning_effort": null
     },
     "judge": {
-      "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      },
-      "model": "qwen3.5:9b-f16",
+      "model": "gemini-3.8-flash-high",
       "reasoning_effort": null
     },
     "refine": {
-      "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      },
-      "model": "qwen3.5:9b-f16",
+      "model": "gemini-3.8-flash-high",
       "reasoning_effort": null
     },
     "rephrase": {
-      "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      },
-      "model": "qwen3.5:9b-f16",
+      "model": "gemini-3.1-flash-lite",
       "reasoning_effort": null
     },
     "summarizer": {
-      "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
-      },
-      "model": "qwen3.5:9b-f16",
+      "model": "gemini-3.8-flash-high",
       "reasoning_effort": null
     }
   }

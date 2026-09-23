@@ -201,7 +201,7 @@ def test_score_compares_grades_with_judgments(tmp_path: Path) -> None:
         grades.append(
             Grade(
                 blind_id=blind,
-                grader="claude-opus-5",
+                grader="pharmacist",
                 key_fact_verdicts=verdicts,
                 faithfulness=n / 10,
                 citation_checks={1: bool(n % 3)},
@@ -254,7 +254,7 @@ def test_refresh_regrades_only_items_whose_answer_or_reference_changed(
     graded = sorted(key)
     (directory / "grades.jsonl").write_text(
         "".join(
-            Grade(blind_id=b, grader="claude-opus-5").model_dump_json() + "\n"
+            Grade(blind_id=b, grader="pharmacist").model_dump_json() + "\n"
             for b in graded
         ),
         encoding="utf-8",

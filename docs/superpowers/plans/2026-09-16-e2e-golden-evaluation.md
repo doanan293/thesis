@@ -17,7 +17,7 @@
 - No setting or environment variable for `PipelineOptions`. `build_application` always builds the default (full) pipeline.
 - Judge model is `gpt-5-mini` with `reasoning_effort="medium"`. The endpoint (base_url, api_key) comes from `backend/.env` (`PHARMA_LLM__DEFAULT__*`).
 - Harness disables Langfuse.
-- Golden set: 420 answerable (70 × 6 eval groups), 50 multi_turn, 10 unanswerable, 10 out_of_scope, 10 injection. Schema `e2e-golden-v1`. `authored_by` is `claude-opus-5`.
+- Golden set: 420 answerable (70 × 6 eval groups), 50 multi_turn, 10 unanswerable, 10 out_of_scope, 10 injection. Schema `e2e-golden-v1`.
 - Configs: `full`, `one-step`, `no-judge-refine`, `no-rephrase`, `no-rerank`.
 - Lint and type findings are fixed in code, never suppressed. pytest runs with `filterwarnings = ["error"]`.
 - Stage explicit paths only; never `git add -A`; never `--no-verify`. Commit messages end with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.

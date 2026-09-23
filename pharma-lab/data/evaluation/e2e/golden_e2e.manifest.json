@@ -15,8 +15,8 @@
     "out_of_scope": 10,
     "unanswerable": 10
   },
-  "created_at": "2026-09-22T05:17:11+00:00",
+  "created_at": "2026-09-23T07:42:50+00:00",
   "gold_sha256": "a4fb91a81745f74003a06c716924de45d8e3afa9e6550b6a2b45652925cb29af",
   "schema": "e2e-golden-v1",
-  "sha256": "2ffe7dcacd9560ea68dc1b32db8a5ef830b861a02b7def98effa1a6daa9664de"
+  "sha256": "8bdf0bee15e9719537b255cc9fda009b47923835d48821bf426b29117fd297d6"
 }

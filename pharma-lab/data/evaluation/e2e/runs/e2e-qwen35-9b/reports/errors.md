@@ -2,23 +2,23 @@
 
 | item | category | nugget recall | harm | faithfulness | error at | question |
 |---|---|---|---|---|---|---|
-| e2e-ans-0382 | answerable | 0.00 | severe | 0.94 | answer | ACID VALPROIC dùng liều bao nhiêu và có tương tác với thuốc gì? |
-| e2e-ans-0339 | answerable | 0.20 | severe | 0.94 | answer | uong thuoc sat dextran co the bi van de gi? |
-| e2e-ans-0224 | answerable | 0.25 | severe | 0.81 | retrieval | cho tôi thông tin về AMPHOTERICIN B |
-| e2e-ans-0091 | answerable | 0.40 | severe | 0.67 | answer | Panadol Extra giảm đau, hạ sốt (15 vỉ x 12 viên) dùng liều thế nào? (phần cách dùng - liều dùng) |
-| e2e-ans-0352 | answerable | 0.40 | severe | 0.89 | answer | ACARBOSE có tương tác thuốc gì và cần theo dõi tác dụng phụ nào? |
-| e2e-ans-0005 | answerable | 0.67 | severe | 0.83 | citation | Agi-Calci bổ sung canxi, có tương tác thuốc nào cần tránh? |
-| e2e-ans-0257 | answerable | 0.75 | severe | 0.68 | answer | GLYCEROL uống như nào? |
-| e2e-mt-0009 | multi_turn | 0.80 | severe | 0.74 | answer | Còn ở người suy thận thì liều của thuốc này chỉnh theo độ thanh thải creatinin ra sao? |
-| e2e-ans-0367 | answerable | 0.80 | severe | 0.89 | answer | ACID CHENODEOXYCHOLIC dùng liều thế nào và chỉ định cho bệnh gì? |
-| e2e-ans-0394 | answerable | 0.80 | severe | 1.00 | answer | ALFUZOSIN HYDROCLORID uống bao nhiêu và trường hợp nào cần tránh? |
-| e2e-ans-0022 | answerable | 0.00 | -- | 0.20 | retrieval | Dung dịch uống A. TAscorbic Syrup 100 mg/5 ml bổ sung vitamin C dùng như thế nào? |
-| e2e-ans-0242 | answerable | 0.00 | -- | 0.50 | citation | Tìm hoạt chất từ tên biệt dược trong Dược thư (TENOXICAM - Tên thương mại) |
-| e2e-ans-0268 | answerable | 0.00 | -- | 0.50 | citation | Khi chỉ có tên thương mại, làm sao tra ra hoạt chất trong Dược thư? (CILOSTAZOL - Tên thương mại) |
-| e2e-ans-0324 | answerable | 0.00 | -- | 0.62 | answer | tetracyclin co gay tdp khong? |
-| e2e-ans-0306 | answerable | 0.00 | -- | 0.65 | citation | xem giup biet duoc nay chua thuoc gi (TENOXICAM - Tên thương mại) |
-| e2e-ans-0249 | answerable | 0.00 | -- | 0.67 | retrieval | tên biệt dược này là hoạt chất gì? (CELECOXIB - Tên thương mại) |
-| e2e-mt-0006 | multi_turn | 0.00 | -- | 0.67 | answer | Phụ nữ đang mang thai có dùng được thuốc này không? |
-| e2e-ans-0186 | answerable | 0.00 | -- | 0.68 | answer | Lupilopram 20 mg trị trầm cảm, rối loạn lo âu (3 vỉ x 10 viên) là thuốc gì? (phần Những bệnh nhân có tiền sử những vấn đề liên quan đến tự tử, hoặc những...) |
-| e2e-ans-0305 | answerable | 0.00 | -- | 0.69 | answer | co che tac dung cua magnesi sulfat la gi? |
-| e2e-ans-0172 | answerable | 0.00 | -- | 0.70 | answer | Dung dịch tiêm Faslodex 250 mg/5 ml điều trị ung thư vú tiến xa tại chỗ (2 bơm tiêm x 5 ml) là thuốc gì? (phần Tổng cộng có 521 phụ nữ tiền mãn kinh/quanh mãn kinh và sau mãn kinh bị...) |
+| e2e-ans-0120 | answerable | 0.00 | severe | 0.77 | retrieval | Cebrex 40 mg điều trị rối loạn tuần hoàn não, tuần hoàn ngoại biên (6 vỉ x 20 viên) có tác dụng phụ nào? |
+| e2e-ans-0169 | answerable | 0.40 | severe | 0.93 | citation | Khi dùng Dung dịch tiêm Anzatax 30 mg/5 ml điều trị ung thư buồng trứng chai 5 ml cần lưu ý gì? (phần Việc theo dõi này có thể giúp phát hiện bệnh nhân phát sinh các rối loạn...) |
+| e2e-ans-0356 | answerable | 0.40 | severe | 0.94 | answer | ACENOCOUMAROL uống bao nhiêu và trường hợp nào cần tránh? |
+| e2e-ans-0382 | answerable | 0.40 | severe | 1.00 | answer | ACID VALPROIC dùng liều bao nhiêu và có tương tác với thuốc gì? |
+| e2e-ans-0342 | answerable | 0.50 | severe | 0.75 | answer | So với các thuốc gần giống, trường hợp nào phải tránh NALTREXON? |
+| e2e-ans-0257 | answerable | 0.75 | severe | 0.96 | answer | GLYCEROL uống như nào? |
+| e2e-ans-0379 | answerable | 0.80 | severe | 0.87 | answer | Người có thai hoặc có chống chỉ định thì dùng ACID TRANEXAMIC thế nào? |
+| e2e-ans-0146 | answerable | 0.00 | -- | 0.35 | answer | Dung dịch tiêm Mobic 15 mg/1.5 ml giảm đau trong viêm xương khớp (5 ống x 1.5 ml) bảo quản ra sao? (phần thông tin thêm) |
+| e2e-ans-0324 | answerable | 0.00 | -- | 0.38 | citation | tetracyclin co gay tdp khong? |
+| e2e-ans-0350 | answerable | 0.00 | -- | 0.54 | retrieval | thuoc desloratadin de ngoai troi co hong khong? |
+| e2e-ans-0255 | answerable | 0.00 | -- | 0.86 | retrieval | cho tôi thông tin về FLAVOXAT HYDROCLORID |
+| e2e-ans-0219 | answerable | 0.00 | -- | 0.91 | retrieval | Tra cứu biệt dược và hoạt chất tương ứng trong Dược thư (METOCLOPRAMID - Tên thương mại) |
+| e2e-ans-0192 | answerable | 0.00 | -- | 0.94 | answer | Dược lý của Seroquel XR 300 mg trị tâm thần phân liệt, rối loạn lưỡng cực (3 vỉ x 10 viên) là gì? (Seroquel XR 300 mg trị tâm thần phân liệt, rối loạn lưỡng cực (3...) |
+| e2e-ans-0283 | answerable | 0.00 | -- | 0.96 | retrieval | bao quan codein phosphat the nao cho dung? |
+| e2e-ans-0295 | answerable | 0.00 | -- | 0.97 | retrieval | bao quan dinatri calci edetat the nao cho dung? |
+| e2e-ans-0349 | answerable | 0.00 | -- | 0.97 | retrieval | cho toi thong tin ve paclitaxel |
+| e2e-ans-0288 | answerable | 0.00 | -- | -- | retrieval | cyanocobalamin va hydroxocobalamin co ky thuoc nao khong? |
+| e2e-ans-0315 | answerable | 0.00 | -- | 1.00 | citation | pantoprazol co gay tdp khong? |
+| e2e-ans-0338 | answerable | 0.00 | -- | 1.00 | retrieval | co che tac dung cua vac xin nao mo cau la gi? |
+| e2e-ans-0174 | answerable | 0.20 | -- | 0.43 | answer | Ibrance 100 mg Pfizer chỉ định điều trị một số trường hợp ung thư vú (1 vỉ x 7 viên) có tương tác thuốc gì? (phần alfentanil, cyclosporine, dihydroergotamine, ergotamine, everolimus,...) |

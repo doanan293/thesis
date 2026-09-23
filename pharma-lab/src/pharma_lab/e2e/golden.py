@@ -17,7 +17,6 @@ from pharma_lab.e2e.corpus_text import CorpusText, normalize_space
 from pharma_lab.evaluation.artifact_contracts import sha256_file, write_json
 
 SCHEMA = "e2e-golden-v1"
-AUTHOR = "claude-opus-5"
 ANSWERABLE_PER_GROUP = 70
 EVAL_GROUPS = (
     "formulary",
@@ -106,7 +105,6 @@ class GoldenItem(BaseModel):
     eval_group: str | None = None
     difficulty: str | None = None
     tags: list[str] = Field(default_factory=list)
-    authored_by: str = AUTHOR
 
     @property
     def question(self) -> str:

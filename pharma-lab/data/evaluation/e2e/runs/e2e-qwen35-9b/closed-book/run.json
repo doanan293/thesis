@@ -6,15 +6,15 @@
     "max_search_rounds": 3,
     "max_tokens": 40000
   },
-  "config": "full",
-  "created_at": "2026-09-21T12:25:29+00:00",
+  "config": "closed-book",
+  "created_at": "2026-09-21T12:24:33+00:00",
   "git_commit": "66348554cbbc04f0fbf845cbbafbbfb3df0ceb07",
   "golden_sha256": "8bdf0bee15e9719537b255cc9fda009b47923835d48821bf426b29117fd297d6",
   "pipeline": {
-    "judge_refine": true,
-    "rephrase": true
+    "judge_refine": false,
+    "rephrase": false
   },
-  "release_id": "74b91e77-22f7-4d4f-abe5-728967a161c5",
+  "release_id": "none",
   "rerank": {
     "max_candidates": 40,
     "model": "qwen3-reranker:4b-fp16",

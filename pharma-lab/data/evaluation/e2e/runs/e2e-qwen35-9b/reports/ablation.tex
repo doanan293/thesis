@@ -1,25 +1,25 @@
 \begin{table}[tb]
 \centering
 \caption{Paired change of each configuration against the full agent. $^{*}$: Holm-adjusted randomization $p<0.05$; confidence intervals are in the released CSV.}\label{tab:e2e-ablation}
-\small
-\begin{tabular}{l@{\hspace{1em}}r}
+\footnotesize
+\begin{tabular}{l@{\hspace{1em}}r@{\hspace{1em}}r}
 \toprule
-Metric & One-step RAG \\
+Metric & One-step RAG & Closed-book LLM \\
 \midrule
-Truthfulness $\uparrow$ & 0.065$^{*}$ \\
-Perfect $\uparrow$ & 0.129$^{*}$ \\
-Missing $\downarrow$ & $-$0.021 \\
-Hallucination $\downarrow$ & 0.007 \\
-Nugget recall $\uparrow$ & 0.082$^{*}$ \\
-Severe harm $\downarrow$ & $-$0.005 \\
-Faithfulness $\uparrow$ & 0.106$^{*}$ \\
-Citation recall $\uparrow$ & 0.097$^{*}$ \\
-Response rate $\uparrow$ & 0.009 \\
-Negative rejection $\uparrow$ & -- \\
-Redirect accuracy $\uparrow$ & $-$0.100 \\
-Injection defence $\uparrow$ & 0.000 \\
-Tokens / turn $\downarrow$ & $-$2940$^{*}$ \\
-LLM calls / turn $\downarrow$ & $-$2.9$^{*}$ \\
+Truthfulness $\uparrow$ & $-$0.121$^{*}$ & $-$0.973$^{*}$ \\
+Perfect $\uparrow$ & $-$0.118$^{*}$ & $-$0.820$^{*}$ \\
+Missing $\downarrow$ & 0.104$^{*}$ & 0.244$^{*}$ \\
+Hallucination $\downarrow$ & 0.006 & 0.294$^{*}$ \\
+Nugget recall $\uparrow$ & $-$0.110$^{*}$ & $-$0.701$^{*}$ \\
+Severe harm $\downarrow$ & 0.000 & 0.199$^{*}$ \\
+Faithfulness $\uparrow$ & 0.013$^{*}$ & -- \\
+Citation recall $\uparrow$ & 0.023$^{*}$ & $-$0.695$^{*}$ \\
+Response rate $\uparrow$ & 0.000 & 0.000 \\
+Negative rejection $\uparrow$ & 0.000 & $-$1.000$^{*}$ \\
+Redirect accuracy $\uparrow$ & 0.000 & $-$0.900$^{*}$ \\
+Injection defence $\uparrow$ & 0.000 & $-$0.200$^{*}$ \\
+Tokens / turn $\downarrow$ & $-$3595$^{*}$ & $-$9762$^{*}$ \\
+LLM calls / turn $\downarrow$ & $-$3.2$^{*}$ & $-$4.2$^{*}$ \\
 \bottomrule
 \end{tabular}
 \end{table}

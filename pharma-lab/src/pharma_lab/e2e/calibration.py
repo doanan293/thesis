@@ -1,4 +1,4 @@
-"""Blind calibration of the judge against a stronger grader (spec §8).
+"""Blind calibration of the judge against a human grader (spec §8).
 
 For each configuration (by default `full` and `one-step`), a simple random sample of
 answers is exported, so the grades support prediction-powered inference (PPI) as well

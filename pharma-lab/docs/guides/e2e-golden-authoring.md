@@ -20,7 +20,7 @@ Mỗi dòng của `*.todo.jsonl` là một slot:
 - `sections`: text đầy đủ của các section gold.
 - `focus_chunks`: text của chunk mong đợi, tức phần của section mà câu hỏi nói tới.
 
-Mỗi dòng của `*.authored.jsonl` là một `GoldenItem` JSON, người soạn ghi `authored_by: "claude-opus-5"`.
+Mỗi dòng của `*.authored.jsonl` là một `GoldenItem` JSON do tác giả soạn cùng dược sĩ.
 
 ## Quy tắc chung
 

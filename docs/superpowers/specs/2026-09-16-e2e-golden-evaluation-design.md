@@ -54,7 +54,6 @@ một câu:
 | `reference.key_facts` | Danh sách `{fact, evidence_quote, section_id}` |
 | `absent_terms` | Chỉ câu `unanswerable`: tên hoặc cụm từ phải vắng mặt trong corpus |
 | `eval_group`, `difficulty`, `tags` | Lấy từ bộ gold hoặc gán khi soạn |
-| `authored_by` | `claude-opus-5` |
 
 File `golden_e2e.manifest.json` ghi sha256 của bộ golden, số câu theo từng nhóm, seed,
 và sha256 của bộ gold nguồn và của bundle. Bộ golden được lưu cùng
@@ -74,7 +73,7 @@ Tất cả câu viết bằng tiếng Việt.
 
 ### 3.3 Soạn đáp án
 
-Claude soạn `reference` từ đúng text của section gold trong bundle, theo lô khoảng 35
+Tác giả cùng dược sĩ soạn `reference` từ đúng text của section gold trong bundle, theo lô khoảng 35
 câu. Lô nào cũng qua `pharma-lab e2e golden build`. Lệnh này kiểm:
 
 - `evidence_quote` là chuỗi con (sau khi chuẩn hóa khoảng trắng) của text section
@@ -264,8 +263,8 @@ Chấm gồm hai phần, cùng lệnh `pharma-lab e2e judge`, ghi `judgments.jso
   Khoảng 70 câu answerable hoặc multi-turn và 30 câu nhóm đặc biệt.
 - **Che danh tính:** `calibration export` xóa tên cấu hình và điểm judge, xáo thứ tự
   bằng seed cố định, ghi `calibration/items.jsonl`. Khóa ánh xạ nằm ở file riêng.
-- **Chấm:** Claude chấm theo cùng rubric với judge và ghi `calibration/grades.jsonl`,
-  với `grader: claude-opus-5`.
+- **Chấm:** dược sĩ chấm mù theo cùng rubric với judge và ghi `calibration/grades.jsonl`,
+  với `grader: pharmacist`.
 - **Đồng thuận:** `calibration score` tính:
   - Cohen's κ cho nhãn nhị phân (key fact, claim, citation support, injection);
   - Spearman ρ cho điểm key-fact recall và faithfulness từng câu;

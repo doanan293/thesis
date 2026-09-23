@@ -33,7 +33,7 @@ URL được đọc bằng `kaggle kernels logs -f`. Khi API log của Kaggle tr
 
 Trong session chạy E2E, nạp file env trước (`set -a; . data/work/serve/qwen3_reranker_4b_fp16.env; set +a`).
 
-**Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Proxy antigravity không có model này. Run `e2e-v1` chấm bằng `--judge-model gemini-3.1-flash-lite`: model này khác model trả lời (`gemini-3.8-flash-high`), nhanh (khoảng 3 giây mỗi lần gọi), và có quota lớn nhất trong các model đã thử.
+**Endpoint LLM còn phục vụ judge**, mặc định `gpt-5-mini` với reasoning `medium`. Proxy antigravity không có model này. Run `e2e-gemini` chấm bằng `--judge-model gemini-3.1-flash-lite`: model này khác model trả lời (`gemini-3.8-flash-high`), nhanh (khoảng 3 giây mỗi lần gọi), và có quota lớn nhất trong các model đã thử.
 
 **Chạy với model open-weight.** Run `e2e-qwen35-9b` dùng Qwen3.5-9B (9,65 tỉ tham số, Apache 2.0) cho mọi bước của pipeline; judge vẫn dùng endpoint mặc định trong `backend/.env`.
 
@@ -95,7 +95,7 @@ done
 
 `closed-book` là baseline LLM thuần: cùng model của vai trò answer, nhận lịch sử hội thoại và câu hỏi nhưng không có guard, retrieval hay tài liệu nào. Nó đo phần mà corpus và pipeline đóng góp. Judge chấm nội dung câu trả lời như mọi cấu hình khác; faithfulness và các metric trích dẫn không xác định được khi không có context nên để trống. Cấu hình này không gọi retrieval nên không cần reranker server.
 
-**Phiên bản prompt.** Run `e2e-v2` và `e2e-qwen35-9b-v2` dùng prompt answer đã sửa: bước answer luôn thấy câu hỏi gốc của người dùng (kèm câu viết lại khi rephrase có đổi), và quy tắc cho người hỏi là người dân không còn yêu cầu viết ngắn gọn. Khi câu hỏi không bị viết lại, prompt giữ nguyên từng byte (test `test_answer_prompt_is_unchanged_when_the_question_was_not_rewritten`), nên `one-step` và `no-rephrase` của bản cũ được chép sang run mới thay vì chạy lại. Không chạy tiếp một run cũ bằng code mới: harness bỏ qua câu đã có và sẽ trộn hai phiên bản.
+**Prompt answer.** Bước answer luôn thấy câu hỏi gốc của người dùng (kèm câu viết lại khi rephrase có đổi). Khi câu hỏi không bị viết lại, prompt giữ nguyên từng byte (test `test_answer_prompt_is_unchanged_when_the_question_was_not_rewritten`). Không chạy tiếp một run cũ bằng prompt mới: harness bỏ qua câu đã có và sẽ trộn hai phiên bản.
 
 ## 2. Bộ golden
 
@@ -117,13 +117,13 @@ Lần rà soát ngày 22/09/2026 sửa 57 item theo tiêu chí cố định, áp
 Mỗi cấu hình chạy trong một tmux session riêng; chạy lại cùng lệnh sẽ resume.
 
 ```bash
-uv run pharma-lab e2e run --run e2e-v1 --config full --limit 20        # chạy thử
-uv run pharma-lab e2e run --run e2e-v1 --config full
-uv run pharma-lab e2e run --run e2e-v1 --config full --retry-errors    # chạy lại các câu lỗi
-uv run pharma-lab e2e judge --run e2e-v1 --config full --judge-model gemini-3.1-flash-lite
-uv run pharma-lab e2e calibration export --run e2e-v1
-uv run pharma-lab e2e calibration score --run e2e-v1
-uv run pharma-lab e2e report --run e2e-v1
+uv run pharma-lab e2e run --run e2e-gemini --config full --limit 20        # chạy thử
+uv run pharma-lab e2e run --run e2e-gemini --config full
+uv run pharma-lab e2e run --run e2e-gemini --config full --retry-errors    # chạy lại các câu lỗi
+uv run pharma-lab e2e judge --run e2e-gemini --config full --judge-model gemini-3.1-flash-lite
+uv run pharma-lab e2e calibration export --run e2e-gemini
+uv run pharma-lab e2e calibration score --run e2e-gemini
+uv run pharma-lab e2e report --run e2e-gemini
 ```
 
 **`e2e run`** ghi vào `data/evaluation/e2e/runs/<run>/<config>/`:

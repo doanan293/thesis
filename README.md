@@ -1,4 +1,4 @@
-# Thesis: AI agent tra cứu thuốc
+# vipharma-rag: Agentic RAG cho tài liệu dược Việt Nam
 
 | Thư mục | Nội dung |
 | --- | --- |
