@@ -1,4 +1,13 @@
 % !TEX program = pdflatex
+% From LaTeX 2026-06-01 the kernel provides alias counters (\newcounteralias),
+% and the aliascnt package that llncs.cls loads warns that it is obsolete.
+% On such kernels, mark aliascnt as loaded and map its only command used by
+% llncs.cls to the kernel one, so the Springer class file stays unmodified.
+\IfFormatAtLeastTF{2026-06-01}{%
+  \expandafter\def\csname ver@aliascnt.sty\endcsname{2026/06/01 LaTeX kernel}%
+  \expandafter\def\csname opt@aliascnt.sty\endcsname{}%
+  \providecommand*\newaliascnt{\newcounteralias}%
+}{}
 \documentclass{llncs}
 \usepackage[T5]{fontenc}
 \usepackage[utf8]{inputenc}
