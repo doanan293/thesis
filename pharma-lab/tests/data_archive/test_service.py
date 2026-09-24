@@ -1,11 +1,13 @@
 import json
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from tests.data_archive.archive_project import FILES, make_project
 
-from pharma_lab.data_archive.manifest import ARCHIVE_MANIFEST_NAME
+from pharma_lab.data_archive.manifest import ARCHIVE_MANIFEST_NAME, ArchiveError
 from pharma_lab.data_archive.service import pull_data, push_data
 from pharma_lab.integrations.kaggle.dataset_service import DatasetService
 from pharma_lab.integrations.kaggle.errors import KaggleCommandError
@@ -106,3 +108,34 @@ def test_a_second_push_creates_a_version_with_the_message(tmp_path: Path) -> Non
     assert version[1:3] == ["datasets", "version"]
     assert version[version.index("-m") + 1] == "Refresh"
     assert second.version == 2
+
+
+def test_push_refuses_to_drop_files_that_the_archive_holds(tmp_path: Path) -> None:
+    kaggle = FakeKaggle(tmp_path / "remote")
+    dataset = DatasetService(kaggle, "owner")
+    source = make_project(tmp_path / "source")
+    push_data(project_root=source, dataset=dataset, message="First", now=NOW)
+    (source / "data" / "cache" / "nested" / "scores.bin").unlink()
+
+    with pytest.raises(ArchiveError, match=re.escape("cache/nested/scores.bin")):
+        push_data(project_root=source, dataset=dataset, message="Trim", now=NOW)
+
+    assert kaggle.version == 1
+
+
+def test_push_drops_files_when_removal_is_allowed(tmp_path: Path) -> None:
+    kaggle = FakeKaggle(tmp_path / "remote")
+    dataset = DatasetService(kaggle, "owner")
+    source = make_project(tmp_path / "source")
+    push_data(project_root=source, dataset=dataset, message="First", now=NOW)
+    (source / "data" / "cache" / "nested" / "scores.bin").unlink()
+
+    trimmed = push_data(
+        project_root=source,
+        dataset=dataset,
+        message="Trim",
+        now=NOW,
+        allow_removal=True,
+    )
+
+    assert (trimmed.version, trimmed.file_count) == (2, len(FILES) - 1)

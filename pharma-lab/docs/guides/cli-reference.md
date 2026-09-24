@@ -130,6 +130,8 @@ uv run pharma-lab data push --kaggle-account acc1 --message "Rebuild evaluation 
 uv run pharma-lab data pull --kaggle-account acc1
 ```
 
+`push` thay toàn bộ archive, nên lệnh dừng và liệt kê các file có trong archive hiện tại mà `data/` đang thiếu; chạy `pull` trước, hoặc thêm `--allow-removal` khi muốn bỏ hẳn các file đó khỏi archive.
+
 `pull` tải lại các phần còn thiếu hoặc lệch checksum, kiểm sha256 từng phần và từng file, bỏ qua file đã giống hệt. File đang có mà khác archive thì lệnh dừng và liệt kê; thêm `--force` để ghi đè.
 
 ## Exit codes

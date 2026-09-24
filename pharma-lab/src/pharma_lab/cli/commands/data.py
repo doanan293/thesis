@@ -32,6 +32,7 @@ def push(
     ctx: typer.Context,
     kaggle_account: Annotated[str | None, typer.Option("--kaggle-account")] = None,
     message: Annotated[str, typer.Option("--message")] = "Update pharma-lab data",
+    allow_removal: Annotated[bool, typer.Option("--allow-removal")] = False,
 ) -> None:
     def run() -> CommandResult:
         result = push_data(
@@ -39,6 +40,7 @@ def push(
             dataset=_dataset(kaggle_account),
             message=message,
             now=datetime.now(UTC),
+            allow_removal=allow_removal,
         )
         return CommandResult(
             "data push",

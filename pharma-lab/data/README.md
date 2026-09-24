@@ -33,12 +33,12 @@ uv run pharma-lab data push --kaggle-account acc1 --message "Rebuild evaluation 
 uv run pharma-lab data pull --kaggle-account acc1
 ```
 
-The first push after a fresh setup needs the owner's confirmation; pull refuses to overwrite files that differ from the archive unless `--force` is given.
+The first push after a fresh setup needs the owner's confirmation; pull refuses to overwrite files that differ from the archive unless `--force` is given. A push replaces the whole archive, so it refuses to run while files listed in the current archive are missing from `data/`; pull them first, or pass `--allow-removal` to drop them on purpose.
+
+The working copy may keep only the final results: `run.json`, `metrics.jsonl` and `report.md` of each evaluation run, the end-to-end answers, judgments and reports, `evaluation/gold/`, the corpus and the sources. The intermediates (`cache/`, `candidates/candidates.jsonl` and `rerank/<model>/rerank_scores.jsonl` of each run) stay in the archive, and `pharma-lab data pull` restores them before any rescoring or rerun.
 
 `work/` is never archived. `work/logs/rerank/<model>.log` records, with timestamps, the account and GPU quota of every Kaggle session, the kernel, progress and errors of each `pharma-lab rerank` run; it stays on the machine that ran the command and survives restarts.
 
 ## Leaflet source
 
 `sources/leaflets/manifest.json` (schema `leaflet-source-v1`) is the only record of where the leaflet pages came from: the sitemap URL, the crawl date, the sha256 of the URL list, and the path, size, sha256 and source URL of every HTML file. It stays inside pharma-lab; the knowledge bundle names leaflets only by `leaflet:<category>:<slug>`. `pharma-lab build` refuses to run when a file no longer matches the manifest.
-
-`heavy/` is the pre-migration folder; the one-off data migration moves its contents into the layout above and then deletes it.

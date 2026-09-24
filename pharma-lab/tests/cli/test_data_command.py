@@ -44,8 +44,26 @@ def test_push_forwards_account_and_message(
     assert result.exit_code == 0, result.output
     assert accounts == ["acc2"]
     assert captured["message"] == "Refresh"
+    assert captured["allow_removal"] is False
     assert captured["dataset"].owner == "owner"
     assert json.loads(result.stdout)["details"]["dataset"] == "owner/seed-pipeline-data"
+
+
+def test_push_forwards_allow_removal(
+    monkeypatch: pytest.MonkeyPatch, accounts: list[str | None]
+) -> None:
+    captured: dict = {}
+
+    def fake_push(**kwargs):
+        captured.update(kwargs)
+        return PushResult("owner/seed-pipeline-data", 2, 10, 1)
+
+    monkeypatch.setattr(data_command, "push_data", fake_push)
+
+    result = runner.invoke(app, ["--json", "data", "push", "--allow-removal"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["allow_removal"] is True
 
 
 def test_pull_forwards_force(
