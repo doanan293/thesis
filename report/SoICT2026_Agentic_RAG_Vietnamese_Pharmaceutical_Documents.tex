@@ -43,13 +43,6 @@
 \emergencystretch=1.5em
 \raggedbottom
 
-% \finaltrue turns every remaining placeholder into a build error.
-\newif\iffinal
-\finalfalse
-\newcommand{\pending}[1]{%
-  \iffinal\PackageError{paper}{Pending result: #1}{Fill in the result.}%
-  \else\textcolor{red}{[#1]}\fi}
-
 \begin{document}
 \title{Agentic Retrieval-Augmented Generation for Vietnamese Pharmaceutical Documents}
 \titlerunning{Agentic RAG for Vietnamese Pharmaceutical Documents}

@@ -30,20 +30,15 @@ cd report && zip -r SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.zi
 
 Overleaf biên dịch ngay với compiler mặc định (pdfLaTeX). Main document được nhận tự động vì chỉ có một file `.tex` ở gốc.
 
-## Kết quả chưa có
-
-Số chưa có được viết bằng `\pending{...}` (chữ đỏ). Trước khi nộp, đổi `\finalfalse` thành `\finaltrue` trong file `.tex` chính: build sẽ lỗi nếu còn `\pending`.
-
 ## Bảng end-to-end
 
-`tables/e2e-*.tex` được sinh bởi `pharma-lab e2e report` và không sửa tay:
+`tables/e2e-*.tex` dựng từ bảng mà `pharma-lab e2e report` sinh cho hai run `e2e-gemini` và `e2e-qwen35-9b`, rồi chỉnh tay cho paper: `e2e-main.tex` gộp hai setting vào một bảng. Số liệu gốc nằm trong `pharma-lab/data/evaluation/e2e/runs/<run>/reports/` (`main.csv`, `ablation.csv`, `calibration.csv`):
 
 ```bash
-cd pharma-lab && uv run pharma-lab e2e report --run e2e-gemini && cd ..
-R=pharma-lab/data/evaluation/e2e/runs/e2e-gemini/reports
-cp "$R/main.tex" report/tables/e2e-main.tex
-cp "$R/ablation.tex" report/tables/e2e-ablation.tex
-cp "$R/calibration.tex" report/tables/e2e-calibration.tex
+cd pharma-lab
+uv run pharma-lab e2e report --run e2e-gemini
+uv run pharma-lab e2e report --run e2e-qwen35-9b
+cd ..
 ```
 
-Muốn đổi định dạng bảng thì sửa `pharma-lab/src/pharma_lab/e2e/report.py` rồi sinh lại.
+Kiểm tra số trong `report/tables/` với CSV sau mỗi lần sinh lại.
