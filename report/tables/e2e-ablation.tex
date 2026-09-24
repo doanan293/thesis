@@ -1,19 +1,19 @@
 \begin{table}[tb]
 \centering
-\caption{Paired change of each Gemini configuration against the full agent. $^{*}$: Holm-adjusted randomization $p<0.05$.}\label{tab:e2e-ablation}
+\caption{Paired change of each Gemini configuration against the full agent. An asterisk marks a Holm-adjusted randomization $p<0.05$.}\label{tab:e2e-ablation}
 \footnotesize
 \begin{tabular}{l@{\hspace{1em}}r@{\hspace{1em}}r@{\hspace{1em}}r@{\hspace{1em}}r}
 \toprule
 Metric & One-step RAG & w/o judge--refine & w/o rephrase & w/o rerank \\
 \midrule
-Truthfulness $\uparrow$ & $-$0.107$^{*}$ & 0.010 & $-$0.114$^{*}$ & $-$0.015 \\
-Perfect $\uparrow$ & $-$0.110$^{*}$ & 0.004 & $-$0.112$^{*}$ & $-$0.012 \\
-Missing $\downarrow$ & 0.099$^{*}$ & $-$0.002 & 0.100$^{*}$ & 0.005 \\
-Hallucination $\downarrow$ & 0.002 & $-$0.003 & 0.003 & 0.002 \\
-Nugget recall $\uparrow$ & $-$0.104$^{*}$ & 0.005 & $-$0.110$^{*}$ & $-$0.010 \\
-Severe harm $\downarrow$ & 0.000 & $-$0.002 & $-$0.006 & $-$0.002 \\
-Faithfulness $\uparrow$ & 0.017$^{*}$ & 0.002 & 0.015$^{*}$ & $-$0.004 \\
-Citation recall $\uparrow$ & 0.031$^{*}$ & $-$0.004 & 0.014 & 0.004 \\
+Truthfulness $\uparrow$ & $-$0.107$^{*}$ & $-$0.028$^{*}$ & $-$0.114$^{*}$ & $-$0.015 \\
+Perfect $\uparrow$ & $-$0.110$^{*}$ & $-$0.026$^{*}$ & $-$0.112$^{*}$ & $-$0.012 \\
+Missing $\downarrow$ & 0.099$^{*}$ & 0.021$^{*}$ & 0.100$^{*}$ & 0.005 \\
+Hallucination $\downarrow$ & 0.002 & 0.007$^{*}$ & 0.003 & 0.002 \\
+Nugget recall $\uparrow$ & $-$0.104$^{*}$ & $-$0.025$^{*}$ & $-$0.110$^{*}$ & $-$0.010 \\
+Severe harm $\downarrow$ & 0.000 & 0.002 & $-$0.006 & $-$0.002 \\
+Faithfulness $\uparrow$ & 0.017$^{*}$ & $-$0.008 & 0.015$^{*}$ & $-$0.004 \\
+Citation recall $\uparrow$ & 0.031$^{*}$ & $-$0.012 & 0.014 & 0.004 \\
 Tokens / turn $\downarrow$ & $-$4{,}203$^{*}$ & $-$3{,}360$^{*}$ & $-$378$^{*}$ & $-$272$^{*}$ \\
 LLM calls / turn $\downarrow$ & $-$3.3$^{*}$ & $-$2.4$^{*}$ & $-$0.7$^{*}$ & 0.0 \\
 \bottomrule

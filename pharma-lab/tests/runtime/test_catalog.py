@@ -37,10 +37,6 @@ def test_qwen3_rerankers_serve_the_vietnamese_medical_template(
     assert (spec.canonical_filename, spec.byte_size, spec.sha256) == expected
 
 
-def test_the_instruction_experiment_model_is_gone() -> None:
-    assert "qwen3-reranker:0.6b-fp16-vimed" not in MODEL_CATALOG
-
-
 def test_every_gguf_dataset_slug_fits_the_kaggle_limit() -> None:
     too_long = {
         name: spec.gguf_dataset_slug

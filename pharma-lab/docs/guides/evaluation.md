@@ -74,7 +74,7 @@ uv run pharma-lab metrics --run hybrid-qwen4b-p50-k30-rrf2 --model qwen3-reranke
 
 `--dry-run` in `missing_pairs=N`. Candidates của `hybrid-qwen4b-p50-k30-rrf2` trong archive là đúng các cặp query–chunk đã có điểm trong `data/cache/rerank_scores/`, nên `N` bằng 0 và rerank chỉ đọc cache, không khởi động model.
 
-Mọi reranker được gọi qua `/v1/rerank`. Kết quả `bge-reranker-v2-gemma:f16` ở mục 7 là kết quả cuối cùng: model đã bỏ khỏi catalog, report của nó vẫn nằm ở `reports/rerank/bge_reranker_v2_gemma_f16/`.
+Mọi reranker được gọi qua `/v1/rerank`.
 
 Cấu hình `llama-reranker` cho backend trên CPU được chọn bằng benchmark đầu-cuối trên máy production (chạy trong tmux: mỗi mức nạp lại model 4B trên CPU):
 
@@ -180,11 +180,7 @@ uv run pharma-lab metrics compare --run hybrid-qwen4b-p50-k30-rrf2-sample1000 --
 
 Hiệu MRR@30 (tiếng Việt − gốc) là 0,0445, khoảng tin cậy 95% [0,0306; 0,0585] (1.000 câu, 10.000 lần lấy mẫu lại, seed 0). Quyết định: dùng instruction tiếng Việt cho cả ba model.
 
-## 6. Run `dense-text-embedding-3-large-k30`
-
-Run này dùng embedding API trả phí nên không chạy lại. Candidates được nhập từ lần chạy gốc (`origin: imported` trong `run.json`) và chỉ tính lại metrics.
-
-## 7. Kết quả tham chiếu
+## 6. Kết quả tham chiếu
 
 | Run / biến thể | Hit@10 | nDCG@10 | MRR@10 | MRR@30 |
 | --- | ---: | ---: | ---: | ---: |
@@ -194,14 +190,14 @@ Run này dùng embedding API trả phí nên không chạy lại. Candidates đ�
 | `dense-qwen06b-k30` | 92,17% | 0,7526 | 0,7042 | 0,7075 |
 | `dense-qwen4b-k30` | 95,39% | 0,8195 | 0,7792 | 0,7813 |
 | `dense-qwen8b-k30` | 95,36% | 0,8341 | 0,7978 | 0,7997 |
-| `dense-text-embedding-3-large-k30` (gold cũ, xem dưới) | 94,85% | – | – | 0,7506 |
+| `dense-text-embedding-3-large-k30` | 95,00% | 0,7999 | 0,7540 | 0,7560 |
 | `hybrid-qwen4b-p50-k30-rrf60` | 93,74% | 0,7470 | 0,6941 | 0,6976 |
 | `hybrid-qwen4b-p50-k30-rrf2` | 95,89% | 0,7839 | 0,7309 | 0,7331 |
-| rrf2 + `bge-reranker-v2-gemma:f16` (logprob, không chạy lại) | 95,30% | – | – | 0,7570 |
+| rrf2 + `bge-reranker-v2-gemma:f16` | 95,65% | 0,8031 | 0,7593 | 0,7616 |
 | rrf2 + `bge-reranker-v2-m3:f16` | 95,81% | 0,8367 | 0,8044 | 0,8065 |
 | rrf2 + `qwen3-reranker:0.6b-fp16` | 96,75% | 0,8283 | 0,7888 | 0,7905 |
 | rrf2 + `qwen3-reranker:4b-fp16` | 97,52% | 0,8586 | 0,8268 | 0,8280 |
-| rrf2 + `qwen3-reranker:8b-fp16` (bản logprob cũ; đang chấm lại qua `/v1/rerank`) | 89,75% | – | – | 0,4797 |
+| rrf2 + `qwen3-reranker:8b-fp16` | 97,72% | 0,8799 | 0,8546 | 0,8557 |
 
 **Cách tính nDCG@10 và MRR@k.** Gain là nhị phân. Mỗi đơn vị bằng chứng chỉ được tính gain một lần, tại chunk đầu tiên thoả nó:
 - câu single hoặc any_acceptable có 1 đơn vị;
@@ -210,6 +206,6 @@ Run này dùng embedding API trả phí nên không chạy lại. Candidates đ�
 
 IDCG giả định mọi đơn vị nằm ở các vị trí đầu. Với câu một đáp án, nDCG@10 = 1/log2(hạng + 1) của chunk trúng đầu tiên, như benchmark known-item (BEIR, MTEB). MRR@10 tính 0 cho chunk trúng sau hạng 10; MRR@30 xét toàn bộ 30 ứng viên.
 
-Với câu multi_required, `Recall@k` là tỉ lệ section gold có trong top-k; `Complete-evidence rate@k` là tỉ lệ câu có đủ mọi section. Run `dense-text-embedding-3-large-k30` được tính trên bản gold trước khi bộ câu hỏi được dựng lại, và không chạy lại được vì dùng API trả phí, nên không so trực tiếp với các dòng khác.
+Với câu multi_required, `Recall@k` là tỉ lệ section gold có trong top-k; `Complete-evidence rate@k` là tỉ lệ câu có đủ mọi section.
 
 Số trước khi chuyển layout và bảng so sánh nằm trong commit "rebuild the evaluation runs with the new CLI". Lần dựng lại chấp nhận Hit@10 thấp hơn tối đa 1 điểm phần trăm và MRR thấp hơn tối đa 0,01.

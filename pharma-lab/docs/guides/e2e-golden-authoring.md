@@ -1,6 +1,6 @@
 # Soạn bộ golden E2E
 
-Hướng dẫn này là quy trình soạn `data/evaluation/e2e/golden_e2e.jsonl` (schema `e2e-golden-v1`). Thiết kế đầy đủ nằm trong `docs/superpowers/specs/2026-09-16-e2e-golden-evaluation-design.md` ở thư mục gốc repo.
+Hướng dẫn này là quy trình soạn `data/evaluation/e2e/golden_e2e.jsonl` (schema `e2e-golden-v1`).
 
 ## Quy trình
 

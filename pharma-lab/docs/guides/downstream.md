@@ -2,7 +2,7 @@
 
 ## 1. Bàn giao cho backend
 
-1. Đầu ra bàn giao duy nhất của pharma-lab là knowledge bundle `knowledge-bundle/v1` do `pharma-lab bundle export` tạo và `pharma-lab bundle embed` bổ sung vector: `manifest.json`, `documents.jsonl`, `sections.jsonl`, `glossary.json`, `colloquial_mappings.json`, `embeddings/<model_slug>.jsonl`. Định dạng và quy tắc validate: spec `backend/docs/superpowers/specs/2026-09-13-corpus-platform-design.md` §5 và model `pharma_agent.domain.corpus.bundle`.
+1. Đầu ra bàn giao duy nhất của pharma-lab là knowledge bundle `knowledge-bundle/v1` do `pharma-lab bundle export` tạo và `pharma-lab bundle embed` bổ sung vector: `manifest.json`, `documents.jsonl`, `sections.jsonl`, `glossary.json`, `colloquial_mappings.json`, `embeddings/<model_slug>.jsonl`. Định dạng và quy tắc validate nằm trong model `pharma_agent.domain.corpus.bundle`.
 2. Document key: `drug:<slug>`, `general:<slug>`, `leaflet:<category>:<slug>`. Tờ hướng dẫn sử dụng có `source.title` "Tờ hướng dẫn sử dụng" và không có `source.url`; nguồn gốc trang chỉ ghi trong `data/sources/leaflets/manifest.json`, không vào bundle. Section key trùng `section_id` của rag-final để bộ gold evaluation dùng tiếp.
 3. Block `kind` (`prose`, `table`, `list`, `index_entries`) và section `retrieval` (`default`, `index_only`) thay cho các ID viết cứng trước đây (`BRAND_INDEX_SECTION_ID`, `APPENDIX_LIST_SECTION_IDS`).
 4. Chia chunk, `context_header`, `embedding_text`, thuật ngữ và colloquial mapping do `chunk_section` của backend tính. pharma-lab import backend như thư viện và không có chunker riêng.

@@ -1,6 +1,6 @@
 # Paper SoICT 2026
 
-Paper tiếng Anh nộp SoICT 2026 (Springer CCIS, định dạng LNCS, tối đa 12 trang không tính references). Thiết kế: `docs/superpowers/specs/2026-09-17-soict-paper-design.md`.
+Paper tiếng Anh nộp SoICT 2026 (Springer CCIS, định dạng LNCS, tối đa 12 trang không tính references).
 
 ## Template
 

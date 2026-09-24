@@ -3,7 +3,7 @@
 \begin{tikzpicture}
 \begin{groupplot}[
   group style={group size=2 by 1, horizontal sep=9mm},
-  ybar, width=0.5\textwidth, height=2.9cm,
+  ybar, width=0.5\textwidth, height=2.6cm,
   ymin=0, ymax=1.02, ytick={0,0.25,0.5,0.75,1},
   symbolic x coords={Single-turn, Multi-turn, Noisy},
   xtick=data, enlarge x limits=0.28,
@@ -24,6 +24,6 @@
 \addplot[fill=cbfull] coordinates {(Single-turn,0.938) (Multi-turn,0.948) (Noisy,0.912)};
 \end{groupplot}
 \end{tikzpicture}
-\caption{Nugget recall by question type: the 420 single-turn questions, the 50 multi-turn follow-ups that name the drug only by a pronoun, and the 70 noisy single-turn questions with misspellings or look-alike names.}
+\caption{Nugget recall by question type. Single-turn covers the 420 answerable questions, multi-turn the 50 follow-ups that name the drug only by a pronoun, and noisy the 70 questions with misspellings or look-alike names.}
 \label{fig:groups}
 \end{figure}

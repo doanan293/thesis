@@ -22,8 +22,7 @@ PUBLIC_MODULES = (
     "pharma_agent.domain.corpus.enrichment",
     "pharma_agent.domain.corpus.hydrate",
     "pharma_agent.infrastructure.composition",
-    # The E2E harness runs the chat graph in-process (docs/superpowers/specs/
-    # 2026-09-16-e2e-golden-evaluation-design.md §4).
+    # The E2E harness runs the chat graph in-process.
     "pharma_agent.application.chat.context",
     "pharma_agent.application.chat.graph",
     "pharma_agent.application.chat.runner",

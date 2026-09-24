@@ -1,6 +1,6 @@
 # Đánh giá end-to-end
 
-Đánh giá toàn bộ agent (guard → rephrase → search → judge/refine → answer) trên bộ golden 500 câu. Thiết kế nằm trong `docs/superpowers/specs/2026-09-16-e2e-golden-evaluation-design.md` ở thư mục gốc repo; cách soạn bộ golden nằm trong [e2e-golden-authoring.md](e2e-golden-authoring.md).
+Đánh giá toàn bộ agent (guard → rephrase → search → judge/refine → answer) trên bộ golden 500 câu. Cách soạn bộ golden nằm trong [e2e-golden-authoring.md](e2e-golden-authoring.md).
 
 ## 1. Chuẩn bị
 

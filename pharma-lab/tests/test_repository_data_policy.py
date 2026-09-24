@@ -49,7 +49,6 @@ def _is_ignored(path: str) -> bool:
         ("data/cache/rerank_scores/model.jsonl", True),
         ("data/cache/local_profiles/rerank/model.json", True),
         ("data/work/locks/probe.job.lock", True),
-        ("docs/superpowers/specs/probe.md", False),
     ],
 )
 def test_data_ignore_rules_follow_the_layout(path: str, ignored: bool) -> None:

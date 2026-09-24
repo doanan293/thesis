@@ -1,56 +1,58 @@
+% Format conventions (Springer LNCS, splncs04):
+% - Conference papers: full proceedings title with the venue acronym, pages,
+%   publisher and DOI when one exists. Springer volumes also give editors,
+%   series, volume and place of publication.
+% - Journal articles: journal, volume, number, pages or article number, DOI.
+% - Preprints: misc entries with howpublished = {arXiv preprint arXiv:<id>}.
+% - Web pages: misc entries with the URL and the date it was last accessed.
+% - Author lists are complete, except for papers with more than 15 authors,
+%   which list the first six followed by "others".
+% - Acronyms and proper nouns in titles are protected with braces.
+
 @inproceedings{lewis2020rag,
   title     = {Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
-  author    = {Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and Küttler, Heinrich and Lewis, Mike and Yih, Wen-tau and Rocktäschel, Tim and Riedel, Sebastian and Kiela, Douwe},
-  booktitle = {Advances in Neural Information Processing Systems},
+  author    = {Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and K{\"u}ttler, Heinrich and Lewis, Mike and Yih, Wen-Tau and Rockt{\"a}schel, Tim and Riedel, Sebastian and Kiela, Douwe},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   volume    = {33},
   pages     = {9459--9474},
+  publisher = {Curran Associates, Inc.},
   year      = {2020}
 }
 
 @inproceedings{asai2024selfrag,
-  title     = {Self-{RAG}: Learning to Retrieve, Generate, and Critique through Self-Reflection},
+  title     = {{Self-RAG}: Learning to Retrieve, Generate, and Critique through Self-Reflection},
   author    = {Asai, Akari and Wu, Zeqiu and Wang, Yizhong and Sil, Avirup and Hajishirzi, Hannaneh},
-  booktitle = {International Conference on Learning Representations (ICLR)},
+  booktitle = {Proceedings of the Twelfth International Conference on Learning Representations (ICLR)},
+  publisher = {OpenReview.net},
   year      = {2024}
 }
 
 @misc{yan2024crag,
-  title         = {Corrective Retrieval Augmented Generation},
-  author        = {Yan, Shi-Qi and Gu, Jia-Chen and Zhu, Yun and Ling, Zhen-Hua},
-  year          = {2024},
-  eprint        = {2401.15884},
-  archivePrefix = {arXiv},
-  howpublished  = {arXiv preprint arXiv:2401.15884}
+  title        = {Corrective Retrieval Augmented Generation},
+  author       = {Yan, Shi-Qi and Gu, Jia-Chen and Zhu, Yun and Ling, Zhen-Hua},
+  howpublished = {arXiv preprint arXiv:2401.15884},
+  year         = {2024}
 }
 
 @inproceedings{jeong2024adaptiverag,
-    title = "Adaptive-{RAG}: Learning to Adapt Retrieval-Augmented Large Language Models through Question Complexity",
-    author = "Jeong, Soyeong  and
-      Baek, Jinheon  and
-      Cho, Sukmin  and
-      Hwang, Sung Ju  and
-      Park, Jong",
-    booktitle = "Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers)",
-    year = "2024",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2024.naacl-long.389",
-    pages = "7036--7050"
+  title     = {{Adaptive-RAG}: Learning to Adapt Retrieval-Augmented Large Language Models through Question Complexity},
+  author    = {Jeong, Soyeong and Baek, Jinheon and Cho, Sukmin and Hwang, Sung Ju and Park, Jong},
+  booktitle = {Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL)},
+  pages     = {7036--7050},
+  publisher = {Association for Computational Linguistics},
+  year      = {2024},
+  doi       = {10.18653/v1/2024.naacl-long.389}
 }
-
 
 @inproceedings{xiong2024medrag,
-    title = "Benchmarking Retrieval-Augmented Generation for Medicine",
-    author = "Xiong, Guangzhi  and
-      Jin, Qiao  and
-      Lu, Zhiyong  and
-      Zhang, Aidong",
-    booktitle = "Findings of the Association for Computational Linguistics: ACL 2024",
-    year = "2024",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2024.findings-acl.372",
-    pages = "6233--6251"
+  title     = {Benchmarking Retrieval-Augmented Generation for Medicine},
+  author    = {Xiong, Guangzhi and Jin, Qiao and Lu, Zhiyong and Zhang, Aidong},
+  booktitle = {Findings of the Association for Computational Linguistics: ACL 2024},
+  pages     = {6233--6251},
+  publisher = {Association for Computational Linguistics},
+  year      = {2024},
+  doi       = {10.18653/v1/2024.findings-acl.372}
 }
-
 
 @article{mikkelsen2026clinical,
   title   = {Clinical Context Variables Collectively Rival Model Choice in Em\-bed\-ding-Based Retrieval: Multi-Corpus Benchmark Study},
@@ -63,10 +65,12 @@
 }
 
 @article{nygren2026drug,
-  title   = {{RAG}-based architectures for drug side effect retrieval using compact {LLMs}},
+  title   = {{RAG}-Based Architectures for Drug Side Effect Retrieval Using Compact {LLMs}},
   author  = {Nygren, Shad and Erdogan, Omer and Avci, Pinar and Daniels, Andre and Rassool, Reza and Beheshti, Afshin and Galeano, Diego},
   journal = {Scientific Reports},
   volume  = {16},
+  number  = {1},
+  pages   = {12754},
   year    = {2026},
   doi     = {10.1038/s41598-026-41495-2}
 }
@@ -75,6 +79,9 @@
   title   = {The Probabilistic Relevance Framework: {BM25} and Beyond},
   author  = {Robertson, Stephen and Zaragoza, Hugo},
   journal = {Foundations and Trends in Information Retrieval},
+  volume  = {3},
+  number  = {4},
+  pages   = {333--389},
   year    = {2009},
   doi     = {10.1561/1500000019}
 }
@@ -82,153 +89,145 @@
 @inproceedings{cormack2009rrf,
   title     = {Reciprocal Rank Fusion Outperforms {Condorcet} and Individual Rank Learning Methods},
   author    = {Cormack, Gordon V. and Clarke, Charles L. A. and Buettcher, Stefan},
-  booktitle = {Proceedings of the 32nd International ACM SIGIR Conference on Research and Development in Information Retrieval},
+  booktitle = {Proceedings of the 32nd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR)},
   pages     = {758--759},
+  publisher = {ACM},
   year      = {2009},
   doi       = {10.1145/1571941.1572114}
 }
 
 @inproceedings{thakur2021beir,
   title     = {{BEIR}: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models},
-  author    = {Thakur, Nandan and Reimers, Nils and Rücklé, Andreas and Srivastava, Abhishek and Gurevych, Iryna},
-  booktitle = {Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks},
+  author    = {Thakur, Nandan and Reimers, Nils and R{\"u}ckl{\'e}, Andreas and Srivastava, Abhishek and Gurevych, Iryna},
+  booktitle = {Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks (NeurIPS)},
+  volume    = {1},
   year      = {2021}
 }
 
 @inproceedings{muennighoff2023mteb,
-    title = "{MTEB}: Massive Text Embedding Benchmark",
-    author = "Muennighoff, Niklas  and
-      Tazi, Nouamane  and
-      Magne, Loic  and
-      Reimers, Nils",
-    booktitle = "Proceedings of the 17th Conference of the European Chapter of the Association for Computational Linguistics",
-    year = "2023",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2023.eacl-main.148",
-    pages = "2014--2037"
+  title     = {{MTEB}: Massive Text Embedding Benchmark},
+  author    = {Muennighoff, Niklas and Tazi, Nouamane and Magne, Loic and Reimers, Nils},
+  booktitle = {Proceedings of the 17th Conference of the European Chapter of the Association for Computational Linguistics (EACL)},
+  pages     = {2014--2037},
+  publisher = {Association for Computational Linguistics},
+  year      = {2023},
+  doi       = {10.18653/v1/2023.eacl-main.148}
 }
-
 
 @inproceedings{chen2024bgem3,
-    title = "{M}3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation",
-    author = "Chen, Jianlyu  and
-      Xiao, Shitao  and
-      Zhang, Peitian  and
-      Luo, Kun  and
-      Lian, Defu  and
-      Liu, Zheng",
-    booktitle = "Findings of the Association for Computational Linguistics: ACL 2024",
-    year = "2024",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2024.findings-acl.137",
-    pages = "2318--2335"
+  title     = {{M3-Embedding}: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation},
+  author    = {Chen, Jianlyu and Xiao, Shitao and Zhang, Peitian and Luo, Kun and Lian, Defu and Liu, Zheng},
+  booktitle = {Findings of the Association for Computational Linguistics: ACL 2024},
+  pages     = {2318--2335},
+  publisher = {Association for Computational Linguistics},
+  year      = {2024},
+  doi       = {10.18653/v1/2024.findings-acl.137}
 }
 
+@misc{openai2024embeddings,
+  title        = {New Embedding Models and {API} Updates},
+  author       = {{OpenAI}},
+  howpublished = {\url{https://openai.com/index/new-embedding-models-and-api-updates/}},
+  note         = {Last accessed 2026/09/23},
+  year         = {2024}
+}
 
 @misc{zhang2025qwen3emb,
-  title        = {Qwen3 Embedding: Advancing Text Embedding and Reranking Through Foundation Models},
-  author       = {Zhang, Yanzhao and Li, Mingxin and Long, Dingkun and Zhang, Xin and Lin, Huan and Yang, Baosong and others},
-  year         = {2025},
-  howpublished = {arXiv preprint arXiv:2506.05176}
+  title        = {{Qwen3 Embedding}: Advancing Text Embedding and Reranking Through Foundation Models},
+  author       = {Zhang, Yanzhao and Li, Mingxin and Long, Dingkun and Zhang, Xin and Lin, Huan and Yang, Baosong and Xie, Pengjun and Yang, An and Liu, Dayiheng and Lin, Junyang and Huang, Fei and Zhou, Jingren},
+  howpublished = {arXiv preprint arXiv:2506.05176},
+  year         = {2025}
 }
 
 @misc{vera2025embeddinggemma,
   title        = {{EmbeddingGemma}: Powerful and Lightweight Text Representations},
   author       = {Vera, Henrique Schechter and Dua, Sahil and Zhang, Biao and Salz, Daniel and Mullins, Ryan and Panyam, Sindhu Raghuram and others},
-  year         = {2025},
-  howpublished = {arXiv preprint arXiv:2509.20354}
+  howpublished = {arXiv preprint arXiv:2509.20354},
+  year         = {2025}
 }
 
 @misc{pham2025vnmteb,
   title        = {{VN-MTEB}: {Vietnamese} Massive Text Embedding Benchmark},
   author       = {Pham, Loc and Luu, Tung and Vo, Thu and Nguyen, Minh and Hoang, Viet},
-  year         = {2025},
-  howpublished = {arXiv preprint arXiv:2507.21500}
+  howpublished = {arXiv preprint arXiv:2507.21500},
+  year         = {2025}
 }
 
 @inproceedings{es2024ragas,
-    title = "{RAGA}s: Automated Evaluation of Retrieval Augmented Generation",
-    author = "Es, Shahul  and
-      James, Jithin  and
-      Espinosa Anke, Luis  and
-      Schockaert, Steven",
-    booktitle = "Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics: System Demonstrations",
-    year = "2024",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2024.eacl-demo.16",
-    pages = "150--158"
+  title     = {{RAGAs}: Automated Evaluation of Retrieval Augmented Generation},
+  author    = {Es, Shahul and James, Jithin and Espinosa Anke, Luis and Schockaert, Steven},
+  booktitle = {Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics: System Demonstrations (EACL)},
+  pages     = {150--158},
+  publisher = {Association for Computational Linguistics},
+  year      = {2024},
+  doi       = {10.18653/v1/2024.eacl-demo.16}
 }
-
 
 @inproceedings{saadfalcon2024ares,
-    title = "{ARES}: An Automated Evaluation Framework for Retrieval-Augmented Generation Systems",
-    author = "Saad-Falcon, Jon  and
-      Khattab, Omar  and
-      Potts, Christopher  and
-      Zaharia, Matei",
-    booktitle = "Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers)",
-    year = "2024",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2024.naacl-long.20",
-    pages = "338--354"
+  title     = {{ARES}: An Automated Evaluation Framework for Retrieval-Augmented Generation Systems},
+  author    = {Saad-Falcon, Jon and Khattab, Omar and Potts, Christopher and Zaharia, Matei},
+  booktitle = {Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL)},
+  pages     = {338--354},
+  publisher = {Association for Computational Linguistics},
+  year      = {2024},
+  doi       = {10.18653/v1/2024.naacl-long.20}
 }
-
 
 @inproceedings{gao2023alce,
-    title = "Enabling Large Language Models to Generate Text with Citations",
-    author = "Gao, Tianyu  and
-      Yen, Howard  and
-      Yu, Jiatong  and
-      Chen, Danqi",
-    booktitle = "Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing",
-    year = "2023",
-    publisher = "Association for Computational Linguistics",
-    doi = "10.18653/v1/2023.emnlp-main.398",
-    pages = "6465--6488"
+  title     = {Enabling Large Language Models to Generate Text with Citations},
+  author    = {Gao, Tianyu and Yen, Howard and Yu, Jiatong and Chen, Danqi},
+  booktitle = {Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {6465--6488},
+  publisher = {Association for Computational Linguistics},
+  year      = {2023},
+  doi       = {10.18653/v1/2023.emnlp-main.398}
 }
-
 
 @inproceedings{yang2024cragbench,
   title     = {{CRAG} -- Comprehensive {RAG} Benchmark},
   author    = {Yang, Xiao and Sun, Kai and Xin, Hao and Sun, Yushi and Bhalla, Nikita and Chen, Xiangsen and others},
-  booktitle = {Advances in Neural Information Processing Systems (Datasets and Benchmarks Track)},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   volume    = {37},
   pages     = {10470--10490},
+  publisher = {Curran Associates, Inc.},
   year      = {2024}
 }
 
 @misc{pradeep2024nuggets,
   title        = {Initial Nugget Evaluation Results for the {TREC} 2024 {RAG} Track with the {AutoNuggetizer} Framework},
   author       = {Pradeep, Ronak and Thakur, Nandan and Upadhyay, Shivani and Campos, Daniel and Craswell, Nick and Lin, Jimmy},
-  year         = {2024},
-  howpublished = {arXiv preprint arXiv:2411.09607}
+  howpublished = {arXiv preprint arXiv:2411.09607},
+  year         = {2024}
 }
 
 @inproceedings{chen2024rgb,
   title     = {Benchmarking Large Language Models in Retrieval-Augmented Generation},
   author    = {Chen, Jiawei and Lin, Hongyu and Han, Xianpei and Sun, Le},
-  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  booktitle = {Proceedings of the 38th AAAI Conference on Artificial Intelligence (AAAI)},
   volume    = {38},
   pages     = {17754--17762},
+  publisher = {AAAI Press},
   year      = {2024},
   doi       = {10.1609/aaai.v38i16.29728}
 }
 
 @inproceedings{debenedetti2024agentdojo,
   title     = {{AgentDojo}: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for {LLM} Agents},
-  author    = {Debenedetti, Edoardo and Zhang, Jie and Balunović, Mislav and Beurer-Kellner, Luca and Fischer, Marc and Tramèr, Florian},
-  booktitle = {Advances in Neural Information Processing Systems (Datasets and Benchmarks Track)},
+  author    = {Debenedetti, Edoardo and Zhang, Jie and Balunovi{\'c}, Mislav and Beurer-Kellner, Luca and Fischer, Marc and Tram{\`e}r, Florian},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   volume    = {37},
   pages     = {82895--82920},
+  publisher = {Curran Associates, Inc.},
   year      = {2024}
 }
 
 @inproceedings{zheng2023judge,
   title     = {Judging {LLM}-as-a-Judge with {MT-Bench} and {Chatbot Arena}},
-  author    = {Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying and Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao and others},
-  booktitle = {Advances in Neural Information Processing Systems (Datasets and Benchmarks Track)},
+  author    = {Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying and Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao and Lin, Zi and Li, Zhuohan and Li, Dacheng and Xing, Eric P. and Zhang, Hao and Gonzalez, Joseph E. and Stoica, Ion},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   volume    = {36},
   pages     = {46595--46623},
+  publisher = {Curran Associates, Inc.},
   year      = {2023}
 }
 
@@ -270,6 +269,7 @@
   author    = {Smucker, Mark D. and Allan, James and Carterette, Ben},
   booktitle = {Proceedings of the 16th ACM Conference on Information and Knowledge Management (CIKM)},
   pages     = {623--632},
+  publisher = {ACM},
   year      = {2007},
   doi       = {10.1145/1321440.1321528}
 }
@@ -306,14 +306,16 @@
   doi     = {10.1348/000711006X126600}
 }
 
-
 @inproceedings{huy2021vimq,
   title     = {{ViMQ}: A {Vietnamese} Medical Question Dataset for Healthcare Dialogue System Development},
   author    = {Huy, Ta Duc and Tu, Nguyen Anh and Vu, Tran Hoang and Minh, Nguyen Phuc and Phan, Nguyen and Bui, Trung H. and Truong, Steven Q. H.},
+  editor    = {Mantoro, Teddy and Lee, Minho and Ayu, Media Anugerah and Wong, Kok Wai and Hidayanto, Achmad Nizar},
   booktitle = {Neural Information Processing (ICONIP 2021)},
   series    = {Communications in Computer and Information Science},
+  volume    = {1517},
   pages     = {657--664},
   publisher = {Springer},
+  address   = {Cham},
   year      = {2021},
   doi       = {10.1007/978-3-030-92310-5_76}
 }
@@ -321,10 +323,13 @@
 @inproceedings{nguyen2022spbertqa,
   title     = {{SPBERTQA}: A Two-Stage Question Answering System Based on Sentence Transformers for Medical Texts},
   author    = {Nguyen, Nhung Thi-Hong and Ha, Phuong Phan-Dieu and Nguyen, Luan Thanh and Van Nguyen, Kiet and Nguyen, Ngan Luu-Thuy},
+  editor    = {Memmi, Gerard and Yang, Baijian and Kong, Linghe and Zhang, Tianwei and Qiu, Meikang},
   booktitle = {Knowledge Science, Engineering and Management (KSEM 2022)},
   series    = {Lecture Notes in Computer Science},
+  volume    = {13369},
   pages     = {371--382},
   publisher = {Springer},
+  address   = {Cham},
   year      = {2022},
   doi       = {10.1007/978-3-031-10986-7_30}
 }
@@ -332,10 +337,43 @@
 @inproceedings{luu2021vicoqa,
   title     = {Conversational Machine Reading Comprehension for {Vietnamese} Healthcare Texts},
   author    = {Luu, Son T. and Bui, Mao Nguyen and Nguyen, Loi Duc and Tran, Khiem Vinh and Van Nguyen, Kiet and Nguyen, Ngan Luu-Thuy},
+  editor    = {Wojtkiewicz, Krystian and Treur, Jan and Pimenidis, Elias and Maleszka, Marcin},
   booktitle = {Advances in Computational Collective Intelligence (ICCCI 2021)},
   series    = {Communications in Computer and Information Science},
+  volume    = {1463},
   pages     = {546--558},
   publisher = {Springer},
+  address   = {Cham},
   year      = {2021},
   doi       = {10.1007/978-3-030-88113-9_44}
+}
+
+@inproceedings{li2024llama2vec,
+  title     = {{Llama2Vec}: Unsupervised Adaptation of Large Language Models for Dense Retrieval},
+  author    = {Li, Chaofan and Liu, Zheng and Xiao, Shitao and Shao, Yingxia and Lian, Defu},
+  booktitle = {Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL)},
+  pages     = {3490--3500},
+  publisher = {Association for Computational Linguistics},
+  year      = {2024},
+  doi       = {10.18653/v1/2024.acl-long.191}
+}
+
+@article{cohen1960kappa,
+  title   = {A Coefficient of Agreement for Nominal Scales},
+  author  = {Cohen, Jacob},
+  journal = {Educational and Psychological Measurement},
+  volume  = {20},
+  number  = {1},
+  pages   = {37--46},
+  year    = {1960},
+  doi     = {10.1177/001316446002000104}
+}
+
+@book{efron1993bootstrap,
+  title     = {An Introduction to the Bootstrap},
+  author    = {Efron, Bradley and Tibshirani, Robert J.},
+  publisher = {Chapman \& Hall},
+  address   = {New York},
+  year      = {1993},
+  doi       = {10.1201/9780429246593}
 }

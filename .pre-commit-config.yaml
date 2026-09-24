@@ -1,8 +1,7 @@
 # Shared hooks for every project in this repo (pharma-lab, backend, frontend).
 # Install once from the repo root: `uv run pre-commit install`.
 # Frontend hooks need `npm ci` in frontend/ first.
-# Specs and plans under backend/docs/superpowers are immutable records; hooks never rewrite them.
-exclude: '.*(data/|\.venv/|ai-models/|\.agents/|node_modules/|backend/docs/superpowers/)'
+exclude: '.*(data/|\.venv/|ai-models/|\.agents/|node_modules/)'
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
