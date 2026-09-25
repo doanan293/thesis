@@ -8,15 +8,27 @@ Paper tiếng Anh nộp SoICT 2026 (Springer CCIS, định dạng LNCS, tối đ
 
 ## Build
 
-Chạy từ thư mục gốc repo, dùng script của skill `latex-document-skill`:
+Cần TeX Live có pdfLaTeX, BibTeX và `latexmk`. Trên Ubuntu/Debian:
 
 ```bash
-bash .agents/skills/latex-document-skill/scripts/compile_latex.sh \
-  report/SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.tex \
-  --engine pdflatex --use-latexmk --preview --preview-dir preview
+sudo apt install latexmk texlive-latex-recommended texlive-latex-extra \
+  texlive-pictures texlive-lang-other zip
 ```
 
-Kết quả là `report/SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.pdf` (file `.tex` chính mang luôn tên bản nộp, nên PDF sinh ra dùng được để nộp ngay) và ảnh xem trước trong `report/preview/`. Bài dùng pdfLaTeX với bảng mã T5 như bản mẫu của Springer, nên Overleaf biên dịch được với compiler mặc định.
+Mọi thiết lập build nằm trong `.latexmkrc`, nên chỉ cần chạy `latexmk` trong `report/`:
+
+```bash
+cd report
+latexmk        # build PDF, tự chạy BibTeX và đủ số lượt pdflatex
+latexmk -pvc   # build lại mỗi lần lưu file
+latexmk -C     # xóa mọi file sinh ra, kể cả PDF
+```
+
+Kết quả là `report/SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.pdf` (file `.tex` chính mang luôn tên bản nộp, nên PDF dùng để nộp ngay). Build thất bại nếu còn citation hoặc reference chưa định nghĩa, hay bất kỳ warning nào của LaTeX, class hoặc package. Không build bằng một lượt `pdflatex` đơn lẻ: lượt đó không chạy BibTeX nên mọi trích dẫn hiện thành `[?]`.
+
+Trong VS Code, LaTeX Workshop dùng recipe mặc định `latexmk`, recipe này đọc `.latexmkrc` nên cho cùng kết quả. File `.tex` không có magic comment `% !TEX program`, vì magic comment khiến LaTeX Workshop bỏ qua recipe và chỉ chạy một lượt `pdflatex`.
+
+Hook `report-build` trong `.pre-commit-config.yaml` ở gốc repo chạy `latexmk` mỗi khi commit đụng tới `report/`, nên bài luôn build sạch trước khi vào git.
 
 ## Overleaf
 
@@ -28,7 +40,7 @@ cd report && zip -r SoICT2026_Agentic_RAG_Vietnamese_Pharmaceutical_Documents.zi
   llncs.cls splncs04.bst references.bib sections tables figures && cd ..
 ```
 
-Overleaf biên dịch ngay với compiler mặc định (pdfLaTeX). Main document được nhận tự động vì chỉ có một file `.tex` ở gốc.
+Overleaf biên dịch ngay với compiler mặc định (pdfLaTeX) và tự chạy BibTeX. Main document được nhận tự động vì chỉ có một file `.tex` ở gốc.
 
 ## Bảng end-to-end
 

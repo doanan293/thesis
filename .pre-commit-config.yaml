@@ -1,4 +1,4 @@
-# Shared hooks for every project in this repo (pharma-lab, backend, frontend).
+# Shared hooks for every project in this repo (pharma-lab, backend, frontend, report).
 # Install once from the repo root: `uv run pre-commit install`.
 # Frontend hooks need `npm ci` in frontend/ first.
 exclude: '.*(data/|\.venv/|ai-models/|\.agents/|node_modules/)'
@@ -83,6 +83,18 @@ repos:
         types: [dockerfile]
         # identify also tags Dockerfile.dockerignore as a Dockerfile.
         files: (^|/)Dockerfile$
+
+  - repo: local
+    hooks:
+      # Builds the paper with report/.latexmkrc, which fails on any LaTeX warning
+      # or undefined citation. Needs TeX Live (see report/README.md).
+      - id: report-build
+        name: latexmk (report)
+        entry: bash -c 'cd report && latexmk -quiet'
+        language: system
+        files: ^report/
+        pass_filenames: false
+        require_serial: true
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1

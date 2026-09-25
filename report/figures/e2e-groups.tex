@@ -3,13 +3,14 @@
 \begin{tikzpicture}
 \begin{groupplot}[
   group style={group size=2 by 1, horizontal sep=9mm},
-  ybar, width=0.5\textwidth, height=2.6cm,
+  ybar, width=0.5\textwidth, height=3.8cm,
   ymin=0, ymax=1.02, ytick={0,0.25,0.5,0.75,1},
   symbolic x coords={Single-turn, Multi-turn, Noisy},
   xtick=data, enlarge x limits=0.28,
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
   title style={font=\scriptsize, yshift=-1.5ex},
   ymajorgrids, grid style={gray!25}, axis line style={gray!60},
+  tick pos=left,
   every axis plot/.append style={draw=none, bar width=4.2pt},
   legend style={font=\scriptsize, draw=none, fill=none, at={(1.08,-0.36)}, anchor=north, legend columns=3, column sep=6pt},
 ]
